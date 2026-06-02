@@ -19,6 +19,8 @@
 | ADR-008 | Frontend serving strategy | Accepted |
 | ADR-009 | Local development and deployment tooling | Accepted |
 | ADR-010 | N1-S06 opencode_client.py committed directly to develop outside a PR | Proposed — pending review |
+| ADR-011 | N1-S18: profile prompt must write workspace/profile.json explicitly | Proposed — pending review |
+| ADR-012 | N1-S18: OpenCode lifecycle owned by backend; make dev does not start opencode | Proposed — pending review |
 
 ---
 
@@ -280,4 +282,47 @@ During a TL DEV_STATUS update, `backend/opencode_client.py` and `backend/tests/u
 
 ### Prevention
 TL must run `git diff --cached` and `git status` before every living-doc commit to ensure no unintended files are staged. The pre-commit hook does not catch out-of-lane file additions.
+
+---
+
+## ADR-011 · N1-S18: profile prompt must write workspace/profile.json explicitly
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-02
+
+### Decision
+The profiling turn prompt must explicitly instruct OpenCode to **write** the JSON output to `workspace/profile.json` (via `apply_patch` or equivalent). It is insufficient to ask OpenCode to "return JSON" as message content.
+
+### Context
+N1-S09's `build_profile_prompt()` asked OpenCode to "return valid JSON matching the schema exactly." This is correct for OpenCode's structured output mechanism (which enforces the schema and returns the JSON as the model's response), but the orchestrator reads `workspace/profile.json` on `session.idle` — a file that only exists if OpenCode writes it. Without an explicit write instruction, the profiling turn completes and `session.idle` fires, but `profile.json` is absent, so `profile.ready` is never emitted.
+
+### Rationale
+OpenCode's structured output (`format: { type: "json_schema", ... }`) causes the model to call a hidden `StructuredOutput` tool and return JSON. This JSON appears in the SSE stream as message content. It does NOT automatically write to a file. Writing to `workspace/profile.json` requires an explicit file-write instruction in the prompt ("write the JSON to workspace/profile.json"), which causes OpenCode to use `apply_patch` to create the file.
+
+### Consequences
+- `build_profile_prompt()` updated to say "write valid JSON matching the schema exactly to workspace/profile.json."
+- The orchestrator's `_handle_profile_idle()` reads the file on `session.idle` — this is the correct pattern.
+- The `file.edited` event (which fires on `apply_patch`) may arrive before `session.idle`; orchestrator waits for `session.idle` as the canonical "turn complete" signal before reading the file (avoids reading a partial write).
+
+---
+
+## ADR-012 · N1-S18: OpenCode lifecycle owned by backend; make dev does not start opencode
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-02
+
+### Decision
+`make dev` does NOT start `opencode serve` separately. The backend's `OpenCodeClient.start()` is the sole owner of the `opencode serve` subprocess lifecycle.
+
+### Context
+The original `make dev` started `opencode serve &` alongside `uvicorn` and `vite`. The backend's `OpenCodeClient.start()` also calls `opencode serve --port 4096`. This created two competing `opencode serve` processes: the first (Makefile-started) bound to port 4096; the second (backend-started) failed silently to bind, leaving `self._process` pointing to a dead process. The backend communicated with the Makefile-started instance (health check passed against it), but shutdown was unreliable (SIGTERM hit the dead process, leaving the Makefile process running).
+
+### Rationale
+Having two components own the same process lifecycle is a violation of single-owner responsibility. `OpenCodeClient` already implements readiness polling, SIGTERM/SIGKILL shutdown, and has a `SKIP_OPENCODE=1` escape hatch for CI. Removing the Makefile-level start makes the lifecycle unambiguous and eliminates the race.
+
+### Consequences
+- `make dev` starts uvicorn and vite only; opencode is started by FastAPI lifespan.
+- `make dev` no longer checks for opencode on PATH (the backend already does this and logs a clear error if missing).
+- `SKIP_OPENCODE=1` continues to suppress opencode entirely for CI.
+- `make run` (production mode) is unaffected — it started uvicorn only (the backend manages opencode there already).
 
