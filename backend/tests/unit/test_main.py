@@ -1,4 +1,5 @@
 """Smoke test — backend is importable and health endpoint exists."""
+
 from fastapi.testclient import TestClient
 
 from backend.main import app
