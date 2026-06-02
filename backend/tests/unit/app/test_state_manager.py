@@ -305,3 +305,41 @@ def test_get_state_via_api(tmp_path):
 
         # opencode_session_id must NOT be exposed to the SPA (contract §3).
         assert "opencode_session_id" not in body
+
+
+# ---------------------------------------------------------------------------
+# test_load_fills_in_missing_keys — backward-compatible schema migration
+# ---------------------------------------------------------------------------
+
+
+def test_load_fills_in_missing_keys(tmp_path):
+    """load() merges defaults for keys absent from an older state.json.
+
+    If a new default key was added to _DEFAULT_STATE after a state.json was
+    written, load() must return a dict that contains both the on-disk values
+    and the new default — not a KeyError at access time.
+    """
+    state_path = tmp_path / "state.json"
+    # Write a minimal "old" state that is missing several keys.
+    old_state = {
+        "version": "1",
+        "stage": "profiling",
+        "aim": "understand sales",
+    }
+    state_path.write_text(json.dumps(old_state), encoding="utf-8")
+
+    sm = _sm(tmp_path)
+    loaded = sm.load()
+
+    # On-disk fields preserved.
+    assert loaded["stage"] == "profiling"
+    assert loaded["aim"] == "understand sales"
+
+    # Missing keys filled in from defaults.
+    assert "dataset_path" in loaded
+    assert loaded["dataset_path"] is None
+    assert "profile" in loaded
+    assert loaded["profile"] is None
+    assert "plan" in loaded
+    assert loaded["plan"] == []
+    assert "opencode_session_id" in loaded

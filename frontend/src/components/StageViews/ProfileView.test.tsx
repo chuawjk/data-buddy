@@ -236,4 +236,25 @@ describe("ProfileView", () => {
     expect(screen.getByTestId("reprof-input")).toBeInTheDocument();
     expect(screen.getByTestId("reprof-submit")).toBeInTheDocument();
   });
+
+  // -------------------------------------------------------------------------
+  // test_post_turn_error — API failure preserves input and re-enables button
+  // -------------------------------------------------------------------------
+
+  it("test_post_turn_error — when postTurn throws, input is preserved and submit re-enabled", async () => {
+    mockPostTurn.mockRejectedValue({ error: "invalid_stage", message: "not valid" });
+
+    render(<ProfileView profile={SAMPLE_PROFILE} />);
+
+    const input = screen.getByTestId("reprof-input");
+    const submit = screen.getByTestId("reprof-submit");
+
+    await userEvent.type(input, "focus on age");
+    await userEvent.click(submit);
+
+    // Input text must be preserved (not cleared on error).
+    expect(input).toHaveValue("focus on age");
+    // Submit button must be re-enabled after the failed call.
+    expect(submit).not.toBeDisabled();
+  });
 });

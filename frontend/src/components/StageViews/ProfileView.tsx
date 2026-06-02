@@ -50,6 +50,9 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
     try {
       await api.postTurn(text);
       setInputText("");
+    } catch {
+      // On failure the input is intentionally preserved so the user can retry.
+      // The backend will emit a turn.error SSE event for the activity rail.
     } finally {
       setIsTurnInFlight(false);
     }

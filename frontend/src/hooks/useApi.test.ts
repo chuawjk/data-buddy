@@ -303,3 +303,35 @@ describe("api.getFile", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Network-level failures — fetch() throws (no response at all)
+// ---------------------------------------------------------------------------
+
+describe("network failure — fetch throws", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("api.getState rejects with the network error when fetch throws", async () => {
+    const networkError = new TypeError("Failed to fetch");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(networkError));
+
+    await expect(api.getState()).rejects.toThrow("Failed to fetch");
+  });
+
+  it("api.postSetup rejects with the network error when fetch throws", async () => {
+    const networkError = new TypeError("Failed to fetch");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(networkError));
+
+    const file = new File(["col_a\n1\n"], "data.csv", { type: "text/csv" });
+    await expect(api.postSetup(file, "find patterns")).rejects.toThrow("Failed to fetch");
+  });
+
+  it("api.postTurn rejects with the network error when fetch throws", async () => {
+    const networkError = new TypeError("Failed to fetch");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(networkError));
+
+    await expect(api.postTurn("hello")).rejects.toThrow("Failed to fetch");
+  });
+});

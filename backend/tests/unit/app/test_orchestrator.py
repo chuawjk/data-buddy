@@ -338,3 +338,65 @@ async def test_start_bus_listener_routes_session_idle(tmp_path):
         f"Expected 'profile.ready' in events; got: {received_types}"
     )
     assert profile_ready_event["profile"]["shape"]["rows"] == 42  # type: ignore[possibly-undefined]
+
+
+# ---------------------------------------------------------------------------
+# re_profile — error paths and happy path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_re_profile_raises_without_session(tmp_path):
+    """re_profile() raises ValueError when no session_id is stored."""
+    sm = _make_state_manager(tmp_path, session_id=None)
+    sm.update(stage="profiling")
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=EventBus(), client=mock_client)
+
+    with pytest.raises(ValueError, match="No active session"):
+        await orch.re_profile("look at the age column")
+
+
+@pytest.mark.asyncio
+async def test_re_profile_raises_wrong_stage(tmp_path):
+    """re_profile() raises ValueError when stage is not profiling."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path, session_id="sess-abc")
+    sm.update(stage="setup")
+
+    with pytest.raises(ValueError, match="profiling"):
+        await orch.re_profile("look at the age column")
+
+
+@pytest.mark.asyncio
+async def test_re_profile_fires_prompt(tmp_path):
+    """re_profile() dispatches client.prompt with the session id and a non-empty prompt."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+
+    await orch.re_profile("focus on the age column")
+    await asyncio.sleep(0)
+
+    client.prompt.assert_awaited_once()
+    args, _ = client.prompt.call_args
+    assert args[0] == "sess-abc"
+    assert isinstance(args[1], str) and len(args[1]) > 0
+
+
+# ---------------------------------------------------------------------------
+# setup_complete with client=None (SKIP_OPENCODE path)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_setup_complete_skips_turn_without_client(tmp_path):
+    """setup_complete() must not crash and must not call prompt when client=None."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    bus = EventBus()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=None)
+
+    # Must not raise even though client is None.
+    await orch.setup_complete(dataset="data.csv", aim="find patterns")
+    await asyncio.sleep(0)
+
+    # Stage transition still persisted.
+    assert sm.get_state()["stage"] == "profiling"

@@ -176,4 +176,24 @@ describe("useSSE", () => {
 
     expect(onEvent).toHaveBeenCalledWith(payload);
   });
+
+  it("silently discards a message with malformed JSON and keeps delivering subsequent events", () => {
+    const onEvent = vi.fn();
+    renderHook(() => useSSE(onEvent));
+
+    const instance = MockEventSource.instances[0];
+
+    // Malformed JSON must not call onEvent and must not throw.
+    act(() => {
+      instance._dispatchMessage("this is not json {{");
+    });
+    expect(onEvent).not.toHaveBeenCalled();
+
+    // A valid subsequent message must still be dispatched normally.
+    act(() => {
+      instance._dispatchMessage(JSON.stringify({ type: "session.idle", ts: 1 }));
+    });
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledWith({ type: "session.idle", ts: 1 });
+  });
 });

@@ -184,4 +184,19 @@ describe("SetupView", () => {
 
     expect(screen.getByText(/dropped\.csv/)).toBeInTheDocument();
   });
+
+  // ── test_drop_non_csv_accepted ───────────────────────────────────────────
+  // The drop zone has no client-side MIME filter — any dropped file is
+  // accepted.  Type validation is enforced by the backend (422 invalid_file).
+
+  it("test_drop_non_csv_accepted — dropping a non-CSV file accepts it without client-side rejection", () => {
+    render(<SetupView />);
+    const dropZone = screen.getByTestId("drop-zone");
+    const nonCsv = new File(["{}"], "report.json", { type: "application/json" });
+
+    fireEvent.drop(dropZone, { dataTransfer: { files: [nonCsv] } });
+
+    // Filename shown — file was accepted.
+    expect(screen.getByText(/report\.json/)).toBeInTheDocument();
+  });
 });
