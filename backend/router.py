@@ -1,4 +1,4 @@
-"""HTTP router — all REST endpoints.
+"""HTTP router -- all REST endpoints.
 
 All 10 routes from the API contract are registered here.  Routes whose real
 handler logic belongs to later stories return a typed stub that satisfies the
@@ -8,7 +8,7 @@ from the stub.
 Route inventory (from API_CONTRACT.html):
     POST /setup
     GET  /state
-    GET  /events          (SSE stub — real impl N1-S10)
+    GET  /events          (real impl N1-S10)
     POST /turn
     POST /plan/update
     POST /plan/accept
@@ -20,11 +20,12 @@ Route inventory (from API_CONTRACT.html):
 
 from __future__ import annotations
 
-import time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
+
+from backend.sse_proxy import event_stream
 
 router = APIRouter()
 
@@ -33,7 +34,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 # Fields that are internal to the backend and must NOT be exposed to the SPA
-# (API contract §3: "Mirrors state.json exactly, minus the internal
+# (API contract \u00a73: "Mirrors state.json exactly, minus the internal
 # opencode_session_id field").
 _INTERNAL_FIELDS = {"opencode_session_id"}
 
@@ -49,7 +50,7 @@ async def get_state(request: Request) -> dict[str, Any]:
     state_manager = request.app.state.state_manager
     state = state_manager.get_state()
 
-    # Strip internal-only fields per the contract (§3).
+    # Strip internal-only fields per the contract (\u00a73).
     return {k: v for k, v in state.items() if k not in _INTERNAL_FIELDS}
 
 
@@ -68,25 +69,27 @@ async def post_setup() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# GET /events  (SSE stub)
+# GET /events  (N1-S10: real SSE stream)
 # ---------------------------------------------------------------------------
 
 
-async def _stub_sse_stream():
-    """Yield a single SSE heartbeat as a keep-alive, then close."""
-    ts = int(time.time() * 1000)
-    yield f'event: heartbeat\ndata: {{"type": "heartbeat", "ts": {ts}}}\n\n'
-
-
 @router.get("/events")
-async def get_events() -> StreamingResponse:
+async def get_events(request: Request) -> StreamingResponse:
     """Browser-facing SSE stream.
 
-    Real implementation: N1-S10.  Stub emits one heartbeat event then closes
-    so the route is registered and reachable without 404/500.
+    Drains the internal EventBus (``app.state.bus``) to the browser as
+    standard SSE.  Each bus event is serialised as ``data: <json>\\n\\n``.
+    A ``": keepalive\\n\\n"`` SSE comment is emitted every 15 s of silence so
+    proxy and CDN idle timeouts are avoided.
+
+    Headers per the contract:
+    - ``Cache-Control: no-cache`` -- prevents caching of the stream.
+    - ``X-Accel-Buffering: no`` -- disables nginx response buffering so events
+      reach the browser immediately.
     """
+    bus = request.app.state.bus
     return StreamingResponse(
-        _stub_sse_stream(),
+        event_stream(bus),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
