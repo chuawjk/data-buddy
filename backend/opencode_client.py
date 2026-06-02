@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import time
 from typing import Any
@@ -195,7 +196,44 @@ class OpenCodeClient:
         binary = self._resolve_binary()
         await self._launch(binary)
         await self._wait_for_readiness()
-        await self._create_session()
+        session_id = await self._create_session()
+        self._session_id = session_id
+        self._state_manager.update(opencode_session_id=session_id)
+        logger.info("OpenCode session created: %s", session_id)
+
+    async def abort(self, session_id: str) -> None:
+        """POST /session/:id/abort -- best-effort abort (N1-S11).
+
+        Per the spike (SPIKE_REPORT.md §5), abort returns 200 but does NOT reliably
+        unblock a stuck turn.  Called as a courtesy before creating a fresh session.
+        Errors are swallowed -- they must not interrupt the recovery path.
+
+        Args:
+            session_id: The OpenCode session ID to abort.
+        """
+        url = f"{self._base_url}/session/{session_id}/abort"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(url)
+            logger.info("Abort POST %s returned %d.", url, response.status_code)
+        except Exception as exc:
+            logger.warning("Abort POST %s failed (%s) -- continuing to fresh-session.", url, exc)
+
+    async def create_fresh_session(self) -> str:
+        """Create a new OpenCode session and return its ID (N1-S11).
+
+        Re-uses ``_create_session()`` internally.  Does NOT update ``_session_id``
+        or ``state_manager`` -- the caller (``Watchdog``) is responsible for
+        persisting the new session ID via
+        ``state_manager.update(opencode_session_id=new_id)``.
+
+        Returns:
+            The new session ID string.
+
+        Raises:
+            RuntimeError: If session creation fails.
+        """
+        return await self._create_session()
 
     async def stop(self) -> None:
         """Terminate the OpenCode process cleanly.
@@ -285,6 +323,11 @@ class OpenCodeClient:
             heartbeat_timeout: Maximum seconds to wait for the next event before
                 treating the connection as stale and returning.
         """
+        # N1-S20: QA_FORCE_STALL -- stop emitting after the first event to drive the
+        # watchdog abort -> fresh-session path deterministically.  Off by default.
+        force_stall = os.environ.get("QA_FORCE_STALL") == "1"
+        stall_triggered = False
+
         async with httpx.AsyncClient(timeout=None) as http_client:
             async with await aconnect_sse(http_client, "GET", event_url) as sse_response:
                 sse_iter = sse_response.aiter_sse().__aiter__()
@@ -348,6 +391,20 @@ class OpenCodeClient:
                                 active_session,
                             )
                             continue
+
+                    # N1-S20: QA_FORCE_STALL -- emit first event then suppress the rest.
+                    if force_stall:
+                        if stall_triggered:
+                            logger.debug(
+                                "QA_FORCE_STALL: suppressing event %r to simulate stall.",
+                                event_type,
+                            )
+                            continue
+                        stall_triggered = True
+                        logger.info(
+                            "QA_FORCE_STALL active: emitting first event %r, then stalling.",
+                            event_type,
+                        )
 
                     # Normalise and publish to the bus.
                     await self._normalise_and_publish(event_type, properties, bus)
@@ -582,11 +639,18 @@ class OpenCodeClient:
 
                 await asyncio.sleep(self._poll_interval)
 
-    async def _create_session(self) -> None:
-        """POST to the v1 /session endpoint and persist the session ID.
+    async def _create_session(self) -> str:
+        """POST to the v1 /session endpoint and return the new session ID.
 
-        Uses provider ``openai`` via OAuth (per spike §2 — no API key env var
+        Does NOT update ``_session_id`` or ``state_manager`` -- the caller is
+        responsible for those side effects.  This makes the method reusable from
+        both ``start()`` and ``create_fresh_session()``.
+
+        Uses provider ``openai`` via OAuth (per spike §2 -- no API key env var
         needed; auth.json is read by OpenCode automatically).
+
+        Returns:
+            The new session ID string.
 
         Raises:
             RuntimeError: If the session create call returns a non-2xx status
@@ -620,6 +684,4 @@ class OpenCodeClient:
                 f"OpenCode session create response missing 'id' field.  Body: {body}"
             )
 
-        self._session_id = session_id
-        self._state_manager.update(opencode_session_id=session_id)
-        logger.info("OpenCode session created: %s", session_id)
+        return session_id
