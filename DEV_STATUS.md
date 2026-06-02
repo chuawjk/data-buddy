@@ -56,22 +56,27 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - `backend/router.py`: `GET /state` reads from `app.state.state_manager`; strips `opencode_session_id` before returning
   - 29 backend tests pass (9 state-manager + 10 router + 5 event-bus + 1 health + 4 sse-proxy); lint clean; CI green on merge
 
+- `feat/n1-s17-activity-rail` — **N1-S17 · Activity rail** (PR #10, squash `8cbc4c9`)
+  - `frontend/src/components/ActivityRail.tsx` (new): subscribes to `useSSE`; renders `tool.bash_running` / `tool.bash_done` / `tool.file_written` items in arrival order; accumulates `message.part` content into text buffer; resets all state on `session.idle`
+  - All required `data-testid` seams present: `activity-rail`, `activity-tool-running`, `activity-tool-done`, `activity-file-written`, `activity-message`
+  - 7 ActivityRail tests; 42 frontend tests total pass; lint clean; CI green on merge
+  - Note: self-approve not possible on GitHub (same account owns PR); merged after all three gates (acceptance, lane boundary, CI) verified green
+
 ### In Dev / In Review / In QA
 
 *(see startable set below)*
 
-### Startable set (post N1-S03 merge)
+### Startable set (post N1-S17 merge)
 
-All of N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, and N1-S03 are now on `develop`:
+All of N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, and N1-S17 are now on `develop`:
 
+- **N1-S16** (FE) — Profile screen *(fully unblocked: N1-S14 ✅ + N1-S17 ✅)*
 - **N1-S15** (FE) — Setup screen *(fully unblocked: N1-S13 ✅ + N1-S14 ✅)*
-- **N1-S17** (FE) — Activity rail *(fully unblocked: N1-S13 ✅ + N1-S14 ✅)*
 - **N1-S05** (BE) — Setup endpoint *(fully unblocked: N1-S03 ✅)*
 - **N1-S06** (BE) — OpenCode process & session *(fully unblocked: N1-S03 ✅)*
 - **N1-S10** (BE) — SSE proxy / event streaming *(fully unblocked: N1-S02 ✅ + N1-S07 ✅)*
 
 N1-S08 (BE) — OpenCode client & SSE normalisation: blocked on N1-S06 (which now has its prerequisite N1-S03 ✅). NOT yet startable — N1-S06 must merge first.
-N1-S16 (FE) — Section view: still blocked on N1-S17.
 
 ### Blockers
 
