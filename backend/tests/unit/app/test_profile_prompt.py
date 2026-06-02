@@ -5,6 +5,7 @@ TDD: tests written before implementation.
 Acceptance criteria covered:
 - prompt() sends format.type == "json_schema" and retryCount == 2 when schema is provided.
 - prompt() omits the "format" key entirely when no schema is given.
+- prompt() uses parts: [{"type": "text", "text": ...}] payload (v1.15.13 schema, QA-02 fix).
 - PROFILE_SCHEMA is a valid JSON Schema (required top-level fields present).
 - build_profile_prompt() references the dataset filename in the returned string.
 
@@ -79,6 +80,12 @@ async def test_prompt_payload_with_schema(tmp_path: Path) -> None:
     assert len(posted_json) == 1, "Expected exactly one POST call"
     body = posted_json[0]
 
+    # v1.15.13: payload uses parts array, not top-level text
+    assert "parts" in body, f"Expected 'parts' key in POST body, got: {body}"
+    assert len(body["parts"]) == 1
+    assert body["parts"][0]["type"] == "text"
+    assert body["parts"][0]["text"] == text
+
     # format block must be present
     assert "format" in body, f"Expected 'format' key in POST body, got: {body}"
     fmt = body["format"]
@@ -91,10 +98,12 @@ async def test_prompt_payload_with_schema(tmp_path: Path) -> None:
     # retryCount must be 2
     assert fmt["retryCount"] == 2, f"Expected retryCount == 2, got: {fmt['retryCount']}"
 
-    # json_schema wrapper must be present and name it "output"
-    assert "json_schema" in fmt, f"Expected 'json_schema' key inside format, got: {fmt}"
-    assert fmt["json_schema"]["name"] == "output"
-    assert fmt["json_schema"]["schema"] == PROFILE_SCHEMA
+    # v1.15.13: schema is directly at format.schema (no json_schema wrapper, no name field)
+    assert "schema" in fmt, f"Expected 'schema' key directly in format, got: {fmt}"
+    assert fmt["schema"] == PROFILE_SCHEMA
+    assert "json_schema" not in fmt, (
+        f"v1.15.13 dropped the json_schema wrapper — must not be present, got: {fmt}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +141,13 @@ async def test_prompt_payload_without_schema(tmp_path: Path) -> None:
     assert "format" not in body, (
         f"Expected no 'format' key in POST body when schema is None, got: {body}"
     )
-    assert body.get("text") == text, f"Expected 'text' to be '{text}', got: {body}"
+    # v1.15.13: text is inside parts array, not at top level
+    assert "parts" in body, f"Expected 'parts' key in POST body, got: {body}"
+    assert body["parts"][0]["type"] == "text"
+    assert body["parts"][0]["text"] == text
+    assert "text" not in body, (
+        f"v1.15.13 dropped top-level 'text' field — must not be present, got: {body}"
+    )
 
 
 # ---------------------------------------------------------------------------

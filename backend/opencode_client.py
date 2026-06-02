@@ -149,14 +149,20 @@ class OpenCodeClient:
         (per SSE_CONTRACT.md §D5 and the spike).
 
         When ``schema`` is provided the request uses OpenCode's native
-        structured-output mechanism (ADR-004):
+        structured-output mechanism (ADR-004 / ADR-013):
         ::
 
             format: {
                 type: "json_schema",
-                json_schema: { name: "output", schema: <schema> },
+                schema: <schema>,
                 retryCount: 2,
             }
+
+        Note: v1.15.13 changed the payload shape relative to v1.15.10 (spike):
+          - ``text`` top-level field replaced by ``parts: [{"type": "text", "text": ...}]``
+          - ``format.json_schema`` wrapper removed; schema is now ``format.schema`` directly
+          - ``format.name`` field dropped (no longer part of OutputFormatJsonSchema)
+        Both changes confirmed from the /doc OpenAPI spec of the running server.
 
         Args:
             session_id: The active OpenCode session ID.
@@ -167,11 +173,11 @@ class OpenCodeClient:
         Raises:
             httpx.HTTPStatusError: If OpenCode returns a non-2xx response.
         """
-        payload: dict = {"text": text}
+        payload: dict = {"parts": [{"type": "text", "text": text}]}
         if schema is not None:
             payload["format"] = {
                 "type": "json_schema",
-                "json_schema": {"name": "output", "schema": schema},
+                "schema": schema,
                 "retryCount": 2,
             }
 
@@ -329,7 +335,7 @@ class OpenCodeClient:
         stall_triggered = False
 
         async with httpx.AsyncClient(timeout=None) as http_client:
-            async with await aconnect_sse(http_client, "GET", event_url) as sse_response:
+            async with aconnect_sse(http_client, "GET", event_url) as sse_response:
                 sse_iter = sse_response.aiter_sse().__aiter__()
                 last_heartbeat = asyncio.get_event_loop().time()
 

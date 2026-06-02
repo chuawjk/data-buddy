@@ -74,8 +74,12 @@ async def _run_subscription_with_events(
         async for event in sub:
             received.append(event)
 
-    async def _fake_connect_sse(http_client, method, url, **kwargs):
-        """Async context manager that yields a fake SSE source."""
+    def _fake_connect_sse(http_client, method, url, **kwargs):
+        """Sync context manager factory that yields a fake SSE source.
+
+        aconnect_sse is an @asynccontextmanager — it is called synchronously
+        and returns an async context manager.  The mock must match that shape.
+        """
 
         class FakeSSEResponse:
             async def aiter_sse(self):
@@ -136,7 +140,7 @@ async def test_single_connection_at_startup(tmp_path: Path) -> None:
 
     connect_calls: list[Any] = []
 
-    async def _fake_connect_sse(http_client, method, url, **kwargs):
+    def _fake_connect_sse(http_client, method, url, **kwargs):
         connect_calls.append((method, url))
 
         class FakeSSEResponse:
@@ -412,7 +416,7 @@ async def test_reconnect_on_heartbeat_timeout(tmp_path: Path) -> None:
     connect_calls: list[Any] = []
     call_count = 0
 
-    async def _fake_connect_sse(http_client, method, url, **kwargs):
+    def _fake_connect_sse(http_client, method, url, **kwargs):
         nonlocal call_count
         call_count += 1
         this_call = call_count

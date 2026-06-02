@@ -6,7 +6,8 @@ Acceptance criteria:
 - GET /state returns a minimal valid state object.
 """
 
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.responses import StreamingResponse
@@ -14,14 +15,21 @@ from fastapi.testclient import TestClient
 
 from backend.main import app
 from backend.router import get_events
+from backend.state_manager import StateManager
 
 
 @pytest.fixture()
-def client():
-    # Use the context-manager form so the lifespan runs (EventBus +
-    # StateManager are initialised on app.state before requests are sent).
-    with TestClient(app) as c:
-        yield c
+def client(tmp_path: Path):
+    # Isolate from the real workspace/state.json so tests are not affected by
+    # state left on disk from a prior live run (QA-01/QA-02 regression fix).
+    # Patch StateManager's default path to a fresh temp directory so the
+    # lifespan StateManager.load() sees no prior state.
+    clean_state_path = tmp_path / "state.json"
+    with patch("backend.main.StateManager", lambda: StateManager(path=clean_state_path)):
+        # Use the context-manager form so the lifespan runs (EventBus +
+        # StateManager are initialised on app.state before requests are sent).
+        with TestClient(app) as c:
+            yield c
 
 
 # ---------------------------------------------------------------------------
