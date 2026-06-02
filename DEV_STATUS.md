@@ -188,6 +188,13 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - `frontend/src/` only; no backend, no contracts, no test changes
   - All three review gates passed (scope, data-testid integrity, CI green); self-approve not possible (same account); merged after CI confirmed green
 
+- **fix(be): add shape.target to PROFILE_SCHEMA and profile prompt** — PR #28, squash `80a3661` (2026-06-02, CI run 26818563102 green)
+  - `backend/prompts/profile.py`: `"target": {"type": ["string", "null"]}` added to `shape.properties`; `"target"` added to `shape.required`; `build_profile_prompt()` updated to instruct OpenCode to infer the target column from the analysis aim, or set null if not determinable
+  - `backend/tests/unit/app/test_profile_prompt.py`: 2 new TDD tests — `test_profile_schema_has_nullable_target` (schema field presence + nullable type), `test_build_profile_prompt_instructs_target_inference` (prompt mentions "target" and "null")
+  - Contract alignment: `shape.target` is specified in `API_CONTRACT.html` line 540 with comment `// null if not inferred`; was absent from schema causing frontend's "target (inferred)" widget to stay permanently hidden
+  - BE lane only; no frontend, no contracts, no Makefile touched; lane boundary clean
+  - 80/80 backend tests pass; self-approve blocked (same account); merged after all three gates verified green
+
 - **Drag-and-drop CSV upload in SetupView** — PR #26, squash `8e0b67a` (2026-06-02, CI run 26816902032 green)
   - `frontend/src/components/StageViews/SetupView.tsx`: `drop-zone` div with `onDragOver`/`onDragLeave`/`onDrop` handlers; `data-dragging` attribute tracks visual active state; clicking zone calls `fileInputRef.current?.click()` to trigger the hidden `csv-input`; `onDrop` sets file from `e.dataTransfer?.files?.[0]`
   - `frontend/src/components/StageViews/SetupView.test.tsx`: 4 new TDD tests — `test_dropzone_renders`, `test_drag_over_sets_active_state`, `test_drag_leave_clears_active_state`, `test_drop_sets_file`
