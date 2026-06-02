@@ -2,7 +2,7 @@
 
 Responsibilities:
 - Create the FastAPI application instance.
-- Lifespan: instantiate the EventBus, StateManager, and OpenCodeClient and
+- Lifespan: instantiate the EventBus, StateManager, OpenCodeClient, and Orchestrator and
   attach them to ``app.state`` so every request handler (and background task)
   can access them without importing a module-level singleton.
 - Mount the router that registers all 10 REST routes.
@@ -20,6 +20,7 @@ from fastapi import FastAPI
 
 from backend.event_bus import EventBus
 from backend.opencode_client import OpenCodeClient
+from backend.orchestrator import Orchestrator
 from backend.router import router
 from backend.state_manager import StateManager
 
@@ -41,6 +42,8 @@ async def lifespan(app: FastAPI):
        ``SKIP_OPENCODE`` environment variable is set to a truthy value
        (``1``, ``true``, or ``yes``) -- for CI and environments without the
        binary installed.
+    4. Orchestrator -- minimal stub for the setup->profiling handoff (N1-S05).
+       The full state machine (N1-S04) will expand this once N1-S08 is merged.
 
     Shutdown order (reverse):
     3. OpenCodeClient.stop() -- SIGTERM then SIGKILL after 5 s.
@@ -73,6 +76,12 @@ async def lifespan(app: FastAPI):
             client = None
 
     app.state.opencode_client = client
+
+    # Wire up the minimal orchestrator stub (N1-S05).
+    app.state.orchestrator = Orchestrator(
+        state_manager=state_manager,
+        bus=app.state.bus,
+    )
 
     yield
 

@@ -20,10 +20,12 @@ Route inventory (from API_CONTRACT.html):
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Request
-from fastapi.responses import PlainTextResponse, Response, StreamingResponse
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from backend.sse_proxy import event_stream
 
@@ -34,7 +36,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 # Fields that are internal to the backend and must NOT be exposed to the SPA
-# (API contract \u00a73: "Mirrors state.json exactly, minus the internal
+# (API contract §3: "Mirrors state.json exactly, minus the internal
 # opencode_session_id field").
 _INTERNAL_FIELDS = {"opencode_session_id"}
 
@@ -50,7 +52,7 @@ async def get_state(request: Request) -> dict[str, Any]:
     state_manager = request.app.state.state_manager
     state = state_manager.get_state()
 
-    # Strip internal-only fields per the contract (\u00a73).
+    # Strip internal-only fields per the contract (§3).
     return {k: v for k, v in state.items() if k not in _INTERNAL_FIELDS}
 
 
@@ -58,14 +60,94 @@ async def get_state(request: Request) -> dict[str, Any]:
 # POST /setup
 # ---------------------------------------------------------------------------
 
+# 10 MB size limit (10 * 1024 * 1024 bytes).
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
-@router.post("/setup")
-async def post_setup() -> dict[str, Any]:
+
+@router.post("/setup", status_code=204)
+async def post_setup(
+    request: Request,
+    csv: UploadFile = File(...),
+    aim: str = Form(...),
+) -> Response:
     """Upload dataset and aim, start the brief.
 
-    Real implementation: N1-S05.  Stub returns the contract success shape.
+    Steps (N1-S05):
+    1. Validate aim is non-empty.
+    2. Validate content-type (must be text/csv or filename ends .csv).
+    3. Read file and validate size limit (10 MB).
+    4. Create workspace/data/ directory.
+    5. Write uploaded file to workspace/data/<filename>.
+    6. Persist initial state via state_manager.update().
+    7. Fire-and-forget orchestrator.setup_complete() as a background task.
+    8. Return 204 No Content.
+
+    Error envelopes (API contract S4):
+    - 422 invalid_aim -- empty aim string.
+    - 422 invalid_file -- not a CSV.
+    - 413 file_too_large -- exceeds 10 MB.
     """
-    return {"ok": True, "session_id": "stub_session"}
+    # -- Validate aim --------------------------------------------------------
+    aim_stripped = aim.strip()
+    if not aim_stripped:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "invalid_aim",
+                "message": "The 'aim' field must not be empty.",
+            },
+        )
+
+    # -- Validate content type -----------------------------------------------
+    filename = csv.filename or ""
+    content_type = csv.content_type or ""
+    is_csv = content_type == "text/csv" or filename.lower().endswith(".csv")
+    if not is_csv:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "invalid_file",
+                "message": (
+                    f"Uploaded file must be a CSV (content-type text/csv or filename ending "
+                    f"in .csv). Got content-type '{content_type}' for file '{filename}'."
+                ),
+            },
+        )
+
+    # -- Read and size-check file content ------------------------------------
+    content = await csv.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={
+                "error": "file_too_large",
+                "message": (
+                    f"Uploaded file exceeds the 10 MB limit ({len(content)} bytes received)."
+                ),
+            },
+        )
+
+    # -- Write file to workspace/data/ ----------------------------------------
+    state_manager = request.app.state.state_manager
+    orchestrator = request.app.state.orchestrator
+
+    # Determine workspace root from the state_manager's path parent.
+    workspace_root: Path = state_manager._path.parent
+    data_dir = workspace_root / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    dest_path = data_dir / filename
+    dest_path.write_bytes(content)
+
+    # -- Persist initial state ------------------------------------------------
+    dataset_path = f"data/{filename}"
+    state_manager.update(stage="setup", dataset_path=dataset_path, aim=aim_stripped)
+
+    # -- Hand off to orchestrator (fire-and-forget) ---------------------------
+    # Schedule setup_complete to run without blocking the response.
+    asyncio.create_task(orchestrator.setup_complete(dataset=filename, aim=aim_stripped))
+
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
