@@ -50,25 +50,46 @@ Lane boundaries are hard: an out-of-lane file edit is a review rejection.
 
 Each night runs one loop:
 
-1. **Develop (BE/FE, parallel).** Each lane takes startable stories on a short-lived feature
-   branch, coding against the contracts in `docs/contracts/`. Work **test-first (TDD) where
-   practical**: write a failing test against the story's acceptance criterion, make it pass, then
-   refactor. Deviate only where TDD is genuinely impractical (e.g. exploratory SSE wiring, pure UI
+1. **Plan (BE/FE, parallel).** Before writing any implementation code, each lane writes a brief
+   plan for the story: a markdown file saved to `docs/plans/YYYY-MM-DD-<story-id>.md`
+   and committed to the feature branch. The plan names the files to create/modify, the approach,
+   and any risks. The lane opens a **draft PR** (`gh pr create --draft`) immediately and posts the
+   plan path in the PR description. TL reviews it (see TL §plan review) and comments or
+   approves. Implementation begins only after TL approves the plan. Plans for independent stories
+   (BE and FE working on separate stories) are reviewed in parallel — one TL invocation can
+   approve both before either lane starts coding.
+
+2. **Develop (BE/FE, parallel).** Each lane implements against the approved plan, coding against
+   the contracts in `docs/contracts/`. Work **test-first (TDD) where practical**: write a failing
+   test against the story's acceptance criterion, make it pass, then refactor.
+
+   **Test coverage expectations** — every story's tests must include, where applicable:
+   - **Happy path** — the normal success case.
+   - **Error paths** — what happens when the backend returns an error, or an async call rejects.
+   - **Edge cases** — boundary values, empty collections, maximum sizes.
+   - **Null / missing inputs** — null props, missing form fields, absent optional state.
+
+   Deviate from TDD only where genuinely impractical (e.g. exploratory SSE wiring, pure UI
    layout) and note the deviation in the PR body. As dependencies clear, the next stories unlock.
    Agents read `DEV_STATUS.md` to see what is merged, in flight, or free to grab.
-2. **Review (TL, continuous).** When a lane opens a PR into `develop`, TL reviews it against the
-   story's **acceptance criteria**, the **lane boundaries** (no out-of-lane edits, no scope
-   creep past the story's out-of-scope list), and **green CI**. A red CI run is a hard merge
-   block: TL triages it — route the fix back to the lane, or make a trivial in-lane hygiene fix
-   itself (§2) — and merges only once it's green. Otherwise: approve, or request changes — the
-   lane gets one retry pass.
-3. **Integrate (TL).** Once the night's lane stories are merged, TL runs that night's
+
+3. **Review (TL, parallelised).** When a lane marks a PR ready for review
+   (`gh pr ready <n>` to convert from draft), TL reviews it against the story's **acceptance
+   criteria**, **code quality and error handling** (see TL review protocol), the **lane
+   boundaries** (no out-of-lane edits, no scope creep), and **green CI**. Where BE and FE have
+   independent PRs open at the same time, TL reviews them **in parallel** — one TL invocation
+   handles both — rather than sequentially. A red CI run is a hard merge block: TL triages it —
+   route the fix back to the lane, or make a trivial in-lane hygiene fix itself (§2) — and merges
+   only once it's green. Otherwise: approve with comments, or request changes — the lane gets one
+   retry pass.
+4. **Integrate (TL).** Once the night's lane stories are merged, TL runs that night's
    **integration story** (`N1-S18` / `N2-S18` / `N3-S13`): assemble the slice, reconcile any
-   wiring/contract mismatch, get the end-to-end path running. **Integration must include at least
-   one pass through the browser UI** — open `http://localhost:5173`, exercise the upload form, and
-   confirm stage transitions render. API-only verification (httpx/curl) misses component wiring
-   gaps, form field mismatches, and host-access issues that only appear in a real browser.
-4. **QA gate (QA).** Run the night's **structural DoD** (`docs/planning/04_QA_PLAN.md`) plus the
+   wiring/contract mismatch, get the end-to-end path running, and **write integration tests** for
+   the night's new cross-lane behaviour (see TL integration protocol). **Integration must include
+   at least one pass through the browser UI** — open `http://localhost:5173`, exercise the upload
+   form, and confirm stage transitions render. API-only verification (httpx/curl) misses component
+   wiring gaps, form field mismatches, and host-access issues that only appear in a real browser.
+5. **QA gate (QA).** Run the night's **structural DoD** (`docs/planning/04_QA_PLAN.md`) plus the
    accumulated regression checks against the integrated slice. Log any defect to `QA_LOG.md` with
    a regression check added. A green check is the precondition for the slice being done. Three
    principles govern QA coverage: (a) **test at the integration boundary** — use Playwright for
@@ -76,9 +97,9 @@ Each night runs one loop:
    required UI elements are mounted and visible in the running app, not just present in source;
    (c) **contract surface coverage** — include at least one negative case per major integration
    point (invalid input, missing field, error envelope).
-5. **Merge to `develop` + status update.** Reviewed + QA-green work lands on `develop`. TL
+6. **Merge to `develop` + status update.** Reviewed + QA-green work lands on `develop`. TL
    updates `DEV_STATUS.md` as part of merge/integrate. **Agents never touch `main`.**
-6. **End the run.** The last act is leaving `DEV_STATUS.md` clean and current for the morning
+7. **End the run.** The last act is leaving `DEV_STATUS.md` clean and current for the morning
    review — merged, carried-over, blockers, and the night's demo script.
 
 The sequencing constraint to honour: **QA does not run until TL's integration commit lands.**
@@ -106,12 +127,25 @@ PRs, reviews, and commits — not in any agent's memory.
   whitespace/EOF fixers; ESLint/Prettier on the FE side). On a hook failure, **auto-fix what's
   fixable, re-stage, and retry the commit**. Only a failure that isn't auto-fixable — a real lint
   or type error you can't mechanically resolve — is a blocker (§6).
-- **Open a PR:** `gh pr create --base develop --title "<id>: <summary>" --body "<what + acceptance refs>"`.
-  The body names the story ID and the acceptance criteria it satisfies.
-- **Request review:** the PR targets `develop`; TL picks it up. No self-merge by lane agents.
-- **Review:** TL uses `gh pr review --approve` or `gh pr review --request-changes --body "…"`,
-  citing the specific acceptance criterion or boundary at issue.
-- **Merge:** TL only, after approve + QA-green: `gh pr merge --squash` into `develop`.
+- **Open a draft PR:** `gh pr create --draft --base develop --title "<id>: <summary>"` with a
+  body that includes:
+  - **What this does** — one plain-English sentence a non-expert can follow.
+  - **Why** — the story context or motivation.
+  - **Plan** — path to the plan file, e.g. `docs/superpowers/plans/2026-06-02-n1-s05.md`.
+  - **How to verify** — manual steps to exercise the change.
+  - **Tests added** — brief summary of new/modified tests and what they cover.
+  - **Acceptance criteria met** — a checklist referencing the story's criteria.
+- **Plan review:** TL reviews the draft PR and approves the plan before coding starts. See TL
+  agent for the plan review protocol.
+- **Mark ready:** once implementation is complete, `gh pr ready <n>` converts the draft to a
+  reviewable PR.
+- **Review:** TL leaves structured comments via `gh pr review <n> --comment --body "…"` for
+  each issue found, then `gh pr review <n> --approve` or `--request-changes`.
+- **Lane responds:** for each review comment, the lane addresses the change and posts a reply on
+  GitHub: `gh pr comment <n> --body "Fixed in <commit sha> — <one sentence explanation>"`.
+- **Merge:** TL only, after approve + QA-green:
+  `gh pr merge <n> --squash --delete-branch` into `develop`. The `--delete-branch` flag removes
+  the remote branch atomically with the merge so the remote stays clean without a separate step.
 - **Act on review comments; constrain by action, not channel.** TL's review comments are the
   normal way change requests reach a lane — act on them when the change is in-lane, in-scope, and
   contract-consistent. The boundary that still holds is the *action*, not the *source*: never

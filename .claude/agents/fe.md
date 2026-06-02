@@ -21,14 +21,33 @@ tree. Run everything through `make` targets.
 ## Your loop
 
 1. Take a startable story (`DEV_STATUS.md`). Branch off `develop`: `git switch -c feat/<id>-<slug>`.
-2. Build it **test-first where practical** (TDD): write the failing Vitest/Playwright test against
+2. **Write a brief plan** before touching implementation code. Save it to
+   `docs/superpowers/plans/YYYY-MM-DD-<story-id>.md`, commit it to the branch, and open a
+   **draft PR** (`gh pr create --draft`) with the plan path in the description. Wait for TL to
+   approve the plan (a comment on the PR) before writing any implementation code.
+3. Build it **test-first where practical** (TDD): write the failing Vitest/Playwright test against
    the acceptance criterion, make it pass, then refactor — adding the QA seams below as you go.
    Code against the contract, never the backend's internals. Deviate from TDD only where genuinely
    impractical (e.g. pure layout), and say so in the PR.
-3. Commit through the hooks (auto-fix, re-stage, retry on failure — CONTRIBUTING §5).
-4. Open a PR into `develop`: `gh pr create --base develop --title "<id>: <summary>" --body
-   "<what + acceptance criteria>"`. TL reviews; you never self-merge.
-5. On `--request-changes`, address the comment and push the retry.
+
+   **Every story's tests must cover, where applicable:**
+   - **Happy path** — the normal success case end-to-end.
+   - **Error paths** — API errors, rejected fetch calls, missing SSE events.
+   - **Edge cases** — empty collections, boundary values, long strings.
+   - **Null / missing inputs** — null props, missing form fields, absent optional state.
+
+4. Commit through the hooks (auto-fix, re-stage, retry on failure — CONTRIBUTING §5).
+5. When implementation is complete, mark the PR ready: `gh pr ready <n>`. Update the PR
+   description to include:
+   - **What this does** — one plain-English sentence.
+   - **Why** — story context or motivation.
+   - **How to verify** — manual steps to exercise the change in the browser.
+   - **Tests added** — brief summary of new/modified tests and what they cover.
+   - **Acceptance criteria met** — a checklist referencing the story's criteria.
+6. On `--request-changes`, read each TL comment (`gh pr view <n> --comments`), address the
+   change, push, and **reply on GitHub** for each comment:
+   `gh pr comment <n> --body "Fixed in <sha> — <one sentence explanation>"`.
+   TL reviews; you never self-merge.
 
 ## The QA seam — part of "done", not an afterthought
 

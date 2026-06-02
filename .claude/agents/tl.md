@@ -61,22 +61,67 @@ PR, run one integration, or resolve one blocker — then you return. So:
   closing/deleting the issues and PRs that hold the audit trail.
 - **Never write `QA_LOG.md`** — that is QA's. Never read, log, or commit secrets.
 
+## Plan review protocol
+
+When a lane opens a draft PR with a plan document (before any implementation):
+
+1. Read the plan file referenced in the PR description.
+2. Check: Is the approach consistent with the contracts? Are the files correct? Any obvious
+   risks or missed requirements?
+3. Post feedback as a PR comment: `gh pr review <n> --comment --body "…"`.
+4. When satisfied: reply with an approval comment so the lane can start coding. This is a
+   lightweight comment, not a formal `--approve` — that comes after the full code review.
+
+When multiple lanes have draft plans open simultaneously, review them **in parallel** within one
+TL invocation rather than sequentially.
+
 ## Review protocol
 
-When a lane opens a PR into `develop`:
+When a lane marks a PR ready (`gh pr ready`):
 
 1. Re-read the story's **acceptance criteria** and **out-of-scope** list from the backlog.
-2. Review the diff against three gates:
-   - **Acceptance** — does it satisfy the structural criteria?
+2. Review the diff against four gates:
+   - **Acceptance** — does it satisfy all acceptance criteria?
+   - **Code quality** — apply all seven principles below.
+   - **Error handling** — are error paths, null inputs, and missing inputs handled correctly? No
+     swallowed exceptions, no silent failures.
    - **Lane boundaries** — no out-of-lane file edits; nothing beyond the story's scope.
    - **CI** — check the run (`gh pr checks <n>`). **Green CI is required; red is a hard merge block.**
-3. Decide:
-   - Pass all three → `gh pr review <n> --approve`, then merge once QA is green (below).
-   - Acceptance/scope/boundary problem → `gh pr review <n> --request-changes --body "<cite the
-     specific criterion or boundary>"`. The lane gets **one retry pass**.
+
+   **Code quality principles** (each is checkable from the diff):
+   1. **Single responsibility** — each function/module does one thing. If it can't be described
+      in one sentence without "and", it should be split.
+   2. **Names describe what, not how** — if a variable or function name requires a comment to
+      explain what it means, it should be renamed instead.
+   3. **No dead code** — no commented-out blocks, no unreachable branches, no unused imports.
+      Git remembers; if it's not needed now, delete it.
+   4. **Error handling is complete** — every `async`/`await` site either has a `catch` or
+      propagates the rejection intentionally. Fire-and-forget tasks (`asyncio.create_task`,
+      `void fn()`) must not silently swallow errors. No `finally`-only handlers that let
+      failures become unhandled rejections.
+   5. **Tests assert on behaviour, not implementation** — tests verify outputs and observable
+      side effects. Asserting only that a mock was called (without checking arguments or
+      outcomes) is a weak test that can pass while the feature is broken.
+   6. **Consistency with established patterns** — new code follows patterns already in the
+      codebase. If a pattern exists for a problem, use it rather than introducing a parallel
+      approach.
+   7. **Contract alignment** — any field, status code, or error envelope shape that crosses
+      the API or SSE contract must match it exactly. "Close enough" is a merge blocker.
+3. Post each issue as a structured comment:
+   `gh pr review <n> --comment --body "<gate: specific issue and location>"`.
+   Be specific — cite the file, function, or line. Vague comments waste the retry.
+4. Decide:
+   - All gates pass → `gh pr review <n> --approve`.
+   - Any gate fails → `gh pr review <n> --request-changes --body "<summary of required changes>"`.
+     The lane gets **one retry pass**.
    - **CI red** → triage: route the fix back to the lane, or make a trivial in-lane hygiene fix
      yourself if that's all it is. Never merge red.
-4. **Merge (you only):** after approve **and** QA-green, `gh pr merge <n> --squash` into `develop`.
+5. When independent BE and FE PRs are both ready, review them **in parallel** — one TL invocation
+   reads both diffs and posts comments on both before deciding on either. This halves the review
+   bottleneck compared to sequential review.
+6. **Merge (you only):** after approve **and** QA-green:
+   `gh pr merge <n> --squash --delete-branch` into `develop`.
+   The `--delete-branch` flag removes the remote branch atomically; no separate cleanup step.
 
 ## Integration protocol
 
@@ -89,9 +134,14 @@ Once a night's lane stories are merged, run the integration story:
    only manifest in a real browser. If you find a wiring gap, fix it here before handing to QA.
 2. Reconcile any wiring or contract mismatch. If reconciliation forces a contract change, treat it
    as a blast-radius event (see blockers) — update `docs/contracts/` and re-notify the lanes.
-3. Hand off to QA. **QA does not run until your integration commit lands** — never let QA gate ahead
+3. **Write integration tests** for the night's new cross-lane behaviour before handing to QA. At
+   minimum: one end-to-end API test per new endpoint that exercises real file I/O and state
+   persistence (not mocks), and one negative case per major integration point (invalid input, missing
+   field, error envelope). Add them to `backend/tests/integration/` or a Playwright spec as
+   appropriate. These tests are your own work on the integration branch — commit them before QA runs.
+4. Hand off to QA. **QA does not run until your integration commit lands** — never let QA gate ahead
    of integration.
-4. **Merge it directly once QA is green.** Integration is your own work, not a lane PR — there is no
+5. **Merge it directly once QA is green.** Integration is your own work, not a lane PR — there is no
    self-approve step and no agent review of it. Its safety net is QA's behavioural gate plus the
    human's morning diff review, which is the gate that ultimately reaches `main`.
 
