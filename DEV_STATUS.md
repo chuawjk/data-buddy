@@ -103,17 +103,30 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - 50 FE + 40 BE tests pass; lint clean; CI green on merge
   - Self-approve not possible (same account owns PR); merged after all three gates verified green
 
+- `feat/n1-s08-event-subscription` — **N1-S08 · Live events from OpenCode** (PR #18, squash `a8822a1`)
+  - `backend/opencode_client.py`: `start_event_subscription(bus, heartbeat_timeout=30)` — persistent `GET /event` SSE connection as background asyncio Task; reconnects on `asyncio.TimeoutError`, `StopAsyncIteration`, or exception with 100ms back-off; single connection enforced by one `create_task` call in lifespan
+  - Session filter: `_SESSION_SCOPED_TYPES` frozenset covers all session-scoped event types; events with non-matching `sessionID` silently dropped; global types (`server.heartbeat`, `file.edited`, `server.connected`) bypass filter
+  - `_normalise_and_publish`: full mapping per SSE_CONTRACT.md §2 — `message.part.delta` → `message.part`; `message.part.updated` (bash, running) → `tool.bash_running`; (bash, completed) → `tool.bash_done`; (any tool, completed, metadata.files present) → `tool.file_written` per file (D1: no tool-name hardcoding); `session.idle` → `session.idle`; `file.edited` → `file.ready`; `server.heartbeat` → timer reset only, not published; all others silently dropped
+  - Reconnect on heartbeat silence: `asyncio.wait_for` on each `__anext__` with `remaining` seconds; `asyncio.TimeoutError` returns from `_run_one_connection` triggering outer reconnect loop
+  - `stop_event_subscription()` / `_register_subscription_task()` wired into `main.py` lifespan shutdown
+  - `backend/tests/unit/app/test_event_subscription.py`: 9 new unit tests; 49 BE tests total pass; 50 FE tests pass; lint clean; CI green on merge
+  - Self-approve not possible (same account owns PR); merged after all three gates verified green
+
 ### In Dev / In Review / In QA
 
-*(none — all N1 lane stories now merged)*
+*(none)*
 
-### Startable set (post N1-S21 merge)
+### Startable set (post N1-S08 merge)
 
-All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21.
+All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08.
 
-- **N1-S08** (BE) — OpenCode client & SSE normalisation *(fully unblocked: N1-S06 ✅ + N1-S07 ✅)*
+All three start simultaneously (all dependencies now on `develop`):
 
-N1-S18 (integration) requires N1-S05 ✅ + N1-S06 ✅ + N1-S08 — still blocked on N1-S08.
+- **N1-S04** (BE) — Stage orchestrator setup→profiling *(unblocked: N1-S03 ✅ + N1-S08 ✅)*
+- **N1-S09** (BE) — Profiling turn → `profile.json` *(unblocked: N1-S08 ✅)*
+- **N1-S11** (BE) — Stuck-turn watchdog & recovery *(unblocked: N1-S06 ✅ + N1-S08 ✅)*
+
+N1-S18 (integration) requires N1-S04 + N1-S05 ✅ + N1-S06 ✅ + N1-S08 ✅ + N1-S09 + N1-S10 ✅ + N1-S11 — blocked on N1-S04, N1-S09, N1-S11.
 
 ### Blockers
 
