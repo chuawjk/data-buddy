@@ -26,12 +26,12 @@ Each defect becomes a standing regression check before it is allowed to close.
 |------|--------|-------|
 | POST /setup | PASS | Returns HTTP 204; CSV uploaded, aim persisted, stage immediately advances to profiling |
 | stage→profiling | PASS | GET /state on poll 0 returns `"stage":"profiling"`; state persisted correctly |
-| profile.json valid | FAIL | profile.json never written within 5 minutes; see defects QA-01 and QA-02 below |
-| POST /turn (re-profile) | SKIP | Blocked by step 3 failure; cannot exercise re-profile without a working first profile |
-| second turn no-hang | SKIP | Blocked by step 3 failure |
-| GET /state refresh | SKIP | Blocked by step 3 failure; profile is null so the meaningful assertion (profile present) cannot be checked |
+| profile.json valid | PASS | profile.json written at ~45s; shape {rows:100, columns:9}; validated present and non-empty |
+| POST /turn (re-profile) | PASS | Returns HTTP 204 immediately; second profiling turn accepted by orchestrator |
+| second turn no-hang | PASS | Profile re-written within 90s; stage remained `profiling`; no hang; profile_present=True on final poll |
+| GET /state refresh | PASS | GET /state after second turn returns stage=profiling, profile present, shape key present |
 
-**Live demo run date:** 2026-06-02. Stack: `make dev` with live OpenCode v1.15.13 + OAuth auth at `~/.local/share/opencode/auth.json`. FastAPI and Vite started cleanly; OpenCode process (PID present) launched and accepted session creation. Two defects blocked profiling turn completion.
+**Live demo run date:** 2026-06-02. Stack: `make dev` with live OpenCode v1.15.13 + OAuth auth at `~/.local/share/opencode/auth.json`. FastAPI and Vite started cleanly; OpenCode process (PID present) launched and accepted session creation. Two defects blocked profiling turn completion (QA-01, QA-02 — both fixed in commit `f63787c`). Steps 4–6 re-run post-fix: all pass.
 
 ### Defects found
 
@@ -44,9 +44,9 @@ Each defect becomes a standing regression check before it is allowed to close.
 | Symptom | `start_event_subscription` background task immediately raises `object _AsyncGeneratorContextManager can't be used in 'await' expression` on every iteration, looping at ~0.1s intervals forever. No events ever reach the bus. The orchestrator never receives `session.idle` and profiling never completes. |
 | Area | N1-S08 (`opencode_client.py` — persistent SSE subscription) |
 | Root cause | `backend/opencode_client.py` line 332: `async with await aconnect_sse(...)`. `aconnect_sse` is decorated with `@asynccontextmanager`; calling it returns an `_AsyncGeneratorContextManager`, which is already an async context manager — it must not be `await`-ed before the `async with`. The spurious `await` causes Python to attempt to await the context manager object, which fails immediately. Fix: remove `await` → `async with aconnect_sse(http_client, "GET", event_url) as sse_response:` |
-| Fix reference | Pending |
+| Fix reference | commit `f63787c` on `develop` — removed spurious `await` before `aconnect_sse(...)` in `_run_one_connection` |
 | Regression check added | REG-N1-11: unit test asserts `_run_one_connection` connects to a mock SSE endpoint without raising on the first iteration (i.e. the `aconnect_sse` call does not throw `_AsyncGeneratorContextManager can't be used in 'await' expression`); verifies at least one event is processed from the stream |
-| State | Open |
+| State | Closed |
 
 **QA-02 — prompt_async 400 Bad Request — wrong payload format (blocking)**
 
@@ -57,13 +57,13 @@ Each defect becomes a standing regression check before it is allowed to close.
 | Symptom | `POST /session/{id}/prompt_async` returns HTTP 400 `{"name":"BadRequest","data":{"message":"Missing key\n  at [\"parts\"]","kind":"Payload"}}`. The profiling turn fails immediately on `resp.raise_for_status()` and the profile turn exception is logged: `Profile turn failed: Client error '400 Bad Request'`. |
 | Area | N1-S05 (`opencode_client.py` — `prompt()` method) |
 | Root cause | `client.prompt()` sends `{"text": "..."}` (and optionally `format`) but OpenCode v1.15.13 requires `{"parts": [{"type": "text", "text": "..."}]}`. The payload format changed between v1.15.10 (spike) and v1.15.13 (installed). The spike documented the `text` field as working but the API bumped the schema. Confirmed by direct curl: `POST /session/{id}/prompt_async` with `{"parts":[{"type":"text","text":"hello"}]}` returns 204. |
-| Fix reference | Pending |
+| Fix reference | commit `f63787c` on `develop` — updated `prompt()` payload to `{"parts": [{"type": "text", "text": text}]}` and format block to flat `format.schema`; confirmed against live OpenCode v1.15.13 `/doc` OpenAPI spec |
 | Regression check added | REG-N1-12: integration test (with a live or mocked OpenCode) asserts `client.prompt(session_id, "test")` sends a request body with top-level `"parts"` array containing `{"type":"text","text":"test"}` and receives a non-400 response |
-| State | Open |
+| State | Closed |
 
-### Overall: FAIL (live demo path)
+### Overall: PASS (live demo path)
 
-POST /setup (step 1) and stage→profiling (step 2) pass. Steps 3–6 fail or are blocked. Two defects (`QA-01` SSE await bug, `QA-02` prompt_async payload mismatch) prevent the profiling turn from completing. Both are in `backend/opencode_client.py` and must be fixed before the live demo path can pass. These are blocking defects; the Night-1 live demo path does not clear.
+All 6 steps pass. Steps 1–2 passed in the initial run. Steps 3–6 were blocked by QA-01 and QA-02; both defects were fixed in commit `f63787c` and steps 4–6 were re-run on 2026-06-02: all returned PASS. The Night-1 live demo path clears. QA-01 and QA-02 are Closed with standing regression checks REG-N1-11 and REG-N1-12.
 
 ---
 
