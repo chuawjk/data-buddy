@@ -142,31 +142,30 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - Accepted deviation: `re_profile()` reuses `_run_profile_turn()` wrapper instead of calling `client.prompt()` directly — same error→`turn.error` path as `setup_complete`; strictly better behaviour
   - 74 BE tests pass, 50 FE tests pass (124 total); lint clean; CI green on merge
 
-- `integrate/n1-s18` — **N1-S18 · Integrate Night 1 slice** (squash `0601b75`)
+- `integrate/n1-s18` + `fix/app-sse-subscription` — **N1-S18 · Integrate Night 1 slice** + **App.tsx SSE fix** (squash `8dfeaf1`, PR #23)
   - `backend/orchestrator.py`: `start_bus_listener()` background task + `_handle_profile_idle()` — reads `workspace/profile.json` on `session.idle`, validates required fields, updates `state.json`, emits `profile.ready` on bus
   - `backend/main.py`: bus listener task started in lifespan; shut down cleanly before OpenCode on exit
   - `backend/prompts/profile.py`: `build_profile_prompt()` updated to instruct OpenCode to write the JSON to `workspace/profile.json` (not just "return JSON" in message content)
   - `Makefile`: `make dev` no longer starts `opencode serve` separately — backend owns OpenCode lifecycle via `OpenCodeClient.start()`
-  - 4 new orchestrator unit tests (78 BE total + 50 FE = 128 total); lint clean
+  - `frontend/src/App.tsx`: `useSSE(onEvent)` called additively alongside mount `useEffect`; `onEvent` handles `stage.changed` + `profile.ready` by calling `api.getState()` and merging result into local state — UI now advances automatically after `POST /setup`
+  - `frontend/src/App.test.tsx`: 2 new tests (`reacts to stage.changed`, `reacts to profile.ready`); useSSE mock updated to capture callback for test injection
+  - 52 FE + 78 BE = 130 total pass; lint clean; CI green on merge
   - ADR-011 (profile prompt file-write), ADR-012 (OpenCode lifecycle ownership) appended as Proposed
+  - FE integration blocker resolved
 
-### **ALL Night 1 lane stories + N1-S18 (integration) on `develop`**
+### **ALL Night 1 lane stories + N1-S18 (integration) + App.tsx SSE fix on `develop`**
 
 ### In Dev / In Review / In QA
 
-- **N1-S18 BLOCKER — FE**: `App.tsx` does not subscribe to SSE for `stage.changed` events. After `POST /setup`, the stage transitions to `profiling` on the backend and `stage.changed` is emitted, but `App.tsx` only fetches state once on mount and never re-renders based on SSE. The user remains on `SetupView` after uploading and never sees `ProfileView`. `SetupView.tsx` comment (line 28–29) confirms this was expected to be in `App.tsx`; it was not implemented.
-  - **Fix required**: `App.tsx` must call `useSSE` and on `stage.changed`, call `api.getState()` and update `stage` and `profile` in local state.
-  - **Dispatching to**: FE lane.
+*(none)*
 
 ### Startable set
 
-**FE-blocker fix** (App.tsx SSE subscription for stage.changed) — must land before N1-S19 (QA).
-
-**N1-S19** (QA) — blocked on FE fix. Will be startable once FE fix lands on develop.
+**N1-S19** (QA) — FE blocker resolved. Ready to dispatch immediately.
 
 ### Blockers
 
-- **ACTIVE — FE: App.tsx missing stage.changed SSE subscription** (found in N1-S18 integration). `App.tsx` does not subscribe to SSE events; after CSV upload + aim submission, the FE stays on `SetupView` indefinitely. Fix: `App.tsx` must use `useSSE` hook and on `stage.changed`, re-fetch `/api/state` to update `stage` and `profile`. Dispatched to FE lane. QA (N1-S19) is blocked until this lands.
+*(none)*
 
 ### Overnight ADR decisions
 
