@@ -70,7 +70,23 @@ imports `httpx`; the client never imports the orchestrator.
 
 ## Frontend module map (`frontend/`)
 
-<!-- TODO: add frontend component tree after TL scaffolds the Vite/React structure in N1-S01 -->
+Vite + React + TypeScript scaffold (as of N1-S01). FE lane expands this.
+
+```
+frontend/
+├── index.html               # Entry HTML; mounts <div id="root">
+├── vite.config.ts           # Vite config; dev proxy /api → :8000; test env (vitest)
+├── pnpm-workspace.yaml      # pnpm v11 build-approval settings (allowBuilds)
+├── package.json             # scripts: dev / build / test / lint / format
+├── tsconfig*.json           # TypeScript project references (app + node)
+├── .eslintrc.cjs            # ESLint config (TS + react-hooks + react-refresh)
+├── .prettierrc              # Prettier config
+└── src/
+    ├── main.tsx             # React root mount
+    ├── App.tsx              # Root component (stub; FE lane builds out)
+    └── App.test.tsx         # Placeholder Vitest smoke test
+```
+
 - Tooling *behaviour* (pre-commit, CI gate, what TL may fix) lives in `CONTRIBUTING.md`.
 
 ## Living documents (dynamic state — single writer each)
