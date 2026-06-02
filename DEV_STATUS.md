@@ -203,7 +203,18 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - 56/56 FE + 78/78 BE = 134 total tests pass; CI green on merge
   - Self-approve not possible (same account owns PR); merged after all three gates verified green
 
-### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring, styling, and drag-and-drop UX resolved. QA structural + live gate passed (all 6 steps). Awaiting morning human review for develop → main promotion.**
+- **Concise activity rail with animated running indicator** — PR #29, squash `b61f498` (2026-06-02, CI run 26820012481 green)
+  - `frontend/src/hooks/useActivityState.ts` (new): `useActivityState` hook — full state machine: `isRunning`, `bashCount`, `fileCount`, `dotPhase`; handles `tool.bash_running/done`, `tool.file_written`, `message.part` (set running, count completions), `session.idle` (stop running, preserve counts); 500ms interval cycles `dotPhase` while running; `wasIdle` ref tracks turn boundaries to reset counts on next turn start
+  - `frontend/src/hooks/useActivityState.test.ts` (new): 9 hook tests covering initial state, all event types, session.idle preserve/reset, dotPhase cycling, unknown event ignore
+  - `frontend/src/components/ActivityRail.tsx`: replaced with thin presenter — calls `useActivityState()`, renders "Thinking." / ".." / "..." while running (`activity-thinking`), "N commands run · M files written" summary when counts exist (`activity-summary`), "No activity yet." placeholder when idle with no counts
+  - `frontend/src/components/ActivityRail.test.tsx`: 11 presentation tests that mock the hook; covers all render states and singular/plural text
+  - Testid changes: `activity-tool-running`, `activity-tool-done`, `activity-file-written`, `activity-message` removed; `activity-thinking`, `activity-summary` added; `activity-rail` preserved; total unique testids: 18 (>= 17 required, REG-N1-05 satisfied)
+  - TL hygiene fix applied: `useActivityState.test.ts` line 6 — typed ref declaration (`{ current: (e: unknown) => void } = { current: () => {} }`) to silence ESLint `no-unused-vars` on no-op initial value; re-ran CI after fix, green
+  - Lane boundary note: PR also added `docs/superpowers/specs/2026-06-02-activity-rail-concise-design.md` outside `frontend/`; additive design spec, non-contract, no TL-owned path conflict; accepted as recorded deviation
+  - 69/69 FE + 80/80 BE = 149 total tests pass; CI green on merge
+  - Self-approve not possible (same account owns PR); merged after all three gates verified green
+
+### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring, styling, drag-and-drop UX, and concise activity rail resolved. QA structural + live gate passed (all 6 steps). Awaiting morning human review for develop → main promotion.**
 
 ---
 
