@@ -3,7 +3,7 @@
 // Coded against docs/contracts/API_CONTRACT.html §1 · POST /setup.
 // Mockup reference: docs/mockups/DATA_BUDDY_MOCKUPS_STRIPPED.html · Stage 1.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../../hooks/useApi";
 import type { ApiError } from "../../types/api";
 
@@ -12,6 +12,9 @@ export default function SetupView() {
   const [aim, setAim] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Submit is enabled only when a file is selected and aim is non-empty.
   const canSubmit = file !== null && aim.trim().length > 0 && !submitting;
@@ -35,6 +38,30 @@ export default function SetupView() {
     }
   }
 
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragging(false);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragging(false);
+    const dropped = e.dataTransfer?.files?.[0] ?? null;
+    if (dropped) {
+      setFile(dropped);
+      setError(null);
+    }
+  }
+
+  function handleDropZoneClick() {
+    fileInputRef.current?.click();
+  }
+
   return (
     <div data-testid="setup-view" className="flex items-center justify-center py-12">
       <div className="bg-white border border-[#ddd5c5] rounded-xl p-8 shadow-sm max-w-lg w-full">
@@ -51,22 +78,43 @@ export default function SetupView() {
               CSV file
               <span className="ml-1 text-xs text-[#9b9489] font-normal">(up to 200 MB)</span>
             </label>
+
+            {/* Hidden native file input — triggered by click on drop zone */}
             <input
+              ref={fileInputRef}
               data-testid="csv-input"
               type="file"
               accept=".csv"
-              className="mt-1 block w-full text-sm text-[#5d5a52]"
+              className="sr-only"
               onChange={(e) => {
                 const selected = e.target.files?.[0] ?? null;
                 setFile(selected);
                 setError(null);
               }}
             />
-            {file && (
-              <p className="mt-1 text-xs text-[#5d5a52]">
-                Selected: <strong>{file.name}</strong>
-              </p>
-            )}
+
+            {/* Drag-and-drop zone */}
+            <div
+              data-testid="drop-zone"
+              data-dragging={dragging ? "true" : undefined}
+              onClick={handleDropZoneClick}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={[
+                "mt-1 w-full border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
+                dragging
+                  ? "border-[#b8732a] bg-[#b8732a]/5"
+                  : "border-[#ddd5c5] hover:border-[#b8732a]/50",
+              ].join(" ")}
+            >
+              <p className="text-sm text-[#5d5a52]">Drop a CSV, or browse</p>
+              {file && (
+                <p className="mt-2 text-xs text-[#5d5a52]">
+                  Selected: <strong>{file.name}</strong>
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Aim textarea */}
