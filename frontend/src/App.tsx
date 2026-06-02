@@ -3,6 +3,7 @@ import SetupView from "./components/StageViews/SetupView";
 import ProfileView from "./components/StageViews/ProfileView";
 import PlanView from "./components/StageViews/PlanView";
 import BuildView from "./components/StageViews/BuildView";
+import ActivityRail from "./components/ActivityRail";
 import { useSSE } from "./hooks/useSSE";
 import { api } from "./hooks/useApi";
 import type { Profile } from "./types/api";
@@ -95,5 +96,14 @@ export default function App() {
     );
   }
 
-  return <>{renderStageView(state.stage, state.profile)}</>;
+  return (
+    <div style={{ display: "flex", gap: "1rem", padding: "1rem" }}>
+      <div style={{ flex: 1 }}>{renderStageView(state.stage, state.profile)}</div>
+      {state.stage !== "setup" && (
+        <div style={{ width: "300px", flexShrink: 0 }}>
+          <ActivityRail />
+        </div>
+      )}
+    </div>
+  );
 }
