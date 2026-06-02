@@ -35,19 +35,26 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - Tailwind v4 via `@tailwindcss/vite` plugin + `@import "tailwindcss"` in `index.css`
   - 8 Vitest tests pass, lint clean; CI green on merge
   - Note: N1-S13 commit was originally on `feat/n1-s02-app-skeleton`; separated to a clean branch before merge for story-level tracking
+- `feat/n1-s02-app-skeleton` — **N1-S02 · FastAPI app skeleton & event bus** (PR #6, squash `0da0543`)
+  - `backend/event_bus.py`: `EventBus` fan-out pub/sub; one `asyncio.Queue` per subscriber; independent envelope copy per subscriber; no replay for late subscribers
+  - `backend/router.py`: all 10 REST routes from `API_CONTRACT.html` registered with typed stubs; no route returns 404 or 5xx
+  - `backend/main.py`: `lifespan` wires `EventBus` to `app.state.bus`; router mounted
+  - 16 backend tests pass (5 event-bus + 10 router + 1 health); lint clean
+  - Hard boundary respected: no `httpx` in router/orchestrator; no orchestrator import in client code
+  - Process note: PR #6 branch also contained the original N1-S13 FE commit (branch collision); FE work was lane-clean (touches `frontend/` only). Stale remote branch `origin/feat/n1-s13-frontend-routing` confirmed identical to PR #6's FE commit and deleted post-merge.
 
 ### In Dev / In Review / In QA
 
 *(see startable set below)*
 
-### Startable set (post N1-S13 merge)
+### Startable set (post N1-S02 + N1-S13 merge)
 
-N1-S13 merged. N1-S14 is now fully unblocked (both N1-S07 and N1-S13 are on develop).
+All of N1-S01, N1-S07, N1-S02, and N1-S13 are now on `develop`:
 
-- **N1-S02** (BE) — FastAPI app skeleton & event bus *(in PR #6 on feat/n1-s02-app-skeleton; CI green; pending TL merge)*
-- **N1-S14** (FE) — SSE hook & activity rail *(depends on N1-S07 + N1-S13 — both now merged; fully unblocked)*
-- **N1-S08** (BE) — OpenCode client & SSE normalisation *(depends on N1-S07 + N1-S02; needs N1-S02 merge first)*
-- **N1-S10** (BE) — Watchdog & session recovery *(depends on N1-S07 + N1-S02; needs N1-S02 merge first)*
+- **N1-S14** (FE) — SSE hook & activity rail *(fully unblocked: N1-S07 ✅ + N1-S13 ✅)*
+- **N1-S03** (BE) — State manager *(fully unblocked: N1-S02 ✅)*
+- **N1-S10** (BE) — SSE proxy / event streaming *(fully unblocked: N1-S02 ✅ + N1-S07 ✅)*
+- **N1-S08** (BE) — OpenCode client & SSE normalisation *(fully unblocked: N1-S02 ✅ + N1-S07 ✅)*
 
 ### Blockers
 
@@ -59,6 +66,7 @@ N1-S13 merged. N1-S14 is now fully unblocked (both N1-S07 and N1-S13 are on deve
 - N1-S07 placement: `docs/contracts/SSE_CONTRACT.md` used instead of backlog's `backend/docs/SSE_CONTRACT.md`. Consistent with CLAUDE.md rule that all contracts live in `docs/contracts/` and FE lane codes against that directory. Accepted; recorded in the document itself.
 - N1-S13 branch separation: the FE agent committed the N1-S13 work onto the BE `feat/n1-s02-app-skeleton` branch. TL cherry-picked that commit to a clean `feat/n1-s13-frontend-scaffold` branch and opened PR #7 for proper story-level tracking before merging. The original commit on `feat/n1-s02-app-skeleton` remains there for the pending N1-S02 PR #6 review.
 - N1-S13 Tailwind v4 deviation: `@tailwindcss/vite` plugin + `@import "tailwindcss"` (v4 pattern) instead of v3 CLI — correct for the installed version, functionally equivalent. Accepted.
+- N1-S02 branch collision (post-merge note): PR #6 (`feat/n1-s02-app-skeleton`) contained both the FE agent's N1-S13 commit and the BE agent's N1-S02 commit. On review, `origin/feat/n1-s13-frontend-routing` (the FE agent's separate push) was confirmed to have identical tree content to the PR's FE commit — no work was missing. PR #6 was merged as-is (commits are lane-clean); stale `origin/feat/n1-s13-frontend-routing` deleted post-merge. Root cause: FE agent pushed to the BE branch before BE agent committed. Process improvement needed: agents should verify they are on their own branch before committing.
 
 ### Night 1 demo script (morning review)
 
