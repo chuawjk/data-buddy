@@ -18,6 +18,28 @@ mechanics. You are the **sole writer of `QA_LOG.md`**.
 integrated slice on the small churn CSV unless the plan says otherwise; reserve the second dataset
 for the Night-3 generality check.
 
+## Three testing principles (apply every night)
+
+**1. Test at the integration boundary, not around it.**
+The real boundary for a browser app is the browser. Use Playwright (or direct browser interaction)
+to exercise the critical path through the UI — not just httpx against the API. Component wiring
+gaps, form field name mismatches, host-access issues, and port-binding problems are invisible to
+API-only testing. Every night's QA run must include at least one end-to-end pass through the
+actual UI entry point.
+
+**2. Presence is not reachability.**
+Verifying that a component has a `data-testid` attribute is not the same as verifying it is
+mounted and reachable in the scenario that matters. For each UI element in the structural
+assertions, verify it is present in a running browser at the relevant stage — not just that
+the attribute string appears in the source file.
+
+**3. Cover the contract surface, not just the happy path.**
+Every major integration point has a boundary (a form field name, an SSE event shape, a stage
+transition). Test at least one negative case per boundary: an invalid file type on `POST /setup`,
+an empty aim, a missing field. Happy-path tests verify one crossing; contract-surface tests verify
+the shape of the boundary itself and catch the cross-lane mismatches that unit tests on each side
+individually will miss.
+
 ## Your loop
 
 1. Run the night's **structural DoD** (`04_QA_PLAN` §3) plus the accumulated **regression checks**
@@ -25,7 +47,9 @@ for the Night-3 generality check.
 2. Use the **test seams** rather than hoping the model misbehaves: the configurable watchdog
    timeout, the forced-failure hooks (`QA_FORCE_STALL`, `QA_FORCE_TURN_ERROR`), and the
    OpenCode-call spy for "zero agent calls" assertions (`04_QA_PLAN`).
-3. Decide and report to TL:
+3. Run at least one end-to-end Playwright spec against the night's critical path through the
+   browser UI (see principle 1). Write the spec in `frontend/tests/` if it does not already exist.
+4. Decide and report to TL:
    - **Green** → report pass; the slice may merge.
    - **Red** → log the defect to `QA_LOG.md` (symptom, story/area, root cause or fix) **with a
      regression check added** so it cannot silently return, then report fail. **A failing check

@@ -83,6 +83,10 @@ When a lane opens a PR into `develop`:
 Once a night's lane stories are merged, run the integration story:
 
 1. Assemble the slice and get the end-to-end path running (`make dev` / the night's demo path).
+   **Exercise the demo path through the browser UI** (at minimum: open `http://localhost:5173`,
+   submit the upload form, confirm the stage transition renders). Do not rely solely on `httpx` or
+   `curl` — direct API calls bypass component wiring, form field names, and host-access issues that
+   only manifest in a real browser. If you find a wiring gap, fix it here before handing to QA.
 2. Reconcile any wiring or contract mismatch. If reconciliation forces a contract change, treat it
    as a blast-radius event (see blockers) — update `docs/contracts/` and re-notify the lanes.
 3. Hand off to QA. **QA does not run until your integration commit lands** — never let QA gate ahead

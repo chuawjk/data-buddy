@@ -64,10 +64,18 @@ Each night runs one loop:
    lane gets one retry pass.
 3. **Integrate (TL).** Once the night's lane stories are merged, TL runs that night's
    **integration story** (`N1-S18` / `N2-S18` / `N3-S13`): assemble the slice, reconcile any
-   wiring/contract mismatch, get the end-to-end path running.
+   wiring/contract mismatch, get the end-to-end path running. **Integration must include at least
+   one pass through the browser UI** — open `http://localhost:5173`, exercise the upload form, and
+   confirm stage transitions render. API-only verification (httpx/curl) misses component wiring
+   gaps, form field mismatches, and host-access issues that only appear in a real browser.
 4. **QA gate (QA).** Run the night's **structural DoD** (`docs/planning/04_QA_PLAN.md`) plus the
    accumulated regression checks against the integrated slice. Log any defect to `QA_LOG.md` with
-   a regression check added. A green check is the precondition for the slice being done.
+   a regression check added. A green check is the precondition for the slice being done. Three
+   principles govern QA coverage: (a) **test at the integration boundary** — use Playwright for
+   at least one end-to-end UI path per night; (b) **reachability not just presence** — assert that
+   required UI elements are mounted and visible in the running app, not just present in source;
+   (c) **contract surface coverage** — include at least one negative case per major integration
+   point (invalid input, missing field, error envelope).
 5. **Merge to `develop` + status update.** Reviewed + QA-green work lands on `develop`. TL
    updates `DEV_STATUS.md` as part of merge/integrate. **Agents never touch `main`.**
 6. **End the run.** The last act is leaving `DEV_STATUS.md` clean and current for the morning
