@@ -120,21 +120,27 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - Hard boundary clean: `opencode_client.py` does not import orchestrator; deviation noted in PR — `session.idle → profile.ready` wired in orchestrator (N1-S04), not client, which is correct per boundary rules
   - Self-approve not possible (same account owns PR); merged after all three gates verified green
 
+- `feat/n1-s04-orchestrator` — **N1-S04 · Stage orchestrator (setup → profiling)** (PR #20, squash `c6f76cd`)
+  - `backend/orchestrator.py`: full state machine replacing N1-S05 stub; `client: OpenCodeClient | None` param; `setup_complete()` persists `stage=profiling` via `state_manager.update()` then publishes `stage.changed` then fire-and-forgets `_run_profile_turn` via `asyncio.create_task`; `_build_profile_prompt` and `_load_profile_schema` gracefully import from `backend.prompts.profile` (N1-S09) with `ImportError` fallback; no `httpx` import — verified by AST check
+  - `backend/main.py`: `client=client` wired into `Orchestrator` constructor in lifespan; `None` guard when `SKIP_OPENCODE=1`
+  - `backend/tests/unit/app/test_orchestrator.py` (new): 5 TDD tests — transition to profiling, stage.changed emission, profile turn triggered with session, profile turn not triggered without session, no-httpx-import AST boundary check
+  - 58 BE tests pass, 50 FE tests pass (108 total); lint clean; CI green on merge
+  - Self-approve not possible (same account owns PR); merged after all three gates verified green
+
 ### In Dev / In Review / In QA
 
 *(none)*
 
-### Startable set (post N1-S09 merge)
+### Startable set (post N1-S04 merge)
 
-All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08, N1-S09.
+All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08, N1-S09, N1-S04.
 
 Remaining unmerged N1 BE stories:
 
-- **N1-S04** (BE) — Stage orchestrator setup→profiling *(unblocked: N1-S03 ✅ + N1-S08 ✅)*
 - **N1-S11** (BE) — Stuck-turn watchdog & recovery *(unblocked: N1-S06 ✅ + N1-S08 ✅)*
-- **N1-S12** (BE) — Re-profile turn *(blocked: requires N1-S04 + N1-S11)*
+- **N1-S12** (BE) — Re-profile turn *(blocked: requires N1-S04 ✅ + N1-S11)*
 
-N1-S18 (integration) requires N1-S04 + N1-S05 ✅ + N1-S06 ✅ + N1-S08 ✅ + N1-S09 ✅ + N1-S10 ✅ + N1-S11 — blocked on N1-S04, N1-S11.
+N1-S18 (integration) requires N1-S04 ✅ + N1-S05 ✅ + N1-S06 ✅ + N1-S08 ✅ + N1-S09 ✅ + N1-S10 ✅ + N1-S11 — blocked on N1-S11 only.
 
 ### Blockers
 
