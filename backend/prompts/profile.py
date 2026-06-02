@@ -63,12 +63,14 @@ def build_profile_prompt(dataset: str, aim: str) -> str:
     return (
         f"You are a data analyst. Profile the CSV at workspace/data/{dataset}.\n\n"
         f"Analysis aim: {aim}\n\n"
-        "Return a JSON object describing:\n"
+        "Read the file and analyse it. Then write a JSON object to "
+        "workspace/profile.json describing:\n"
         "- shape: total rows and columns\n"
         "- columns: for each column, its name, inferred type "
         "(numeric/categorical/datetime/text), notable flags "
         "(nullable, low_cardinality, high_cardinality, skewed, constant, id_like), "
         "and a one-sentence summary\n"
         "- flags: dataset-level flags (e.g. small_dataset, high_dimensionality)\n\n"
-        "Read the file, analyse it, and return valid JSON matching the schema exactly."
+        "Write valid JSON matching the schema exactly to workspace/profile.json. "
+        "Do not output the JSON to the console — write it directly to the file."
     )

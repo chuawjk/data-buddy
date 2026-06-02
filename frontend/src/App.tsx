@@ -3,7 +3,10 @@ import SetupView from "./components/StageViews/SetupView";
 import ProfileView from "./components/StageViews/ProfileView";
 import PlanView from "./components/StageViews/PlanView";
 import BuildView from "./components/StageViews/BuildView";
+import { useSSE } from "./hooks/useSSE";
+import { api } from "./hooks/useApi";
 import type { Profile } from "./types/api";
+import type { SSEEvent } from "./types/events";
 
 type Stage = "setup" | "profiling" | "planning" | "building" | "done";
 
@@ -57,6 +60,24 @@ export default function App() {
         setState({ stage: null, profile: null, loading: false, error: message });
       });
   }, []);
+
+  useSSE((event: SSEEvent) => {
+    if (event.type === "stage.changed" || event.type === "profile.ready") {
+      api
+        .getState()
+        .then((data) => {
+          setState({
+            stage: data.stage,
+            profile: data.profile ?? null,
+            loading: false,
+            error: null,
+          });
+        })
+        .catch(() => {
+          // SSE-triggered refresh failure is silent — the current state remains.
+        });
+    }
+  });
 
   if (state.loading) {
     return (

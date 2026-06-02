@@ -22,7 +22,9 @@ Night 2 will add:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -160,6 +162,80 @@ class Orchestrator:
             self._run_profile_turn(session_id, prompt),
             name="re-profile-turn",
         )
+
+    # ------------------------------------------------------------------
+    # Bus listener — session.idle → stage output handling
+    # ------------------------------------------------------------------
+
+    async def start_bus_listener(self) -> None:
+        """Subscribe to the EventBus and handle internal events.
+
+        This coroutine runs as a fire-and-forget asyncio Task in the lifespan
+        (``main.py``).  It consumes every bus event and routes stage-completion
+        signals to the appropriate handler.
+
+        Currently handled:
+          - ``session.idle`` in profiling stage → ``_handle_profile_idle``
+
+        Night 2 will add handlers for planning and building stages.
+        """
+        subscription = self._bus.subscribe()
+        try:
+            async for envelope in subscription:
+                event_type: str = envelope.get("type", "")
+                if event_type == "session.idle":
+                    await self._handle_profile_idle()
+        except asyncio.CancelledError:
+            logger.info("Orchestrator bus listener cancelled.")
+            raise
+
+    async def _handle_profile_idle(self) -> None:
+        """Called when ``session.idle`` fires during the profiling stage.
+
+        Reads ``workspace/profile.json``, validates it against ``PROFILE_SCHEMA``,
+        updates ``state.json`` with the parsed profile, and emits ``profile.ready``
+        on the bus.  If the file is absent or invalid, logs a warning and returns
+        without emitting (the watchdog will handle timeout recovery if needed).
+        """
+        state = self._state_manager.get_state()
+        current_stage: str = state.get("stage", "")
+        if current_stage != "profiling":
+            # session.idle fires for every turn, not just profiling; ignore others.
+            logger.debug("_handle_profile_idle: ignoring (stage=%r)", current_stage)
+            return
+
+        profile_path = self._workspace_root / "profile.json"
+        if not profile_path.exists():
+            logger.warning(
+                "_handle_profile_idle: %s not found; profiling output may be missing.",
+                profile_path,
+            )
+            return
+
+        try:
+            raw = profile_path.read_text(encoding="utf-8")
+            profile: dict[str, Any] = json.loads(raw)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.error("_handle_profile_idle: failed to read/parse profile.json: %s", exc)
+            return
+
+        # Validate required top-level fields (soft validation — emit even if extra
+        # fields are present; hard-fail only if required keys are missing).
+        required = {"shape", "columns", "flags"}
+        if not required.issubset(profile.keys()):
+            missing = required - profile.keys()
+            logger.error(
+                "_handle_profile_idle: profile.json missing required fields: %s",
+                missing,
+            )
+            return
+
+        # Persist the profile into state.json so GET /state returns it.
+        self._state_manager.update(profile=profile)
+
+        ts = int(time.time() * 1000)
+        await self._bus.publish("profile.ready", {"profile": profile, "ts": ts})
+        logger.info("profile.ready emitted (ts=%d)", ts)
 
     # ------------------------------------------------------------------
     # Prompt construction

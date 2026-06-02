@@ -142,21 +142,31 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - Accepted deviation: `re_profile()` reuses `_run_profile_turn()` wrapper instead of calling `client.prompt()` directly — same error→`turn.error` path as `setup_complete`; strictly better behaviour
   - 74 BE tests pass, 50 FE tests pass (124 total); lint clean; CI green on merge
 
-### **ALL Night 1 lane stories now on `develop`** — N1-S18 (TL integration) ready to dispatch
+- `integrate/n1-s18` — **N1-S18 · Integrate Night 1 slice** (squash `0601b75`)
+  - `backend/orchestrator.py`: `start_bus_listener()` background task + `_handle_profile_idle()` — reads `workspace/profile.json` on `session.idle`, validates required fields, updates `state.json`, emits `profile.ready` on bus
+  - `backend/main.py`: bus listener task started in lifespan; shut down cleanly before OpenCode on exit
+  - `backend/prompts/profile.py`: `build_profile_prompt()` updated to instruct OpenCode to write the JSON to `workspace/profile.json` (not just "return JSON" in message content)
+  - `Makefile`: `make dev` no longer starts `opencode serve` separately — backend owns OpenCode lifecycle via `OpenCodeClient.start()`
+  - 4 new orchestrator unit tests (78 BE total + 50 FE = 128 total); lint clean
+  - ADR-011 (profile prompt file-write), ADR-012 (OpenCode lifecycle ownership) appended as Proposed
+
+### **ALL Night 1 lane stories + N1-S18 (integration) on `develop`**
 
 ### In Dev / In Review / In QA
 
-*(none)*
+- **N1-S18 BLOCKER — FE**: `App.tsx` does not subscribe to SSE for `stage.changed` events. After `POST /setup`, the stage transitions to `profiling` on the backend and `stage.changed` is emitted, but `App.tsx` only fetches state once on mount and never re-renders based on SSE. The user remains on `SetupView` after uploading and never sees `ProfileView`. `SetupView.tsx` comment (line 28–29) confirms this was expected to be in `App.tsx`; it was not implemented.
+  - **Fix required**: `App.tsx` must call `useSSE` and on `stage.changed`, call `api.getState()` and update `stage` and `profile` in local state.
+  - **Dispatching to**: FE lane.
 
-### Startable set (post N1-S12 merge)
+### Startable set
 
-All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08, N1-S09, N1-S04, N1-S11, N1-S20, **N1-S12**.
+**FE-blocker fix** (App.tsx SSE subscription for stage.changed) — must land before N1-S19 (QA).
 
-**N1-S18** (TL integration) — all dependencies satisfied (N1-S04 ✅ N1-S05 ✅ N1-S06 ✅ N1-S08 ✅ N1-S09 ✅ N1-S10 ✅ N1-S11 ✅ N1-S12 ✅). Ready to dispatch immediately.
+**N1-S19** (QA) — blocked on FE fix. Will be startable once FE fix lands on develop.
 
 ### Blockers
 
-*(none — N1-S06 lane deviation accepted; see ADR below)*
+- **ACTIVE — FE: App.tsx missing stage.changed SSE subscription** (found in N1-S18 integration). `App.tsx` does not subscribe to SSE events; after CSV upload + aim submission, the FE stays on `SetupView` indefinitely. Fix: `App.tsx` must use `useSSE` hook and on `stage.changed`, re-fetch `/api/state` to update `stage` and `profile`. Dispatched to FE lane. QA (N1-S19) is blocked until this lands.
 
 ### Overnight ADR decisions
 
@@ -168,6 +178,8 @@ All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03
 - N1-S10 TDD deviation (router test): `test_get_events_registered` calls the route handler directly with a `MagicMock` request and inspects the returned `StreamingResponse` object, rather than using `httpx.AsyncClient + ASGITransport`. Root cause: `ASGITransport` runs the full ASGI call inline and does not support client-side cancellation of infinite SSE generators — the `async with ac.stream()` context exits but `listen_for_disconnect` (inside Starlette's `StreamingResponse`) waits for full response completion, hanging the test. Direct handler invocation tests all contract properties (type, media_type, headers) without streaming. Documented per CONTRIBUTING §3.
 - N1-S10 main.py blocker (Proposed — pending review): A prior TL DEV_STATUS commit (`8fe71cf`) accidentally included a modified `backend/main.py` that imported `backend.orchestrator.Orchestrator` (from stashed N1-S05 work in the working tree at merge time). This made develop's test collection fail with `ModuleNotFoundError: No module named 'backend.orchestrator'`. Fixed in the N1-S10 squash commit by reverting `main.py` to the correct N1-S03 state. Root cause: TL committed with a dirty working tree; N1-S05 stash files leaked into the DEV_STATUS commit. Prevention: always check `git diff` before committing living-doc updates.
 - N1-S06 lane boundary deviation (Proposed — pending review): TL accidentally committed BE implementation code (`opencode_client.py` and its unit tests) to `develop` directly (commit `8fe71cf`) outside a PR during a prior DEV_STATUS update with a dirty working tree. Content is correct and forms the core of N1-S06. Accepted as-is; reverting would create more churn than value. Prevention: TL must check `git diff --cached` before committing living-doc updates.
+- N1-S18 ADR-011 (Proposed — pending review): Profile prompt must explicitly instruct OpenCode to write `workspace/profile.json`. "Return JSON" is insufficient — OpenCode returns structured output as message content, not as a file. See ADR-011.
+- N1-S18 ADR-012 (Proposed — pending review): `make dev` no longer starts `opencode serve` separately. Backend's `OpenCodeClient.start()` is the sole owner of the OpenCode subprocess lifecycle. See ADR-012.
 
 ### Night 1 demo script (morning review)
 
