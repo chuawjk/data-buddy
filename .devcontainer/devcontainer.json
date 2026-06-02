@@ -6,10 +6,15 @@
     "ghcr.io/devcontainers/features/node:1":   { "version": "22" },
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH=\"$HOME/.local/bin:$PATH\" && corepack enable && corepack prepare pnpm@latest --activate && make install",
+  // Install order: uv → pnpm → Claude Code → OpenCode (pinned) → project deps
+  "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH=\"$HOME/.local/bin:$PATH\" && corepack enable && corepack prepare pnpm@latest --activate && npm install -g @anthropic-ai/claude-code && curl -fsSL https://opencode.ai/install | OPENCODE_VERSION=1.15.10 bash && make install",
+  "mounts": [
+    "source=${localEnv:HOME}/.local/share/opencode,target=/root/.local/share/opencode,type=bind,consistency=cached"
+  ],
   "forwardPorts": [5173, 8000],
   "remoteEnv": {
-    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+    "GH_TOKEN": "${localEnv:GH_TOKEN}",
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
   },
   "customizations": {
     "vscode": {
