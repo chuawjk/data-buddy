@@ -62,21 +62,30 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - 7 ActivityRail tests; 42 frontend tests total pass; lint clean; CI green on merge
   - Note: self-approve not possible on GitHub (same account owns PR); merged after all three gates (acceptance, lane boundary, CI) verified green
 
+- `feat/n1-s10-sse-stream` — **N1-S10 · Browser event stream (`GET /events`)** (PR #11, squash `2e616ee`)
+  - `backend/sse_proxy.py` (new): `event_stream(bus)` factory registers subscription synchronously at call time; inner `_generate` async generator yields `data: <json>\n\n`; emits `: keepalive\n\n` on 15 s silence; `finally` block unregisters via `bus._unregister(subscription._queue)`
+  - `backend/router.py`: `GET /events` replaced — `StreamingResponse(event_stream(bus))` with `media_type="text/event-stream"`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`; stub `_stub_sse_stream()` removed
+  - `backend/tests/unit/app/test_sse_proxy.py` (new): 4 TDD tests — event forwarding, ordering, disconnect cleanup, keepalive on silence; all use real `EventBus`
+  - `backend/tests/unit/app/test_router.py`: `test_get_events_registered` calls route handler directly with `MagicMock` request; checks `StreamingResponse` type, `media_type`, and headers (does not consume the infinite stream body)
+  - `backend/main.py`: TL hygiene fix — reverted accidental `orchestrator` import introduced in a prior TL DEV_STATUS commit; restored correct N1-S03 state (`EventBus + StateManager` only)
+  - 29 backend tests pass (4 sse-proxy + 10 router + 9 state-manager + 5 event-bus + 1 health); lint clean; tests run locally (no CI run on branch due to unregistered check)
+  - Merge note: PR had conflict in `router.py` (develop moved ahead with N1-S03 StateManager integration after the PR branch was cut); resolved by applying N1-S10 SSE changes onto develop's version via git plumbing; PR #11 closed with comment referencing squash SHA
+
 ### In Dev / In Review / In QA
 
 *(see startable set below)*
 
-### Startable set (post N1-S17 merge)
+### Startable set (post N1-S10 merge)
 
-All of N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, and N1-S17 are now on `develop`:
+All of N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, and N1-S10 are now on `develop`:
 
 - **N1-S16** (FE) — Profile screen *(fully unblocked: N1-S14 ✅ + N1-S17 ✅)*
 - **N1-S15** (FE) — Setup screen *(fully unblocked: N1-S13 ✅ + N1-S14 ✅)*
 - **N1-S05** (BE) — Setup endpoint *(fully unblocked: N1-S03 ✅)*
 - **N1-S06** (BE) — OpenCode process & session *(fully unblocked: N1-S03 ✅)*
-- **N1-S10** (BE) — SSE proxy / event streaming *(fully unblocked: N1-S02 ✅ + N1-S07 ✅)*
 
-N1-S08 (BE) — OpenCode client & SSE normalisation: blocked on N1-S06 (which now has its prerequisite N1-S03 ✅). NOT yet startable — N1-S06 must merge first.
+N1-S10 now merged. N1-S18 (integration) requires N1-S05, N1-S06, N1-S08 — still blocked on N1-S06 and N1-S08.
+N1-S08 (BE) — OpenCode client & SSE normalisation: blocked on N1-S06. NOT yet startable.
 
 ### Blockers
 
@@ -89,6 +98,8 @@ N1-S08 (BE) — OpenCode client & SSE normalisation: blocked on N1-S06 (which no
 - N1-S13 branch separation: the FE agent committed the N1-S13 work onto the BE `feat/n1-s02-app-skeleton` branch. TL cherry-picked that commit to a clean `feat/n1-s13-frontend-scaffold` branch and opened PR #7 for proper story-level tracking before merging. The original commit on `feat/n1-s02-app-skeleton` remains there for the pending N1-S02 PR #6 review.
 - N1-S13 Tailwind v4 deviation: `@tailwindcss/vite` plugin + `@import "tailwindcss"` (v4 pattern) instead of v3 CLI — correct for the installed version, functionally equivalent. Accepted.
 - N1-S02 branch collision (post-merge note): PR #6 (`feat/n1-s02-app-skeleton`) contained both the FE agent's N1-S13 commit and the BE agent's N1-S02 commit. On review, `origin/feat/n1-s13-frontend-routing` (the FE agent's separate push) was confirmed to have identical tree content to the PR's FE commit — no work was missing. PR #6 was merged as-is (commits are lane-clean); stale `origin/feat/n1-s13-frontend-routing` deleted post-merge. Root cause: FE agent pushed to the BE branch before BE agent committed. Process improvement needed: agents should verify they are on their own branch before committing.
+- N1-S10 TDD deviation (router test): `test_get_events_registered` calls the route handler directly with a `MagicMock` request and inspects the returned `StreamingResponse` object, rather than using `httpx.AsyncClient + ASGITransport`. Root cause: `ASGITransport` runs the full ASGI call inline and does not support client-side cancellation of infinite SSE generators — the `async with ac.stream()` context exits but `listen_for_disconnect` (inside Starlette's `StreamingResponse`) waits for full response completion, hanging the test. Direct handler invocation tests all contract properties (type, media_type, headers) without streaming. Documented per CONTRIBUTING §3.
+- N1-S10 main.py blocker (Proposed — pending review): A prior TL DEV_STATUS commit (`8fe71cf`) accidentally included a modified `backend/main.py` that imported `backend.orchestrator.Orchestrator` (from stashed N1-S05 work in the working tree at merge time). This made develop's test collection fail with `ModuleNotFoundError: No module named 'backend.orchestrator'`. Fixed in the N1-S10 squash commit by reverting `main.py` to the correct N1-S03 state. Root cause: TL committed with a dirty working tree; N1-S05 stash files leaked into the DEV_STATUS commit. Prevention: always check `git diff` before committing living-doc updates.
 
 ### Night 1 demo script (morning review)
 
