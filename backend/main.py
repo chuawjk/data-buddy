@@ -2,9 +2,9 @@
 
 Responsibilities:
 - Create the FastAPI application instance.
-- Lifespan: instantiate the EventBus and attach it to ``app.state.bus`` so
-  every request handler (and background task) can publish/subscribe without
-  importing a module-level singleton.
+- Lifespan: instantiate the EventBus, StateManager, and OpenCodeClient and
+  attach them to ``app.state`` so every request handler (and background task)
+  can access them without importing a module-level singleton.
 - Mount the router that registers all 10 REST routes.
 - Keep the ``/health`` liveness endpoint directly on the app (not in the
   router) so infrastructure probes work independently of business logic.
@@ -12,13 +12,18 @@ Responsibilities:
 
 from __future__ import annotations
 
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from backend.event_bus import EventBus
+from backend.opencode_client import OpenCodeClient
 from backend.router import router
 from backend.state_manager import StateManager
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -26,20 +31,54 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler.
 
     Runs once at startup (before the first request) and once at shutdown (after
-    the last request).  The EventBus and StateManager are created here and
-    stored on ``app.state`` so they outlive individual requests and can be
-    injected via FastAPI's dependency system in later stories.
+    the last request).
+
+    Startup order:
+    1. EventBus -- in-process pub/sub (no external dependency).
+    2. StateManager -- loads state.json from disk (or defaults if absent).
+    3. OpenCodeClient -- resolves the binary, launches ``opencode serve``,
+       waits for readiness, and creates the v1 session.  Skipped when the
+       ``SKIP_OPENCODE`` environment variable is set to a truthy value
+       (``1``, ``true``, or ``yes``) -- for CI and environments without the
+       binary installed.
+
+    Shutdown order (reverse):
+    3. OpenCodeClient.stop() -- SIGTERM then SIGKILL after 5 s.
     """
     # --- startup ---
     app.state.bus = EventBus()
-    app.state.state_manager = StateManager()
+
+    state_manager = StateManager()
     # Load persisted state from disk (no-op if workspace/state.json does not
-    # exist yet — returns the default shape and leaves _state at defaults).
-    app.state.state_manager.load()
+    # exist yet -- returns the default shape and leaves _state at defaults).
+    state_manager.load()
+    app.state.state_manager = state_manager
+
+    skip_opencode = os.environ.get("SKIP_OPENCODE", "").strip().lower() in ("1", "true", "yes")
+
+    client: OpenCodeClient | None = None
+    if not skip_opencode:
+        client = OpenCodeClient(state_manager=state_manager)
+        try:
+            await client.start()
+        except RuntimeError as exc:
+            # Log prominently but do not crash the server -- development
+            # environments without opencode installed should still start.
+            logger.error(
+                "OpenCode client failed to start: %s.  "
+                "Agent-driven features will not work.  "
+                "Set SKIP_OPENCODE=1 to suppress this error.",
+                exc,
+            )
+            client = None
+
+    app.state.opencode_client = client
+
     yield
+
     # --- shutdown ---
-    # Nothing to tear down for the bus or state manager; later stories
-    # (OpenCode process, watchdog) will add cleanup here inside the lifespan.
+    if client is not None:
+        await client.stop()
 
 
 app = FastAPI(
@@ -54,7 +93,7 @@ app.include_router(router)
 
 
 # ---------------------------------------------------------------------------
-# Liveness probe — kept directly on the app, independent of business routes.
+# Liveness probe -- kept directly on the app, independent of business routes.
 # ---------------------------------------------------------------------------
 
 
