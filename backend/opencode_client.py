@@ -133,6 +133,56 @@ class OpenCodeClient:
         """The active OpenCode session ID, or ``None`` if not yet started."""
         return self._session_id
 
+    async def prompt(
+        self,
+        session_id: str,
+        text: str,
+        schema: dict | None = None,
+    ) -> None:
+        """Send a prompt to an OpenCode session.
+
+        Returns immediately; the agent's response arrives via the persistent
+        SSE event subscription opened at startup.
+
+        The endpoint used is the v1 ``POST /session/:id/prompt_async`` path
+        (per SSE_CONTRACT.md §D5 and the spike).
+
+        When ``schema`` is provided the request uses OpenCode's native
+        structured-output mechanism (ADR-004):
+        ::
+
+            format: {
+                type: "json_schema",
+                json_schema: { name: "output", schema: <schema> },
+                retryCount: 2,
+            }
+
+        Args:
+            session_id: The active OpenCode session ID.
+            text: The prompt text to send.
+            schema: Optional JSON Schema dict.  If ``None``, no ``format``
+                block is included and the model returns free-form text.
+
+        Raises:
+            httpx.HTTPStatusError: If OpenCode returns a non-2xx response.
+        """
+        payload: dict = {"text": text}
+        if schema is not None:
+            payload["format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "output", "schema": schema},
+                "retryCount": 2,
+            }
+
+        url = f"{self._base_url}/session/{session_id}/prompt_async"
+        logger.info("Sending prompt to session %s (schema=%s)", session_id, schema is not None)
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=10.0)
+            resp.raise_for_status()
+
+        logger.debug("Prompt accepted (HTTP %s)", resp.status_code)
+
     async def start(self) -> None:
         """Resolve the binary, launch ``opencode serve``, wait for readiness, and create a session.
 
