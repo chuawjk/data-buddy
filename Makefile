@@ -6,8 +6,9 @@ install:
 	uv sync --project backend
 	@echo "==> Installing frontend dependencies (pnpm)"
 	pnpm --prefix frontend install
-	@echo "==> Installing pre-commit hooks"
-	pre-commit install || echo "WARN: pre-commit not found — skipping hook install"
+	@echo "==> Installing pre-commit"
+	uv tool install pre-commit
+	pre-commit install
 	@echo "==> Installing Playwright browsers"
 	pnpm --prefix frontend exec playwright install --with-deps || echo "WARN: playwright install skipped"
 	@if ! command -v opencode >/dev/null 2>&1; then \
