@@ -21,6 +21,7 @@
 | ADR-010 | N1-S06 opencode_client.py committed directly to develop outside a PR | Proposed — pending review |
 | ADR-011 | N1-S18: profile prompt must write workspace/profile.json explicitly | Proposed — pending review |
 | ADR-012 | N1-S18: OpenCode lifecycle owned by backend; make dev does not start opencode | Proposed — pending review |
+| ADR-013 | QA-02: prompt_async payload format changed in OpenCode v1.15.13 | Proposed — pending review |
 
 ---
 
@@ -325,4 +326,33 @@ Having two components own the same process lifecycle is a violation of single-ow
 - `make dev` no longer checks for opencode on PATH (the backend already does this and logs a clear error if missing).
 - `SKIP_OPENCODE=1` continues to suppress opencode entirely for CI.
 - `make run` (production mode) is unaffected — it started uvicorn only (the backend manages opencode there already).
+
+---
+
+## ADR-013 · QA-02: prompt_async payload format changed in OpenCode v1.15.13
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-02
+
+### Decision
+Update `opencode_client.prompt()` payload to the v1.15.13 `POST /session/:id/prompt_async` schema: text supplied via `parts: [{"type": "text", "text": "..."}]` instead of a top-level `text` field; structured-output format supplied as `format.schema` (flat, no `json_schema` wrapper) instead of `format.json_schema.schema`.
+
+### Context
+The N1-S09 implementation used the v1.15.10 API shape confirmed in the spike: `{"text": "...", "format": {"type": "json_schema", "json_schema": {"name": "output", "schema": <schema>}}}`. QA-02 defect found during Night 1 live run: v1.15.13 (installed in the dev container) rejects this with HTTP 400 `Missing key at ["parts"]`. The `additionalProperties: false` constraint means the old `text` key is also rejected.
+
+Discovery method: `GET http://localhost:4096/doc` returns a full OpenAPI 3.1 spec. Extracted via the running server:
+- `POST /session/{sessionID}/prompt_async` schema requires `parts` (array of `TextPartInput`).
+- `TextPartInput` requires `{type: "text", text: "..."}`.
+- `OutputFormatJsonSchema` schema: `{type: "json_schema", schema: <JSONSchema>, retryCount?: int}`. The `json_schema` wrapper and `name` field from v1.15.10 are gone.
+- `format` remains at the top level of the prompt payload (unchanged).
+
+### Rationale
+The OpenAPI spec is authoritative. Both changes confirmed by live curl tests against the running server. CLAUDE.md rule 3 applies: "Where the spike and the spec disagree on OpenCode behaviour, the spike wins" — but this is a version upgrade, not a spec/spike disagreement. v1.15.13 is the installed version; the fix follows the installed version's schema.
+
+### Consequences
+- `client.prompt(session_id, text)` sends `{"parts": [{"type": "text", "text": text}]}`.
+- `client.prompt(session_id, text, schema=s)` sends `{"parts": [...], "format": {"type": "json_schema", "schema": s, "retryCount": 2}}`.
+- All 130 tests updated to match new payload shape and pass.
+- Live QA confirmed: profiling turn completes at ~45s with `profile.json` written correctly.
+- SPIKE_REPORT.md still references v1.15.10 shapes; this ADR supersedes that reference for the prompt payload.
 

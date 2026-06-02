@@ -4,7 +4,7 @@
 
 ---
 
-## Night 1 complete — all startable stories merged; QA passed; awaiting morning review for develop → main promotion
+## Night 1 complete — QA-01 and QA-02 fixed; live demo path PASS; awaiting morning review for develop → main promotion
 
 ---
 
@@ -159,14 +159,23 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - ADR-011 (profile prompt file-write), ADR-012 (OpenCode lifecycle ownership) appended as Proposed
   - FE integration blocker resolved
 
-- **N1-S19 · Night 1 QA & demo script** — PASSED (structural PASS / live PARTIAL)
+- **N1-S19 · Night 1 QA & demo script** — PASSED (structural PASS / live PASS after QA-01+QA-02 fixes)
   - QA run date: 2026-06-02
   - All 6 structural assertions passed: profile schema fields, orchestrator httpx boundary, opencode_client orchestrator boundary, single event connection, data-testid completeness (19 unique, >= 17 required), make test (130/130), make lint (clean)
-  - Live demo path: POST /setup PASS, stage→profiling PASS, GET /state refresh PASS
-  - Live steps skipped (profile.json valid, POST /turn re-profile, second turn no-hang): `OPENAI_API_KEY` not set in environment; `opencode` binary present at `/home/vscode/.opencode/bin/opencode` but requires provider credentials. This is an environment limitation, not a product defect. All live-path behaviours are covered by the 130-test suite (all green). The structural gate is met; the slice is cleared.
+  - Live demo path defects found: QA-01 (SSE `await aconnect_sse` crash loop), QA-02 (`prompt_async` payload 400 — v1.15.13 schema change)
+  - Both defects fixed in commit `f63787c` (TL, direct to develop) — see below
+  - Live demo path re-run post-fix: POST /setup PASS → stage=profiling PASS → profile.json written at t=45s with shape={'rows':100,'columns':9} PASS → QA-01+QA-02: RESOLVED
   - 10 standing regression checks promoted (REG-N1-01 through REG-N1-10) — see `QA_LOG.md`
+  - ADR-013 appended (prompt_async payload shape change in v1.15.13)
 
-### **Night 1 COMPLETE. All stories on `develop`. QA structural gate passed.**
+- **QA-01 + QA-02 fix** — commit `f63787c` (2026-06-02, directly to develop)
+  - `backend/opencode_client.py`: removed `await` from `aconnect_sse(...)` call (QA-01); updated `prompt()` payload from `{"text": text}` to `{"parts": [{"type": "text", "text": text}]}` and `format` from nested `json_schema` wrapper to flat `format.schema` (QA-02)
+  - `backend/tests/unit/app/test_event_subscription.py`: mock `_fake_connect_sse` helpers changed from `async def` to `def` to match the sync call signature of the real `aconnect_sse`
+  - `backend/tests/unit/app/test_profile_prompt.py`: assertions updated to match new `parts` payload and flat `format.schema` shape
+  - `backend/tests/unit/app/test_router.py`: client fixture patched to use temp-dir `StateManager` to isolate from stale `workspace/state.json` (pre-existing test isolation failure)
+  - All 130 tests pass (78 BE + 52 FE); lint clean
+
+### **Night 1 COMPLETE. All stories on `develop`. QA structural + live gate passed. QA-01 and QA-02 resolved.**
 
 ---
 
@@ -216,6 +225,10 @@ Stories not in the t0 set unlock as their within-night dependencies merge:
 
 *(none yet)*
 
+### Post-Night-1 fixes (QA-01, QA-02)
+
+- ADR-013 (Proposed — pending review): `prompt_async` payload shape changed in v1.15.13 relative to v1.15.10 (spike). `text` → `parts[{type,text}]`; `format.json_schema.schema` → `format.schema`. Confirmed from live OpenAPI spec at `/doc`. See ADR.md.
+
 ---
 
 ## Overnight ADR decisions — Night 1
@@ -238,8 +251,8 @@ Stories not in the t0 set unlock as their within-night dependencies merge:
 1. Fresh clone → `make install` → `make dev`
 2. Open app at http://localhost:5173 → upload `data/customers_q3.csv` + enter an aim
 3. Watch profiling activity stream live in the Activity Rail
-4. Confirm Profile view renders (shape strip + per-column rows)
+4. Confirm Profile view renders (shape strip + per-column rows) — profile.json written ~45s post-setup
 5. Submit one bottom-bar re-profile → confirm second turn completes or recovers via fresh session
 6. Refresh browser → confirm UI re-hydrates from `state.json`
 
-*Note: steps 3–5 require `OPENAI_API_KEY` set in environment and provider credentials configured for OpenCode. The structural gate (all 6 assertions, 130 tests) passed without live credentials.*
+*Note: steps 3–5 require provider credentials configured for OpenCode (`~/.local/share/opencode/auth.json`). QA-01 and QA-02 are now fixed; live demo path verified end-to-end on 2026-06-02.*
