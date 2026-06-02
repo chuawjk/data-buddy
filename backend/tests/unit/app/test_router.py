@@ -6,10 +6,11 @@ Acceptance criteria:
 - GET /state returns a minimal valid state object.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock
 
 from backend.main import app
 from backend.router import get_events
