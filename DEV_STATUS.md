@@ -188,7 +188,15 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - `frontend/src/` only; no backend, no contracts, no test changes
   - All three review gates passed (scope, data-testid integrity, CI green); self-approve not possible (same account); merged after CI confirmed green
 
-### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring and styling resolved. QA structural + live gate passed (all 6 steps). Awaiting morning human review for develop → main promotion.**
+- **Drag-and-drop CSV upload in SetupView** — PR #26, squash `8e0b67a` (2026-06-02, CI run 26816902032 green)
+  - `frontend/src/components/StageViews/SetupView.tsx`: `drop-zone` div with `onDragOver`/`onDragLeave`/`onDrop` handlers; `data-dragging` attribute tracks visual active state; clicking zone calls `fileInputRef.current?.click()` to trigger the hidden `csv-input`; `onDrop` sets file from `e.dataTransfer?.files?.[0]`
+  - `frontend/src/components/StageViews/SetupView.test.tsx`: 4 new TDD tests — `test_dropzone_renders`, `test_drag_over_sets_active_state`, `test_drag_leave_clears_active_state`, `test_drop_sets_file`
+  - All data-testid values preserved: `setup-view`, `csv-input`, `aim-input`, `submit-btn`, `setup-error`; `drop-zone` added (new)
+  - Only `frontend/` touched; lane boundary clean
+  - 56/56 FE + 78/78 BE = 134 total tests pass; CI green on merge
+  - Self-approve not possible (same account owns PR); merged after all three gates verified green
+
+### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring, styling, and drag-and-drop UX resolved. QA structural + live gate passed (all 6 steps). Awaiting morning human review for develop → main promotion.**
 
 ---
 
