@@ -73,7 +73,7 @@ describe("api.postSetup", () => {
     expect(options.body).toBeInstanceOf(FormData);
     const fd = options.body as FormData;
     expect(fd.get("aim")).toBe("Understand churn");
-    expect(fd.get("file")).toEqual(file);
+    expect(fd.get("csv")).toEqual(file);
   });
 
   it("throws an ApiError on non-2xx response", async () => {

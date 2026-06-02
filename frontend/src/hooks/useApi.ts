@@ -50,7 +50,7 @@ export const api = {
    */
   async postSetup(file: File, aim: string): Promise<SetupResponse> {
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("csv", file);
     fd.append("aim", aim);
     const res = await fetch("/api/setup", { method: "POST", body: fd });
     await throwIfError(res);

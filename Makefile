@@ -26,7 +26,7 @@ dev:
 	@echo "    Set SKIP_OPENCODE=1 to disable OpenCode (CI / no-agent mode)."
 	@trap 'kill 0' INT TERM; \
 	( \
-		uv run --project backend uvicorn backend.main:app --reload --port 8000 & \
+		uv run --project backend uvicorn backend.main:app --reload --reload-dir backend --port 8000 & \
 		pnpm --prefix frontend run dev & \
 		wait \
 	)
