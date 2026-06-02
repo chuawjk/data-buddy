@@ -159,23 +159,21 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - ADR-011 (profile prompt file-write), ADR-012 (OpenCode lifecycle ownership) appended as Proposed
   - FE integration blocker resolved
 
-- **N1-S19 · Night 1 QA & demo script** — PASSED (structural PASS / live PASS after QA-01+QA-02 fixes)
+- **N1-S19 · Night 1 QA & demo script** — **Complete — PASS** (structural PASS / live PASS, all 6 demo steps)
   - QA run date: 2026-06-02
   - All 6 structural assertions passed: profile schema fields, orchestrator httpx boundary, opencode_client orchestrator boundary, single event connection, data-testid completeness (19 unique, >= 17 required), make test (130/130), make lint (clean)
   - Live demo path defects found: QA-01 (SSE `await aconnect_sse` crash loop), QA-02 (`prompt_async` payload 400 — v1.15.13 schema change)
-  - Both defects fixed in commit `f63787c` (TL, direct to develop) — see below
-  - Live demo path re-run post-fix: POST /setup PASS → stage=profiling PASS → profile.json written at t=45s with shape={'rows':100,'columns':9} PASS → QA-01+QA-02: RESOLVED
-  - 10 standing regression checks promoted (REG-N1-01 through REG-N1-10) — see `QA_LOG.md`
+  - Both defects fixed in commit `f63787c` (TL, direct to develop) — see post-QA fixes below
+  - Live demo path re-run post-fix: all 6 steps PASS — POST /setup, stage=profiling, Activity Rail streaming, profile.json written at t=45s (shape: rows=100/columns=9), Profile view rendered, re-profile accepted
+  - QA_LOG closed: QA-01 + QA-02 marked Closed in commit `cc88859`; REG-N1-11 + REG-N1-12 regression checks added
+  - 12 standing regression checks total (REG-N1-01 through REG-N1-12) — see `QA_LOG.md`
   - ADR-013 appended (prompt_async payload shape change in v1.15.13)
 
-- **QA-01 + QA-02 fix** — commit `f63787c` (2026-06-02, directly to develop)
-  - `backend/opencode_client.py`: removed `await` from `aconnect_sse(...)` call (QA-01); updated `prompt()` payload from `{"text": text}` to `{"parts": [{"type": "text", "text": text}]}` and `format` from nested `json_schema` wrapper to flat `format.schema` (QA-02)
-  - `backend/tests/unit/app/test_event_subscription.py`: mock `_fake_connect_sse` helpers changed from `async def` to `def` to match the sync call signature of the real `aconnect_sse`
-  - `backend/tests/unit/app/test_profile_prompt.py`: assertions updated to match new `parts` payload and flat `format.schema` shape
-  - `backend/tests/unit/app/test_router.py`: client fixture patched to use temp-dir `StateManager` to isolate from stale `workspace/state.json` (pre-existing test isolation failure)
-  - All 130 tests pass (78 BE + 52 FE); lint clean
+- **Post-QA fixes and living-doc close-out** — commits `f63787c` and `42d4ff1` (2026-06-02, directly to develop)
+  - `f63787c` — `backend/opencode_client.py`: removed `await` from `aconnect_sse(...)` (QA-01); updated `prompt()` payload to `{"parts": [{"type": "text", "text": text}]}` and `format` to flat `format.schema` shape (QA-02); 3 test files updated to match new signatures; 130/130 tests pass, lint clean
+  - `42d4ff1` — `DEV_STATUS.md`, `ADR.md`, `QA_LOG.md` updated to record QA-01/QA-02 closure, ADR-013, and Night 1 final state
 
-### **Night 1 COMPLETE. All stories on `develop`. QA structural + live gate passed. QA-01 and QA-02 resolved.**
+### **Night 1 COMPLETE. All stories on `develop`. QA structural + live gate passed (all 6 steps). QA-01 and QA-02 resolved. Awaiting morning human review for develop → main promotion.**
 
 ---
 
