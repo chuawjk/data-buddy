@@ -134,19 +134,25 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - Rebase: conflict in `opencode_client.py` between N1-S09's `_create_session()` (void, side effects) and N1-S11's refactor (returns `str`, no side effects). Resolved: kept N1-S11's design (`_create_session()` returns `str`, `start()` owns side effects) — correct because `create_fresh_session()` must reuse `_create_session()` without duplicating logic. All N1-S09 changes (`prompt()` method) preserved intact.
   - 66 BE tests pass, 50 FE tests pass (116 total); lint clean; CI green on merge
 
+- `feat/n1-s12-reprof-turn` — **N1-S12 · Re-profile turn (`POST /turn`)** (PR #22, squash `e52c962`)
+  - `backend/orchestrator.py`: `Watchdog | None` param added to `__init__`; `re_profile(text)` added — validates active session + stage=profiling (raises `ValueError` on either), builds re-profile prompt (base profile prompt + user note via `_build_profile_prompt`), arms `watchdog.start_turn()` if wired in, fire-and-forgets `_run_profile_turn()` via `asyncio.create_task` (same error-handling wrapper as `setup_complete`)
+  - `backend/router.py`: `POST /turn` real handler — strips + validates `text` (422 `invalid_text` on empty/whitespace); reads stage from `state_manager`; dispatches `orchestrator.re_profile(text)` as background task when stage=profiling, returns 204 immediately; 422 `invalid_stage` for any other stage; error envelopes match `POST /setup` pattern
+  - `backend/main.py`: `Watchdog` instantiated in lifespan when `client is not None`; stored on `app.state.watchdog`; passed to `Orchestrator` constructor
+  - `backend/tests/unit/app/test_turn.py` (new): 8 TDD tests — 204 + re_profile dispatched, empty text 422, missing text 422, wrong stage 422, client.prompt called with correct session+schema, ValueError without session, ValueError wrong stage, watchdog.start_turn called when wired
+  - Accepted deviation: `re_profile()` reuses `_run_profile_turn()` wrapper instead of calling `client.prompt()` directly — same error→`turn.error` path as `setup_complete`; strictly better behaviour
+  - 74 BE tests pass, 50 FE tests pass (124 total); lint clean; CI green on merge
+
+### **ALL Night 1 lane stories now on `develop`** — N1-S18 (TL integration) ready to dispatch
+
 ### In Dev / In Review / In QA
 
 *(none)*
 
-### Startable set (post N1-S11 merge)
+### Startable set (post N1-S12 merge)
 
-All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08, N1-S09, N1-S04, N1-S11, N1-S20.
+All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08, N1-S09, N1-S04, N1-S11, N1-S20, **N1-S12**.
 
-Remaining unmerged N1 BE stories:
-
-- **N1-S12** (BE) — Re-profile turn *(unblocked: N1-S04 ✅ + N1-S09 ✅ + N1-S11 ✅)*
-
-N1-S18 (integration) requires N1-S04 ✅ + N1-S05 ✅ + N1-S06 ✅ + N1-S08 ✅ + N1-S09 ✅ + N1-S10 ✅ + N1-S11 ✅ + N1-S12 — blocked on N1-S12 only. Unblocked for dispatch immediately after N1-S12 merges.
+**N1-S18** (TL integration) — all dependencies satisfied (N1-S04 ✅ N1-S05 ✅ N1-S06 ✅ N1-S08 ✅ N1-S09 ✅ N1-S10 ✅ N1-S11 ✅ N1-S12 ✅). Ready to dispatch immediately.
 
 ### Blockers
 
