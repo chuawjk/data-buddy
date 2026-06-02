@@ -4,7 +4,7 @@
 
 ---
 
-## Night 1 complete — QA-01 and QA-02 fixed; live demo path PASS; awaiting morning review for develop → main promotion
+## Night 1 complete — all demo wiring fixed; develop green; awaiting morning review for develop → main promotion
 
 ---
 
@@ -173,7 +173,16 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - `f63787c` — `backend/opencode_client.py`: removed `await` from `aconnect_sse(...)` (QA-01); updated `prompt()` payload to `{"parts": [{"type": "text", "text": text}]}` and `format` to flat `format.schema` shape (QA-02); 3 test files updated to match new signatures; 130/130 tests pass, lint clean
   - `42d4ff1` — `DEV_STATUS.md`, `ADR.md`, `QA_LOG.md` updated to record QA-01/QA-02 closure, ADR-013, and Night 1 final state
 
-### **Night 1 COMPLETE. All stories on `develop`. QA structural + live gate passed (all 6 steps). QA-01 and QA-02 resolved. Awaiting morning human review for develop → main promotion.**
+- **Morning demo wiring fix** — PR #24, squash `a09dac5` (2026-06-02, CI run 26805380929 green)
+  - `frontend/src/hooks/useApi.ts`: FormData field `"file"` → `"csv"` to match `POST /setup` parameter name — was causing 422 on every upload
+  - `frontend/src/App.tsx`: ActivityRail wired into layout as right-side panel (rendered for all stages except `setup`)
+  - `frontend/vite.config.ts`: `host: "0.0.0.0"` so Vite is reachable from host via devcontainer port forwarding
+  - `Makefile`: `--reload-dir backend` added to uvicorn so frontend file edits don't restart the backend process
+  - `frontend/src/App.test.tsx`: SSE mock updated to broadcast events to all registered callbacks (App + ActivityRail both call `useSSE`); call-count assertions relaxed to `toHaveBeenCalledWith`
+  - `frontend/src/hooks/useApi.test.ts`: `fd.get("csv")` to match the field rename
+  - 132 FE + BE tests pass; lint clean; CI green
+
+### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring resolved. QA structural + live gate passed (all 6 steps). Awaiting morning human review for develop → main promotion.**
 
 ---
 
