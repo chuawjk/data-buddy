@@ -3,7 +3,7 @@ import { renderHook, act } from "@testing-library/react";
 import { useActivityState } from "./useActivityState";
 
 // Stable ref so dispatch never dereferences a stale or null callback.
-const onEventRef = { current: (_e: unknown) => {} };
+const onEventRef: { current: (e: unknown) => void } = { current: () => {} };
 
 vi.mock("./useSSE", () => ({
   useSSE: (onEvent: (e: unknown) => void) => {
