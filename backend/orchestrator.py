@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from backend.event_bus import EventBus
     from backend.opencode_client import OpenCodeClient
     from backend.state_manager import StateManager
+    from backend.watchdog import Watchdog
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,10 @@ class Orchestrator:
         workspace_root: Root of the workspace directory.  Defaults to
             ``workspace/`` relative to the working directory.  Tests pass
             a ``tmp_path``-based path for isolation.
+        watchdog: Optional Watchdog instance.  When provided, ``start_turn()``
+            is called at the start of every agent-driven turn so the watchdog
+            can abort and recover a stalled turn.  May be ``None`` (e.g. in
+            CI or when OpenCode is disabled).
     """
 
     def __init__(
@@ -58,11 +63,13 @@ class Orchestrator:
         bus: "EventBus",
         client: "OpenCodeClient | None" = None,
         workspace_root: Path = Path("workspace"),
+        watchdog: "Watchdog | None" = None,
     ) -> None:
         self._state_manager = state_manager
         self._bus = bus
         self._client = client
         self._workspace_root = Path(workspace_root)
+        self._watchdog = watchdog
 
     # ------------------------------------------------------------------
     # Stage transitions
@@ -107,6 +114,52 @@ class Orchestrator:
                 session_id,
                 self._client,
             )
+
+    async def re_profile(self, text: str) -> None:
+        """Called by POST /turn during the profiling stage.
+
+        Fires a new profiling turn with a re-profile prompt that incorporates
+        the user's bottom-bar text.  Returns immediately; the turn runs as a
+        fire-and-forget asyncio task so ``POST /turn`` can respond with 204
+        without waiting for OpenCode.
+
+        The watchdog (if wired in via ``__init__``) is armed before the turn
+        fires so recovery can trigger if the turn stalls.
+
+        Args:
+            text: The user's bottom-bar input (already stripped by the router).
+
+        Raises:
+            ValueError: If no session ID is stored in state (OpenCode not started).
+            ValueError: If the current stage is not ``"profiling"`` (wrong stage).
+        """
+        state = self._state_manager.get_state()
+        session_id: str | None = state.get("opencode_session_id")
+        if not session_id:
+            raise ValueError("No active session")
+
+        current_stage: str = state.get("stage", "")
+        if current_stage != "profiling":
+            raise ValueError(
+                f"re_profile only valid in profiling stage; current stage: {current_stage!r}"
+            )
+
+        dataset: str = state.get("dataset") or ""
+        aim: str = state.get("aim") or ""
+        user_note = f"\n\nUser re-profile note: {text}" if text else ""
+        prompt = self._build_profile_prompt(dataset, aim + user_note)
+
+        # Arm the watchdog before firing the turn (N1-S11 / N1-S20).
+        if self._watchdog is not None:
+            self._watchdog.start_turn()
+
+        # fire-and-forget; watchdog handles timeout / recovery.
+        # _run_profile_turn loads the schema internally via _load_profile_schema().
+        assert self._client is not None  # noqa: S101  # guarded by session check above
+        asyncio.create_task(
+            self._run_profile_turn(session_id, prompt),
+            name="re-profile-turn",
+        )
 
     # ------------------------------------------------------------------
     # Prompt construction
