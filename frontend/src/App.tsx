@@ -82,28 +82,41 @@ export default function App() {
 
   if (state.loading) {
     return (
-      <div data-testid="loading-indicator" className="p-8 text-center">
-        Loading…
+      <div
+        data-testid="loading-indicator"
+        className="min-h-screen bg-[#f6f2e9] text-[#1a1a17] flex items-center justify-center"
+      >
+        <p className="text-[#9b9489] text-sm">Loading…</p>
       </div>
     );
   }
 
   if (state.error !== null || state.stage === null) {
     return (
-      <div data-testid="error-banner" className="p-8 text-center text-red-600">
-        {state.error ?? "Unknown error"}
+      <div
+        data-testid="error-banner"
+        className="min-h-screen bg-[#f6f2e9] text-[#1a1a17] flex items-center justify-center"
+      >
+        <p className="text-[#a85c4a] text-sm">{state.error ?? "Unknown error"}</p>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", gap: "1rem", padding: "1rem" }}>
-      <div style={{ flex: 1 }}>{renderStageView(state.stage, state.profile)}</div>
-      {state.stage !== "setup" && (
-        <div style={{ width: "300px", flexShrink: 0 }}>
-          <ActivityRail />
-        </div>
-      )}
+    <div className="min-h-screen bg-[#f6f2e9] text-[#1a1a17]">
+      <header className="border-b border-[#ddd5c5] bg-white px-8 py-4">
+        <span className="font-serif text-3xl font-light text-[#b8732a]">Data Buddy</span>
+      </header>
+      <div className="max-w-6xl mx-auto px-8 py-10 flex gap-6">
+        <div className="flex-1">{renderStageView(state.stage, state.profile)}</div>
+        {state.stage !== "setup" && (
+          <div className="w-72 shrink-0">
+            <div className="bg-white border border-[#ddd5c5] rounded-lg p-4">
+              <ActivityRail />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
