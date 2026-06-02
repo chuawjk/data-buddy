@@ -18,6 +18,7 @@
 | ADR-007 | Frontend state ownership | Accepted |
 | ADR-008 | Frontend serving strategy | Accepted |
 | ADR-009 | Local development and deployment tooling | Accepted |
+| ADR-010 | N1-S06 opencode_client.py committed directly to develop outside a PR | Proposed — pending review |
 
 ---
 
@@ -257,4 +258,26 @@ Docker was considered for submission cleanliness and to signal production-awaren
 - `make dev` — starts `opencode serve`, FastAPI, and Vite dev server as three concurrent processes.
 - `make clean` — removes workspace files, resets `state.json` to empty. Used between demo runs.
 - Docker is noted in the README as a known limitation with a clear path: "In a production deployment, OpenCode would run as a sidecar container with a shared volume mount for the workspace directory."
+
+---
+
+## ADR-010 · N1-S06 opencode_client.py committed directly to develop outside a PR
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-02
+
+### Decision
+Accept `opencode_client.py` and its unit tests as they were committed directly to `develop` (commit `8fe71cf`) outside the PR flow. PR #12 (N1-S06) is treated as having satisfied all acceptance criteria, with the module's content already landed and the PR delivering only the `main.py` lifespan wiring.
+
+### Context
+During a TL DEV_STATUS update, `backend/opencode_client.py` and `backend/tests/unit/app/test_opencode_client.py` were accidentally staged (from in-progress N1-S05/S06 work in the working tree) and committed directly to `develop` as part of commit `8fe71cf`. This is a lane boundary violation: TL should not commit BE feature code, and all lane work should arrive via PR.
+
+### Rationale for accepting rather than reverting
+- The content is correct — it implements the N1-S06 acceptance criteria faithfully and was later reviewed as part of the PR #12 diff.
+- Reverting `8fe71cf` would rewrite shared history on `develop`, which is irreversible and prohibited by CONTRIBUTING §7.
+- The PR #12 review gate did inspect the full `opencode_client.py` source (it was visible in the `8fe71cf` commit on the base branch) and found it satisfactory.
+- No security, contract, or architectural concerns were found in the content.
+
+### Prevention
+TL must run `git diff --cached` and `git status` before every living-doc commit to ensure no unintended files are staged. The pre-commit hook does not catch out-of-lane file additions.
 

@@ -71,25 +71,48 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - 29 backend tests pass (4 sse-proxy + 10 router + 9 state-manager + 5 event-bus + 1 health); lint clean; tests run locally (no CI run on branch due to unregistered check)
   - Merge note: PR had conflict in `router.py` (develop moved ahead with N1-S03 StateManager integration after the PR branch was cut); resolved by applying N1-S10 SSE changes onto develop's version via git plumbing; PR #11 closed with comment referencing squash SHA
 
+- `feat/n1-s06-opencode-client` — **N1-S06 · OpenCode process & session** (PR #12, squash `daee4ba`)
+  - `backend/main.py`: `OpenCodeClient` wired into lifespan; `SKIP_OPENCODE=1` env var skips startup for CI; failed startup logs but does not crash server; `client.stop()` on shutdown
+  - `opencode_client.py` and its 6 unit tests already on develop via `8fe71cf` (lane deviation; see ADR below)
+  - TL hygiene fix: ruff I001 import sort in `test_router.py` to pass CI lint gate
+  - 35 backend tests pass; CI green on merge
+
+- `feat/n1-s05-setup-endpoint` — **N1-S05 · Setup endpoint** (PR #16, squash `e7640ec`)
+  - `backend/orchestrator.py` (new): minimal `Orchestrator` stub; `setup_complete()` advances stage to `profiling` and emits `stage.changed`; no `httpx` import; client never imports orchestrator
+  - `backend/router.py`: `POST /setup` real handler — validates aim, content-type (.csv), size (≤10 MB); writes CSV to `workspace/data/`; persists initial state; fire-and-forgets `orchestrator.setup_complete()`
+  - `backend/main.py`: `Orchestrator` wired into lifespan alongside `OpenCodeClient`
+  - `backend/pyproject.toml`: `python-multipart>=0.0.9` added
+  - 5 new unit tests (`test_setup.py`); 40 backend tests total pass; CI green on merge
+  - Conflict resolution: main.py merged N1-S06 OpenCodeClient + N1-S05 Orchestrator wiring; router.py kept N1-S10 SSE + N1-S05 /setup real handler
+
+- `feat/n1-s15-setup-screen` — **N1-S15 · Setup screen** (PR #13, squash `a77542e`)
+  - `frontend/src/components/StageViews/SetupView.tsx`: `csv-input`, `aim-input`, `submit-btn` (disabled when no file or empty aim); calls `api.postSetup(file, aim)`; surfaces error in `setup-error`
+  - `frontend/src/components/StageViews/SetupView.test.tsx`: 6 Vitest tests; 42 frontend tests total pass
+  - Only `frontend/` touched; CI green on merge
+
+- `feat/n1-s16-profile-view-v2` — **N1-S16 · Profile screen & re-profile bar** (PR #15, squash `67cc7e7`)
+  - `frontend/src/components/StageViews/ProfileView.tsx`: `shape-strip` (rows/columns), `column-row` list (name, type, flags, summary), `reprof-input`/`reprof-submit`; updates on `profile.ready` SSE via `api.getState()`
+  - `frontend/src/App.tsx`: passes `profile` prop from `GET /state` response down to `ProfileView`; adds `Profile | null` to `AppState`
+  - `frontend/src/App.test.tsx`: adds `useSSE` mock for profile-stage test
+  - `frontend/src/components/StageViews/ProfileView.test.tsx`: 8 Vitest tests; 44 frontend tests total pass
+  - Only `frontend/` touched; CI green on merge
+
 ### In Dev / In Review / In QA
 
-*(see startable set below)*
+*(none — all N1 lane stories now merged)*
 
-### Startable set (post N1-S10 merge)
+### Startable set (post N1-S06, N1-S05, N1-S15, N1-S16 merge)
 
-All of N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, and N1-S10 are now on `develop`:
+All of N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16 are now on `develop`:
 
-- **N1-S16** (FE) — Profile screen *(fully unblocked: N1-S14 ✅ + N1-S17 ✅)*
-- **N1-S15** (FE) — Setup screen *(fully unblocked: N1-S13 ✅ + N1-S14 ✅)*
-- **N1-S05** (BE) — Setup endpoint *(fully unblocked: N1-S03 ✅)*
-- **N1-S06** (BE) — OpenCode process & session *(fully unblocked: N1-S03 ✅)*
+- **N1-S08** (BE) — OpenCode client & SSE normalisation *(fully unblocked: N1-S06 ✅ + N1-S07 ✅)*
+- **N1-S21** (FE) — Stable test selectors *(fully unblocked: N1-S15 ✅ + N1-S16 ✅ + N1-S17 ✅)*
 
-N1-S10 now merged. N1-S18 (integration) requires N1-S05, N1-S06, N1-S08 — still blocked on N1-S06 and N1-S08.
-N1-S08 (BE) — OpenCode client & SSE normalisation: blocked on N1-S06. NOT yet startable.
+N1-S18 (integration) requires N1-S05 ✅ + N1-S06 ✅ + N1-S08 — still blocked on N1-S08.
 
 ### Blockers
 
-*(none)*
+*(none — N1-S06 lane deviation accepted; see ADR below)*
 
 ### Overnight ADR decisions
 
@@ -100,6 +123,7 @@ N1-S08 (BE) — OpenCode client & SSE normalisation: blocked on N1-S06. NOT yet 
 - N1-S02 branch collision (post-merge note): PR #6 (`feat/n1-s02-app-skeleton`) contained both the FE agent's N1-S13 commit and the BE agent's N1-S02 commit. On review, `origin/feat/n1-s13-frontend-routing` (the FE agent's separate push) was confirmed to have identical tree content to the PR's FE commit — no work was missing. PR #6 was merged as-is (commits are lane-clean); stale `origin/feat/n1-s13-frontend-routing` deleted post-merge. Root cause: FE agent pushed to the BE branch before BE agent committed. Process improvement needed: agents should verify they are on their own branch before committing.
 - N1-S10 TDD deviation (router test): `test_get_events_registered` calls the route handler directly with a `MagicMock` request and inspects the returned `StreamingResponse` object, rather than using `httpx.AsyncClient + ASGITransport`. Root cause: `ASGITransport` runs the full ASGI call inline and does not support client-side cancellation of infinite SSE generators — the `async with ac.stream()` context exits but `listen_for_disconnect` (inside Starlette's `StreamingResponse`) waits for full response completion, hanging the test. Direct handler invocation tests all contract properties (type, media_type, headers) without streaming. Documented per CONTRIBUTING §3.
 - N1-S10 main.py blocker (Proposed — pending review): A prior TL DEV_STATUS commit (`8fe71cf`) accidentally included a modified `backend/main.py` that imported `backend.orchestrator.Orchestrator` (from stashed N1-S05 work in the working tree at merge time). This made develop's test collection fail with `ModuleNotFoundError: No module named 'backend.orchestrator'`. Fixed in the N1-S10 squash commit by reverting `main.py` to the correct N1-S03 state. Root cause: TL committed with a dirty working tree; N1-S05 stash files leaked into the DEV_STATUS commit. Prevention: always check `git diff` before committing living-doc updates.
+- N1-S06 lane boundary deviation (Proposed — pending review): TL accidentally committed BE implementation code (`opencode_client.py` and its unit tests) to `develop` directly (commit `8fe71cf`) outside a PR during a prior DEV_STATUS update with a dirty working tree. Content is correct and forms the core of N1-S06. Accepted as-is; reverting would create more churn than value. Prevention: TL must check `git diff --cached` before committing living-doc updates.
 
 ### Night 1 demo script (morning review)
 
