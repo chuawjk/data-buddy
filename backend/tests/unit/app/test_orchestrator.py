@@ -196,3 +196,145 @@ def test_no_httpx_import():
             assert not module.startswith("httpx"), (
                 f"orchestrator.py must not import from httpx (found: 'from {module} import ...')"
             )
+
+
+# ---------------------------------------------------------------------------
+# N1-S18 integration: _handle_profile_idle and start_bus_listener
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_idle_emits_profile_ready(tmp_path):
+    """When profile.json exists and stage is profiling, profile.ready must be emitted.
+
+    Integration wiring: session.idle → read profile.json → emit profile.ready.
+    """
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+
+    # Put orchestrator in profiling stage.
+    sm.update(stage="profiling")
+
+    # Write a valid profile.json in the workspace root.
+    profile_data = {
+        "shape": {"rows": 100, "columns": 5},
+        "columns": [
+            {"name": "id", "type": "numeric", "flags": [], "summary": "row id"},
+        ],
+        "flags": [],
+    }
+    (tmp_path / "profile.json").write_text(__import__("json").dumps(profile_data), encoding="utf-8")
+
+    # Arrange: create orchestrator with workspace_root = tmp_path.
+    sm2 = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm2.update(stage="profiling")
+    bus2 = EventBus()
+    mock_client = AsyncMock()
+    orch2 = Orchestrator(state_manager=sm2, bus=bus2, client=mock_client, workspace_root=tmp_path)
+
+    sub = bus2.subscribe()
+
+    await orch2._handle_profile_idle()
+
+    event = await sub.__anext__()
+    assert event["type"] == "profile.ready", f"Expected 'profile.ready', got {event['type']!r}"
+    assert "profile" in event, "profile.ready must include profile data"
+    assert event["profile"]["shape"]["rows"] == 100
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_idle_wrong_stage_no_emit(tmp_path):
+    """When stage is not profiling, session.idle must not trigger profile.ready."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="setup")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    # Write a profile.json so the absence of the file is not the cause.
+    import json
+
+    profile_data = {"shape": {"rows": 10, "columns": 2}, "columns": [], "flags": []}
+    (tmp_path / "profile.json").write_text(json.dumps(profile_data), encoding="utf-8")
+
+    sub = bus.subscribe()
+
+    await orch._handle_profile_idle()
+
+    # Queue should be empty — no event emitted.
+    assert sub._queue.empty(), "profile.ready must NOT be emitted when stage != profiling"
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_idle_missing_file_no_emit(tmp_path):
+    """When profile.json is absent, profile.ready must not be emitted (graceful)."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    # Do NOT write profile.json.
+    sub = bus.subscribe()
+
+    await orch._handle_profile_idle()
+
+    assert sub._queue.empty(), "profile.ready must NOT be emitted when profile.json is missing"
+
+
+@pytest.mark.asyncio
+async def test_start_bus_listener_routes_session_idle(tmp_path):
+    """start_bus_listener() must emit profile.ready when session.idle fires in profiling stage.
+
+    The test verifies the full chain: bus listener task receives session.idle →
+    calls _handle_profile_idle → emits profile.ready.
+    """
+    import json
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    profile_data = {
+        "shape": {"rows": 42, "columns": 3},
+        "columns": [{"name": "x", "type": "numeric", "flags": [], "summary": "col x"}],
+        "flags": [],
+    }
+    (tmp_path / "profile.json").write_text(json.dumps(profile_data), encoding="utf-8")
+
+    # Subscribe before starting the listener so we capture all events.
+    sub = bus.subscribe()
+
+    # Start the listener as a task so it subscribes to the bus.
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    # Yield so the task starts and registers its bus subscription.
+    await asyncio.sleep(0)
+
+    # Publish session.idle to trigger the handler.
+    await bus.publish("session.idle", {"ts": 12345})
+
+    # Wait for profile.ready with a short timeout; collect up to 2 events.
+    # The first event seen by sub may be session.idle itself; profile.ready follows.
+    received_types = []
+    try:
+        for _ in range(2):
+            event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+            received_types.append(event["type"])
+            if event["type"] == "profile.ready":
+                profile_ready_event = event
+                break
+    except asyncio.TimeoutError:
+        pass
+
+    # Cancel the listener.
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    assert "profile.ready" in received_types, (
+        f"Expected 'profile.ready' in events; got: {received_types}"
+    )
+    assert profile_ready_event["profile"]["shape"]["rows"] == 42  # type: ignore[possibly-undefined]

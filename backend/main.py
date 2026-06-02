@@ -96,16 +96,35 @@ async def lifespan(app: FastAPI):
         app.state.watchdog = watchdog
 
     # Wire up the stage orchestrator (N1-S04: setup→profiling state machine).
-    app.state.orchestrator = Orchestrator(
+    orchestrator = Orchestrator(
         state_manager=state_manager,
         bus=app.state.bus,
         client=client,  # None when SKIP_OPENCODE=1; orchestrator guards internally.
         watchdog=watchdog,  # None when SKIP_OPENCODE=1; orchestrator guards internally.
     )
+    app.state.orchestrator = orchestrator
+
+    # Start the orchestrator's bus listener as a background task (N1-S18 integration).
+    # This consumes session.idle events and drives stage-output handling
+    # (profile.ready, plan.ready, section.proposed/failed).
+    bus_listener_task = asyncio.create_task(
+        orchestrator.start_bus_listener(), name="orchestrator-bus-listener"
+    )
+    app.state.bus_listener_task = bus_listener_task
+    logger.info("Orchestrator bus listener task started.")
 
     yield
 
     # --- shutdown ---
+    # Cancel the orchestrator bus listener first (it holds an EventBus subscription).
+    if not bus_listener_task.done():
+        bus_listener_task.cancel()
+        try:
+            await bus_listener_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Orchestrator bus listener task stopped.")
+
     if client is not None:
         await client.stop_event_subscription()
         await client.stop()

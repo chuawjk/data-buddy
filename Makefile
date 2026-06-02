@@ -22,13 +22,10 @@ install:
 # ── dev ───────────────────────────────────────────────────────────────────────
 dev:
 	@echo "==> Starting dev servers (FastAPI :8000, Vite :5173)"
+	@echo "    NOTE: OpenCode is managed by the FastAPI backend (not started separately here)."
+	@echo "    Set SKIP_OPENCODE=1 to disable OpenCode (CI / no-agent mode)."
 	@trap 'kill 0' INT TERM; \
 	( \
-		if command -v opencode >/dev/null 2>&1; then \
-			opencode serve & \
-		else \
-			echo "INFO: opencode not on PATH — skipping opencode serve"; \
-		fi; \
 		uv run --project backend uvicorn backend.main:app --reload --port 8000 & \
 		pnpm --prefix frontend run dev & \
 		wait \
