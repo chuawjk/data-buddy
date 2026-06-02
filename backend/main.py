@@ -12,6 +12,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -75,6 +76,13 @@ async def lifespan(app: FastAPI):
             )
             client = None
 
+        if client is not None:
+            # Start the persistent SSE subscription as a background task (N1-S08).
+            # One connection, running for the lifetime of the server.
+            subscription_task = asyncio.create_task(client.start_event_subscription(app.state.bus))
+            client._register_subscription_task(subscription_task)
+            logger.info("OpenCode event subscription task started.")
+
     app.state.opencode_client = client
 
     # Wire up the minimal orchestrator stub (N1-S05).
@@ -87,6 +95,7 @@ async def lifespan(app: FastAPI):
 
     # --- shutdown ---
     if client is not None:
+        await client.stop_event_subscription()
         await client.stop()
 
 
