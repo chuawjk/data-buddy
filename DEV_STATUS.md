@@ -50,20 +50,27 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - `frontend/src/types/api.ts`: `Stage`, `SectionStatus`, `ColumnType`, `ColumnProfile`, `Profile`, `Section`, `StateResponse`, `SetupResponse`, `PlanUpdateRequest`, `PlanUpdateResponse`, `ApiError` — all derived from `API_CONTRACT.html`
   - 29 tests pass (13 useApi + 8 useSSE + 8 App.test); lint clean; CI green on merge
 
+- `feat/n1-s03-state-store` — **N1-S03 · State store & `GET /state`** (PR #9, squash `2c64c43`)
+  - `backend/state_manager.py` (new): `StateManager` class; atomic write via `state.tmp.json` + `os.replace()`; `save()` / `save_async(lock)` (deferred write while turn lock held) / `update(**kwargs)` / `get_state()` / `load()`; `opencode_session_id` held internally, stripped at router boundary
+  - `backend/main.py`: `StateManager()` instantiated on `app.state.state_manager` in lifespan; `load()` called at startup to re-hydrate from disk
+  - `backend/router.py`: `GET /state` reads from `app.state.state_manager`; strips `opencode_session_id` before returning
+  - 29 backend tests pass (9 state-manager + 10 router + 5 event-bus + 1 health + 4 sse-proxy); lint clean; CI green on merge
+
 ### In Dev / In Review / In QA
 
 *(see startable set below)*
 
-### Startable set (post N1-S14 merge)
+### Startable set (post N1-S03 merge)
 
-All of N1-S01, N1-S07, N1-S02, N1-S13, and N1-S14 are now on `develop`:
+All of N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, and N1-S03 are now on `develop`:
 
 - **N1-S15** (FE) — Setup screen *(fully unblocked: N1-S13 ✅ + N1-S14 ✅)*
 - **N1-S17** (FE) — Activity rail *(fully unblocked: N1-S13 ✅ + N1-S14 ✅)*
-- **N1-S03** (BE) — State manager *(fully unblocked: N1-S02 ✅)*
+- **N1-S05** (BE) — Setup endpoint *(fully unblocked: N1-S03 ✅)*
+- **N1-S06** (BE) — OpenCode process & session *(fully unblocked: N1-S03 ✅)*
 - **N1-S10** (BE) — SSE proxy / event streaming *(fully unblocked: N1-S02 ✅ + N1-S07 ✅)*
-- **N1-S08** (BE) — OpenCode client & SSE normalisation *(fully unblocked: N1-S02 ✅ + N1-S07 ✅)*
 
+N1-S08 (BE) — OpenCode client & SSE normalisation: blocked on N1-S06 (which now has its prerequisite N1-S03 ✅). NOT yet startable — N1-S06 must merge first.
 N1-S16 (FE) — Section view: still blocked on N1-S17.
 
 ### Blockers
