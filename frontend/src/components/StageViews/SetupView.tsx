@@ -36,107 +36,74 @@ export default function SetupView() {
   }
 
   return (
-    <div data-testid="setup-view">
-      {/* top bar */}
-      <div className="topbar">
-        <div className="brand">
-          <div className="brand-mark" />
-          <div className="brand-name">Brief</div>
-        </div>
-        <div className="aim">
-          <span className="aim-label">Aim</span>
-          <span className="aim-text" style={{ color: "var(--ink-3)", fontStyle: "italic" }}>
-            Not yet set
-          </span>
-        </div>
-      </div>
+    <div data-testid="setup-view" className="flex items-center justify-center py-12">
+      <div className="bg-white border border-[#ddd5c5] rounded-xl p-8 shadow-sm max-w-lg w-full">
+        <h2 className="text-xl font-semibold text-[#1a1a17] mb-2">Upload your dataset</h2>
+        <p className="text-sm text-[#5d5a52] mb-6">
+          Drop a CSV file below, then tell the agent what you&apos;re trying to learn. The plan and
+          the brief follow from there.
+        </p>
 
-      {/* main content */}
-      <div className="center">
-        <div className="center-inner">
-          <div className="brief-eyebrow">New brief</div>
-          <h2 className="brief-h1">
-            Start with <em>data</em> and an <em>aim</em>.
-          </h2>
-          <p className="brief-deck">
-            Drop a CSV file below, then tell the agent what you&apos;re trying to learn. The plan
-            and the brief follow from there.
-          </p>
-
-          <form onSubmit={handleSubmit} noValidate>
-            {/* CSV upload zone */}
-            <div className="upload">
-              <div className="upload-icon" />
-              <div className="upload-title">Drop a CSV, or browse</div>
-              <div className="upload-sub">CSV up to 200 MB</div>
-
-              <input
-                data-testid="csv-input"
-                type="file"
-                accept=".csv"
-                style={{ marginTop: 16 }}
-                onChange={(e) => {
-                  const selected = e.target.files?.[0] ?? null;
-                  setFile(selected);
-                  setError(null);
-                }}
-              />
-
-              {file && (
-                <div style={{ marginTop: 8, fontSize: "13.2px", color: "var(--ink-2)" }}>
-                  Selected: <strong>{file.name}</strong>
-                </div>
-              )}
-            </div>
-
-            {/* Aim textarea */}
-            <div className="aim-input-block">
-              <div className="aim-input-label">Aim of investigation</div>
-              <textarea
-                data-testid="aim-input"
-                className="aim-input"
-                placeholder="e.g. understand drivers of customer churn in Q3 2025"
-                value={aim}
-                rows={2}
-                style={{ resize: "vertical", width: "100%" }}
-                onChange={(e) => {
-                  setAim(e.target.value);
-                  setError(null);
-                }}
-              />
-            </div>
-
-            {/* Error surface */}
-            {error !== null && (
-              <div
-                data-testid="setup-error"
-                style={{
-                  marginTop: 12,
-                  padding: "10px 14px",
-                  background: "var(--rem)",
-                  border: "1px solid var(--rem-line)",
-                  borderRadius: 3,
-                  color: "var(--danger)",
-                  fontSize: "13.8px",
-                }}
-              >
-                {error}
-              </div>
+        <form onSubmit={handleSubmit} noValidate>
+          {/* CSV upload zone */}
+          <div>
+            <label className="block text-sm font-medium text-[#1a1a17]">
+              CSV file
+              <span className="ml-1 text-xs text-[#9b9489] font-normal">(up to 200 MB)</span>
+            </label>
+            <input
+              data-testid="csv-input"
+              type="file"
+              accept=".csv"
+              className="mt-1 block w-full text-sm text-[#5d5a52]"
+              onChange={(e) => {
+                const selected = e.target.files?.[0] ?? null;
+                setFile(selected);
+                setError(null);
+              }}
+            />
+            {file && (
+              <p className="mt-1 text-xs text-[#5d5a52]">
+                Selected: <strong>{file.name}</strong>
+              </p>
             )}
+          </div>
 
-            {/* Submit button */}
-            <div style={{ marginTop: 20 }}>
-              <button
-                data-testid="submit-btn"
-                type="submit"
-                className="btn primary"
-                disabled={!canSubmit}
-              >
-                {submitting ? "Starting..." : "Start analysis"}
-              </button>
+          {/* Aim textarea */}
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-[#1a1a17]">
+              Aim of investigation
+            </label>
+            <textarea
+              data-testid="aim-input"
+              placeholder="e.g. understand drivers of customer churn in Q3 2025"
+              value={aim}
+              rows={2}
+              className="mt-1 w-full border border-[#ddd5c5] rounded-lg p-3 text-sm text-[#1a1a17] resize-none focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
+              onChange={(e) => {
+                setAim(e.target.value);
+                setError(null);
+              }}
+            />
+          </div>
+
+          {/* Error surface */}
+          {error !== null && (
+            <div data-testid="setup-error" className="mt-3 text-sm text-[#a85c4a]">
+              {error}
             </div>
-          </form>
-        </div>
+          )}
+
+          {/* Submit button */}
+          <button
+            data-testid="submit-btn"
+            type="submit"
+            disabled={!canSubmit}
+            className="mt-6 w-full bg-[#b8732a] text-white rounded-lg py-2.5 text-sm font-medium hover:bg-[#a06120] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {submitting ? "Starting..." : "Start analysis"}
+          </button>
+        </form>
       </div>
     </div>
   );

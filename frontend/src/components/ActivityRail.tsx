@@ -129,16 +129,25 @@ export default function ActivityRail() {
   const { items, messageText } = state;
 
   return (
-    <div data-testid="activity-rail" className="rail-section">
+    <div data-testid="activity-rail">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#9b9489] mb-3">
+        Activity
+      </p>
+
+      {items.length === 0 && messageText === "" && (
+        <p className="text-xs text-[#c6bfb0] italic">No activity yet.</p>
+      )}
+
       {items.map((item) => {
         if (item.kind === "tool-running") {
           return (
             <div
               key={item.id}
               data-testid="activity-tool-running"
-              className="activity-item"
+              className="text-sm py-1.5 border-b border-[#e8e1d1] last:border-0"
             >
-              <span className="activity-line running">Running: {item.command}</span>
+              <span className="inline-block w-2 h-2 rounded-full bg-[#b8732a] mr-2 align-middle" />
+              <span className="text-[#b8732a]">Running: {item.command}</span>
             </div>
           );
         }
@@ -148,9 +157,9 @@ export default function ActivityRail() {
             <div
               key={item.id}
               data-testid="activity-tool-done"
-              className="activity-item"
+              className="text-sm py-1.5 border-b border-[#e8e1d1] last:border-0"
             >
-              <span className="activity-line done">
+              <span className="text-[#9b9489]">
                 Done: {item.command} ({item.elapsed_ms}ms)
               </span>
             </div>
@@ -162,15 +171,18 @@ export default function ActivityRail() {
           <div
             key={item.id}
             data-testid="activity-file-written"
-            className="activity-item"
+            className="text-sm py-1.5 border-b border-[#e8e1d1] last:border-0"
           >
-            <span className="activity-line done">Wrote: {item.file}</span>
+            <span className="text-[#4a7a76]">Wrote: {item.file}</span>
           </div>
         );
       })}
 
       {/* Message text area — always rendered; empty string when no message.part events received */}
-      <div data-testid="activity-message" className="activity-detail">
+      <div
+        data-testid="activity-message"
+        className="text-[#1a1a17] text-xs leading-relaxed mt-2"
+      >
         {messageText}
       </div>
     </div>
