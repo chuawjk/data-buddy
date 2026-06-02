@@ -216,3 +216,40 @@ def test_build_profile_prompt_contains_dataset(tmp_path: Path) -> None:
     assert " workspace/data/" not in prompt, (
         f"Prompt must not contain bare relative 'workspace/data/' path.\nPrompt:\n{prompt}"
     )
+
+
+# ---------------------------------------------------------------------------
+# test_profile_schema_has_nullable_target
+# ---------------------------------------------------------------------------
+
+
+def test_profile_schema_has_nullable_target() -> None:
+    """PROFILE_SCHEMA.shape must include a nullable 'target' field (contract §shape)."""
+    shape_props = PROFILE_SCHEMA["properties"]["shape"]["properties"]
+    assert "target" in shape_props, (
+        "shape.target missing from PROFILE_SCHEMA — frontend needs it to display "
+        "'target (inferred)' and the API contract specifies it."
+    )
+    target_type = shape_props["target"].get("type")
+    # Must accept both a string (column name) and null (not inferred).
+    assert target_type == ["string", "null"], (
+        f"shape.target type must be ['string', 'null'], got: {target_type}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# test_build_profile_prompt_instructs_target_inference
+# ---------------------------------------------------------------------------
+
+
+def test_build_profile_prompt_instructs_target_inference(tmp_path: Path) -> None:
+    """Prompt must instruct OpenCode to infer the target column and set null if unclear."""
+    prompt = build_profile_prompt("data.csv", "Predict churn", tmp_path / "workspace")
+    assert "target" in prompt.lower(), (
+        "Prompt must mention 'target' so OpenCode knows to infer it.\n"
+        f"Prompt:\n{prompt}"
+    )
+    assert "null" in prompt.lower(), (
+        "Prompt must instruct OpenCode to set target to null when it cannot be inferred.\n"
+        f"Prompt:\n{prompt}"
+    )

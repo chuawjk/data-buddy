@@ -23,10 +23,11 @@ PROFILE_SCHEMA: dict = {
     "properties": {
         "shape": {
             "type": "object",
-            "required": ["rows", "columns"],
+            "required": ["rows", "columns", "target"],
             "properties": {
                 "rows": {"type": "integer"},
                 "columns": {"type": "integer"},
+                "target": {"type": ["string", "null"]},
             },
         },
         "columns": {
@@ -72,7 +73,9 @@ def build_profile_prompt(dataset: str, aim: str, workspace_root: Path | str) -> 
         f"Analysis aim: {aim}\n\n"
         "Read the file and analyse it. Then write a JSON object to "
         f"{profile_path} describing:\n"
-        "- shape: total rows and columns\n"
+        "- shape: total rows and columns, plus target: the column name most likely "
+        "being predicted or explained given the analysis aim (set to null if it "
+        "cannot be inferred)\n"
         "- columns: for each column, its name, inferred type "
         "(numeric/categorical/datetime/text), notable flags "
         "(nullable, low_cardinality, high_cardinality, skewed, constant, id_like), "
