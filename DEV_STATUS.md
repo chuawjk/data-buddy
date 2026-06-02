@@ -4,14 +4,17 @@
 
 ---
 
-## Current branch: `develop` (not yet initialised)
+## Current branch: `develop`
+
+Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
+- `.github/workflows/ci.yml` — single `ci` job; triggers on push/PR to `main` and `develop`; sets up uv + Python 3.12, Node 22, pnpm; runs `make install` → `make lint` → `make test`. CI will be red until N1-S01 lands the Makefile — expected.
 
 ---
 
 ## Night 1 — Walking skeleton through Profiling
 
 ### Merged to `develop`
-*(none yet)*
+- `chore/ci-workflow` — GitHub Actions CI workflow (pre-sprint infra, PR #2, `69ae52f`)
 
 ### In Dev / In Review / In QA
 *(none yet — awaiting Night 1 kickoff)*
