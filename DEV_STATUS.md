@@ -97,16 +97,21 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - `frontend/src/components/StageViews/ProfileView.test.tsx`: 8 Vitest tests; 44 frontend tests total pass
   - Only `frontend/` touched; CI green on merge
 
+- `feat/n1-s21-test-selectors` — **N1-S21 · Stable test selectors (`data-testid`)** (PR #17, squash `654bd08`)
+  - Audit-only commit: all 17 required `data-testid` attributes were already present from N1-S15, N1-S16, N1-S17; no file changes needed
+  - Confirmed present: `setup-view`, `csv-input`, `aim-input`, `submit-btn`, `setup-error` (SetupView); `profile-view`, `shape-strip`, `column-row`, `reprof-input`, `reprof-submit` (ProfileView); `activity-rail`, `activity-tool-running`, `activity-tool-done`, `activity-file-written`, `activity-message` (ActivityRail); `plan-view` (PlanView); `build-view` (BuildView)
+  - 50 FE + 40 BE tests pass; lint clean; CI green on merge
+  - Self-approve not possible (same account owns PR); merged after all three gates verified green
+
 ### In Dev / In Review / In QA
 
 *(none — all N1 lane stories now merged)*
 
-### Startable set (post N1-S06, N1-S05, N1-S15, N1-S16 merge)
+### Startable set (post N1-S21 merge)
 
-All of N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16 are now on `develop`:
+All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21.
 
 - **N1-S08** (BE) — OpenCode client & SSE normalisation *(fully unblocked: N1-S06 ✅ + N1-S07 ✅)*
-- **N1-S21** (FE) — Stable test selectors *(fully unblocked: N1-S15 ✅ + N1-S16 ✅ + N1-S17 ✅)*
 
 N1-S18 (integration) requires N1-S05 ✅ + N1-S06 ✅ + N1-S08 — still blocked on N1-S08.
 
