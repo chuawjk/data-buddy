@@ -3,6 +3,12 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import App from "./App";
 
+// Mock useSSE so ProfileView (and any component using it) does not try to open
+// a real EventSource in jsdom where EventSource is not defined.
+vi.mock("./hooks/useSSE", () => ({
+  useSSE: () => ({ connected: false }),
+}));
+
 describe("App stage routing", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
