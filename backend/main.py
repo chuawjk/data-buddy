@@ -32,16 +32,16 @@ async def lifespan(app: FastAPI):
     requests and can be injected via FastAPI's dependency system.
 
     Startup order:
-    1. EventBus — in-process pub/sub (no external dependency).
-    2. StateManager — loads state.json from disk (or defaults if absent).
-    3. Orchestrator — minimal stub for the setup→profiling handoff (N1-S05).
+    1. EventBus -- in-process pub/sub (no external dependency).
+    2. StateManager -- loads state.json from disk (or defaults if absent).
+    3. Orchestrator -- minimal stub for the setup->profiling handoff (N1-S05).
        The full state machine (N1-S04) will expand this once N1-S08 is merged.
     """
     # --- startup ---
     app.state.bus = EventBus()
     app.state.state_manager = StateManager()
     # Load persisted state from disk (no-op if workspace/state.json does not
-    # exist yet — returns the default shape and leaves _state at defaults).
+    # exist yet -- returns the default shape and leaves _state at defaults).
     app.state.state_manager.load()
     # Wire up the minimal orchestrator stub (N1-S05).
     app.state.orchestrator = Orchestrator(
@@ -66,7 +66,7 @@ app.include_router(router)
 
 
 # ---------------------------------------------------------------------------
-# Liveness probe — kept directly on the app, independent of business routes.
+# Liveness probe -- kept directly on the app, independent of business routes.
 # ---------------------------------------------------------------------------
 
 
