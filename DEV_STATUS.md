@@ -182,7 +182,13 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - `frontend/src/hooks/useApi.test.ts`: `fd.get("csv")` to match the field rename
   - 132 FE + BE tests pass; lint clean; CI green
 
-### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring resolved. QA structural + live gate passed (all 6 steps). Awaiting morning human review for develop → main promotion.**
+- **Light styling pass** — PR #25, squash `a7c6167` (2026-06-02, CI green)
+  - Pure className additions/replacements across `App.tsx`, `SetupView.tsx`, `ProfileView.tsx`, `ActivityRail.tsx` — warm off-white palette (`#f6f2e9`), amber header, teal type badges, card layout
+  - No logic changes; all 17 required `data-testid` attributes preserved intact; no test files touched
+  - `frontend/src/` only; no backend, no contracts, no test changes
+  - All three review gates passed (scope, data-testid integrity, CI green); self-approve not possible (same account); merged after CI confirmed green
+
+### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring and styling resolved. QA structural + live gate passed (all 6 steps). Awaiting morning human review for develop → main promotion.**
 
 ---
 
