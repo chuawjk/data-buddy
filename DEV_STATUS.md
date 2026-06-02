@@ -36,7 +36,7 @@ Unlocks after N1-S07:
 
 ### Night 1 demo script (morning review)
 1. Fresh clone → `make dev`
-2. Open app → upload `workspace/data/customers_q3.csv` + enter an aim
+2. Open app → upload `data/customers_q3.csv` + enter an aim
 3. Watch profiling activity stream live in the Activity Rail
 4. Confirm Profile view renders (shape strip + per-column rows)
 5. Submit one bottom-bar re-profile → confirm second turn completes or recovers via fresh session
