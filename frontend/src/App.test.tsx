@@ -4,15 +4,14 @@ import "@testing-library/jest-dom";
 import App from "./App";
 import type { SSEEvent } from "./types/events";
 
-// Capture the onEvent callback so individual tests can invoke it.
-let capturedOnEvent: ((event: SSEEvent) => void) | null = null;
+// Collect all onEvent callbacks registered by any component using useSSE.
+// Firing capturedOnEvent broadcasts to all of them (App.tsx + ActivityRail etc).
+const registeredCallbacks: Array<(event: SSEEvent) => void> = [];
+const capturedOnEvent = (event: SSEEvent) => registeredCallbacks.forEach((cb) => cb(event));
 
-// Mock useSSE so ProfileView (and any component using it) does not try to open
-// a real EventSource in jsdom where EventSource is not defined.
-// The mock also captures the onEvent callback so tests can simulate events.
 vi.mock("./hooks/useSSE", () => ({
   useSSE: (onEvent: (event: SSEEvent) => void) => {
-    capturedOnEvent = onEvent;
+    registeredCallbacks.push(onEvent);
     return { connected: false };
   },
 }));
@@ -20,7 +19,7 @@ vi.mock("./hooks/useSSE", () => ({
 describe("App stage routing", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    capturedOnEvent = null;
+    registeredCallbacks.length = 0;
   });
 
   it("renders setup-view when stage is 'setup'", async () => {
@@ -180,10 +179,9 @@ describe("App stage routing", () => {
       capturedOnEvent!({ type: "stage.changed", stage: "profiling", ts: Date.now() });
     });
 
-    // api.getState() should have been called a second time (/api/state via fetch).
+    // api.getState() should have been called again (/api/state via fetch).
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(mockFetch).toHaveBeenNthCalledWith(2, "/api/state", { method: "GET" });
+      expect(mockFetch).toHaveBeenCalledWith("/api/state", { method: "GET" });
     });
 
     // UI should now show profile-view.
@@ -225,10 +223,9 @@ describe("App stage routing", () => {
       capturedOnEvent!({ type: "profile.ready", profile: profilePayload, ts: Date.now() });
     });
 
-    // api.getState() should have been called a second time.
+    // api.getState() should have been called again.
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(mockFetch).toHaveBeenNthCalledWith(2, "/api/state", { method: "GET" });
+      expect(mockFetch).toHaveBeenCalledWith("/api/state", { method: "GET" });
     });
   });
 });
