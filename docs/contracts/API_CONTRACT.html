@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Co-work brief — API contract</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #f6f2e9; --bg-2: #efe9dc; --panel: #ffffff;
+    --border: #ddd5c5; --border-2: #e8e1d1;
+    --ink: #1a1a17; --ink-2: #5d5a52; --ink-3: #9b9489; --ink-4: #c6bfb0;
+    --accent: #b8732a;
+    --purple: #534AB7; --purple-lt: #EEEDFE;
+    --teal: #0F6E56; --teal-lt: #E1F5EE;
+    --coral: #993C1D; --coral-lt: #FAECE7;
+    --green: #3B6D11; --green-lt: #EAF3DE;
+    --red: #A32D2D; --red-lt: #FCEBEB;
+    --gray: #5F5E5A; --gray-lt: #F1EFE8;
+    --shadow: 0 1px 3px rgba(26,26,23,0.06), 0 8px 28px -12px rgba(26,26,23,0.14);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: var(--bg); color: var(--ink); font-family: 'Hanken Grotesk', sans-serif; font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  body { max-width: 980px; margin: 0 auto; padding: 56px 32px 96px; }
+  code { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; background: var(--bg-2); padding: 1px 5px; border-radius: 2px; }
+
+  .doc-header { border-bottom: 1px solid var(--border); padding-bottom: 28px; margin-bottom: 48px; }
+  .doc-eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 10px; }
+  .doc-title { font-family: 'Fraunces', serif; font-weight: 350; font-size: 38px; line-height: 1.1; letter-spacing: -0.015em; }
+  .doc-title em { font-style: italic; color: var(--accent); }
+  .doc-meta { display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap; }
+  .doc-meta-item { font-size: 13px; color: var(--ink-3); }
+  .doc-meta-item strong { color: var(--ink-2); font-weight: 500; }
+
+  .section-sep { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+  .section-tag { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; color: var(--accent); margin-bottom: 10px; display: block; }
+  h2 { font-family: 'Fraunces', serif; font-weight: 400; font-size: 26px; letter-spacing: -0.01em; margin-bottom: 8px; }
+  h3 { font-family: 'Fraunces', serif; font-weight: 400; font-size: 19px; letter-spacing: -0.01em; margin: 32px 0 12px; }
+  .section-desc { color: var(--ink-2); font-size: 14px; max-width: 680px; line-height: 1.65; margin-bottom: 24px; }
+
+  /* Endpoint card */
+  .endpoint { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow); margin-bottom: 20px; overflow: hidden; }
+  .endpoint-head { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid var(--border-2); background: var(--bg-2); }
+  .method { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; padding: 3px 8px; border-radius: 3px; letter-spacing: 0.04em; }
+  .method-get    { background: var(--teal-lt);   color: var(--teal); }
+  .method-post   { background: var(--purple-lt); color: var(--purple); }
+  .method-sse    { background: var(--coral-lt);  color: var(--coral); }
+  .endpoint-path { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--ink); font-weight: 500; }
+  .endpoint-title { font-size: 13px; color: var(--ink-3); margin-left: auto; }
+  .endpoint-body { padding: 18px 20px; }
+  .endpoint-desc { font-size: 14px; color: var(--ink-2); margin-bottom: 16px; line-height: 1.6; }
+
+  /* Field table */
+  .field-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
+  .field-table th { text-align: left; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding: 0 10px 8px; border-bottom: 1px solid var(--border); }
+  .field-table td { padding: 9px 10px; border-bottom: 1px solid var(--border-2); vertical-align: top; line-height: 1.5; }
+  .field-table tr:last-child td { border-bottom: none; }
+  .field-name { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--ink); }
+  .field-type { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--ink-3); }
+  .field-req { font-size: 11px; font-weight: 600; padding: 1px 5px; border-radius: 2px; }
+  .req-yes { background: var(--coral-lt); color: var(--coral); }
+  .req-no  { background: var(--gray-lt);  color: var(--gray); }
+
+  /* JSON block */
+  .json-block { background: #1a1a17; color: #e8e1d1; border-radius: 4px; padding: 14px 16px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.7; overflow-x: auto; margin: 12px 0; }
+  .json-block .key { color: #9FE1CB; }
+  .json-block .str { color: #a9c8b1; }
+  .json-block .num { color: #c8a4d4; }
+  .json-block .bool { color: #EF9F27; }
+  .json-block .cmt { color: #767264; font-style: italic; }
+
+  /* Status pill */
+  .status { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 2px; letter-spacing: 0.04em; }
+  .s-200 { background: var(--green-lt); color: var(--green); }
+  .s-204 { background: var(--teal-lt);  color: var(--teal); }
+  .s-400 { background: var(--red-lt);   color: var(--red); }
+
+  /* SSE event card */
+  .event-card { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--coral); border-radius: 4px; margin-bottom: 16px; overflow: hidden; }
+  .event-head { padding: 10px 16px; background: var(--bg-2); border-bottom: 1px solid var(--border-2); display: flex; align-items: center; gap: 12px; }
+  .event-type { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; color: var(--coral); }
+  .event-desc { font-size: 13px; color: var(--ink-3); }
+  .event-body { padding: 14px 16px; }
+  .event-source { font-size: 12px; color: var(--ink-4); margin-bottom: 8px; }
+  .routing-note { font-size: 13px; color: var(--ink-2); margin-top: 10px; padding: 8px 12px; background: var(--bg-2); border-radius: 3px; border-left: 2px solid var(--border); }
+
+  /* GET /state schema block */
+  .state-block { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 20px; margin-bottom: 20px; }
+
+  @media (max-width: 640px) {
+    body { padding: 32px 16px 64px; }
+    .doc-title { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="doc-header">
+  <div class="doc-eyebrow">Co-work brief · API contract</div>
+  <h1 class="doc-title">Backend API — <em>contract document</em></h1>
+  <p style="color:var(--ink-2);font-size:14px;max-width:640px;margin-top:10px;line-height:1.65;">
+    All REST endpoints exposed by the backend service, the SSE event catalogue emitted to the frontend, and the <code>GET /state</code> response schema. This is the integration contract between the backend and React SPA.
+  </p>
+  <div class="doc-meta">
+    <div class="doc-meta-item"><strong>Status</strong> · Draft</div>
+    <div class="doc-meta-item"><strong>Last updated</strong> · 30 May 2026</div>
+    <div class="doc-meta-item"><strong>Base URL</strong> · <code>http://localhost:8000</code></div>
+    <div class="doc-meta-item"><strong>Auth</strong> · None (local prototype)</div>
+  </div>
+</header>
+
+
+<!-- ═══ SECTION 1: REST ENDPOINTS ═══ -->
+
+<section>
+  <span class="section-tag">Section 1</span>
+  <h2>REST endpoints</h2>
+  <p class="section-desc">All endpoints are synchronous and return JSON. Agent-driven operations fire a prompt to OpenCode and return immediately — progress arrives via the SSE stream. Backend-only operations complete in the response body.</p>
+
+  <!-- GET /state -->
+  <div class="endpoint">
+    <div class="endpoint-head">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/state</span>
+      <span class="endpoint-title">Hydrate full UI state on page load</span>
+    </div>
+    <div class="endpoint-body">
+      <p class="endpoint-desc">Returns the complete current state of the brief. Called once on page load (and on page refresh). The SPA renders from this response; no further reads needed until the next page load. See Section 3 for the full response schema.</p>
+      <p style="font-size:13px;color:var(--ink-3);">Request body: none &nbsp;·&nbsp; <span class="status s-200">200 OK</span> → full state object</p>
+    </div>
+  </div>
+
+  <!-- POST /setup -->
+  <div class="endpoint">
+    <div class="endpoint-head">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/setup</span>
+      <span class="endpoint-title">Upload dataset and aim · start brief</span>
+    </div>
+    <div class="endpoint-body">
+      <p class="endpoint-desc">Accepts the CSV file and the user's stated aim. Initialises <code>state.json</code>, creates the OpenCode session, and fires the profiling prompt. Progress arrives via SSE.</p>
+      <table class="field-table">
+        <thead><tr><th style="width:22%">Field</th><th style="width:16%">Type</th><th style="width:12%">Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="field-name">file</td><td class="field-type">multipart/form-data</td><td><span class="field-req req-yes">yes</span></td><td>CSV file. Saved to <code>data/&lt;filename&gt;.csv</code> in the workspace.</td></tr>
+          <tr><td class="field-name">aim</td><td class="field-type">string</td><td><span class="field-req req-yes">yes</span></td><td>User's stated aim of investigation. Stored in <code>state.json</code> and included in every subsequent prompt.</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:13px;color:var(--ink-3);"><span class="status s-200">200 OK</span> → <code>{ "ok": true, "session_id": "ses_..." }</code></p>
+    </div>
+  </div>
+
+  <!-- POST /turn -->
+  <div class="endpoint">
+    <div class="endpoint-head">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/turn</span>
+      <span class="endpoint-title">Bottom-bar free-form input</span>
+    </div>
+    <div class="endpoint-body">
+      <p class="endpoint-desc">Routes bottom-bar text to the agent. Context-aware: the orchestrator wraps the text in stage-appropriate framing before sending to OpenCode. Used in all stages where the bottom bar is active (profiling feedback, plan revision, section redirect).</p>
+      <table class="field-table">
+        <thead><tr><th style="width:22%">Field</th><th style="width:16%">Type</th><th style="width:12%">Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="field-name">text</td><td class="field-type">string</td><td><span class="field-req req-yes">yes</span></td><td>The user's raw bottom-bar input.</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:13px;color:var(--ink-3);"><span class="status s-204">204 No Content</span> · progress via SSE</p>
+    </div>
+  </div>
+
+  <!-- POST /plan/accept -->
+  <div class="endpoint">
+    <div class="endpoint-head">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/plan/accept</span>
+      <span class="endpoint-title">Accept plan · begin section build</span>
+    </div>
+    <div class="endpoint-body">
+      <p class="endpoint-desc">Backend-only. Transitions <code>state.stage</code> to <code>"building"</code>, writes updated <code>state.json</code>, and fires the first section's build prompt. Returns immediately; section build progress via SSE.</p>
+      <p style="font-size:13px;color:var(--ink-3);">Request body: none &nbsp;·&nbsp; <span class="status s-204">204 No Content</span></p>
+    </div>
+  </div>
+
+  <!-- POST /plan/update -->
+  <div class="endpoint">
+    <div class="endpoint-head">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/plan/update</span>
+      <span class="endpoint-title">Inline plan edit (backend-only)</span>
+    </div>
+    <div class="endpoint-body">
+      <p class="endpoint-desc">Backend-only. Accepts a full replacement plan array from the SPA (used for inline edits, reorder, drop, add). Writes directly to <code>plan.json</code> and <code>state.json</code>. No OpenCode involvement.</p>
+      <table class="field-table">
+        <thead><tr><th style="width:22%">Field</th><th style="width:16%">Type</th><th style="width:12%">Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="field-name">sections</td><td class="field-type">array</td><td><span class="field-req req-yes">yes</span></td><td>Full replacement plan array. Each item: <code>{ id, title, hypothesis, status }</code>. Status must be <code>"queued"</code> for all items at plan stage.</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:13px;color:var(--ink-3);"><span class="status s-200">200 OK</span> → <code>{ "ok": true }</code></p>
+    </div>
+  </div>
+
+  <!-- POST /section/:id/accept -->
+  <div class="endpoint">
+    <div class="endpoint-head">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/section/:id/accept</span>
+      <span class="endpoint-title">Accept proposed section · trigger next</span>
+    </div>
+    <div class="endpoint-body">
+      <p class="endpoint-desc">Backend-only for the state update; triggers an agent turn for the next section. Flips the section's <code>status</code> from <code>"proposed"</code> to <code>"accepted"</code> in <code>state.json</code>. If more sections remain, immediately fires the next section's build prompt via OpenCode. If this was the last section, transitions <code>state.stage</code> to <code>"done"</code>.</p>
+      <p style="font-size:13px;color:var(--ink-3);">Path param: <code>id</code> — section ID, e.g. <code>sec_02</code> &nbsp;·&nbsp; <span class="status s-204">204 No Content</span></p>
+    </div>
+  </div>
+
+  <!-- POST /section/:id/drop -->
+  <div class="endpoint">
+    <div class="endpoint-head">
+      <span class="method method-post">POST</span>
+      <span class="endpoint-path">/section/:id/drop</span>
+      <span class="endpoint-title">Drop proposed section · trigger next</span>
+    </div>
+    <div class="endpoint-body">
+      <p class="endpoint-desc">Backend-only. Deletes the section's three workspace files (<code>analyses/</code>, <code>charts/</code>, <code>sections/</code>), removes the section from the plan array in <code>state.json</code>, and fires the next section's build prompt. If no sections remain, transitions to <code>"done"</code>.</p>
+      <p style="font-size:13px;color:var(--ink-3);">Path param: <code>id</code> — section ID &nbsp;·&nbsp; <span class="status s-204">204 No Content</span></p>
+    </div>
+  </div>
+
+  <!-- GET /file -->
+  <div class="endpoint">
+    <div class="endpoint-head">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/file</span>
+      <span class="endpoint-title">Serve workspace file (code / chart)</span>
+    </div>
+    <div class="endpoint-body">
+      <p class="endpoint-desc">Serves a file from the workspace directory. Used by the SPA to load chart PNGs and analysis scripts for display in the section pane. Restricted to the workspace directory; path traversal rejected.</p>
+      <table class="field-table">
+        <thead><tr><th style="width:22%">Param</th><th style="width:16%">Type</th><th style="width:12%">Required</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="field-name">path</td><td class="field-type">query string</td><td><span class="field-req req-yes">yes</span></td><td>Relative path within the workspace, e.g. <code>charts/sec_02_churn_by_tier.png</code>. Must not contain <code>..</code>.</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:13px;color:var(--ink-3);"><span class="status s-200">200 OK</span> → file bytes with correct <code>Content-Type</code></p>
+    </div>
+  </div>
+
+  <!-- GET /export -->
+  <div class="endpoint">
+    <div class="endpoint-head">
+      <span class="method method-get">GET</span>
+      <span class="endpoint-path">/export</span>
+      <span class="endpoint-title">Export brief as Markdown</span>
+    </div>
+    <div class="endpoint-body">
+      <p class="endpoint-desc">Backend-only. Concatenates all accepted section files from <code>sections/</code> in plan order into a single Markdown document with a title block. Returns as a file download. Available from Stage 4 onward.</p>
+      <p style="font-size:13px;color:var(--ink-3);"><span class="status s-200">200 OK</span> → <code>Content-Disposition: attachment; filename="brief.md"</code></p>
+    </div>
+  </div>
+
+</section>
+
+<hr class="section-sep"/>
+
+
+<!-- ═══ SECTION 2: SSE EVENT CATALOGUE ═══ -->
+
+<section>
+  <span class="section-tag">Section 2</span>
+  <h2>SSE event catalogue</h2>
+  <p class="section-desc">
+    The backend emits a single SSE stream at <code>GET /events</code>. These are <em>backend-enriched</em> events — derived from OpenCode's raw event stream but normalised, filtered to the current session, and augmented with stage context. The SPA subscribes once on mount and never reconnects unless the connection drops.
+  </p>
+  <p class="section-desc" style="margin-top:-12px;">
+    Wire format: standard SSE. Each event: <code>event: &lt;type&gt;\ndata: &lt;json&gt;\n\n</code>.
+  </p>
+
+  <h3>Activity events</h3>
+  <p style="font-size:14px;color:var(--ink-2);margin-bottom:16px;">Rendered in the right-rail activity stream. Derived from OpenCode's <code>message.part.updated</code> tool events.</p>
+
+  <!-- tool.file_written -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">tool.file_written</span>
+      <span class="event-desc">Agent wrote a file via apply_patch</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: OpenCode <code>message.part.updated</code> where <code>part.tool === "apply_patch"</code> and <code>part.state.status === "completed"</code></p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"tool.file_written"</span>,
+  <span class="key">"file"</span>: <span class="str">"analyses/sec_02_churn_by_tier.py"</span>,   <span class="cmt">// relativePath from metadata.files[0]</span>
+  <span class="key">"op"</span>: <span class="str">"add"</span>,                                        <span class="cmt">// "add" | "modify" | "delete"</span>
+  <span class="key">"additions"</span>: <span class="num">42</span>,
+  <span class="key">"deletions"</span>: <span class="num">0</span>,
+  <span class="key">"elapsed_ms"</span>: <span class="num">5</span>,                                    <span class="cmt">// state.time.end - state.time.start</span>
+  <span class="key">"ts"</span>: <span class="num">1779784985520</span>
+}
+      </div>
+      <p class="routing-note">Activity rail: "Wrote <code>analyses/sec_02_churn_by_tier.py</code>" with additions count. If the file is a <code>.py</code>, section pane updates the code display.</p>
+    </div>
+  </div>
+
+  <!-- tool.bash_running -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">tool.bash_running</span>
+      <span class="event-desc">Agent started a bash command</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: OpenCode <code>message.part.updated</code> where <code>part.tool === "bash"</code> and <code>part.state.status === "running"</code></p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"tool.bash_running"</span>,
+  <span class="key">"command"</span>: <span class="str">"python analyses/sec_02_churn_by_tier.py"</span>,  <span class="cmt">// state.input.command</span>
+  <span class="key">"description"</span>: <span class="str">"Run churn by tier analysis"</span>,             <span class="cmt">// state.input.description</span>
+  <span class="key">"started_at"</span>: <span class="num">1779784977098</span>,
+  <span class="key">"ts"</span>: <span class="num">1779784977098</span>
+}
+      </div>
+      <p class="routing-note">Activity rail: "Running <code>sec_02_churn_by_tier.py</code>" with a live elapsed timer (frontend starts counting from <code>started_at</code>).</p>
+    </div>
+  </div>
+
+  <!-- tool.bash_done -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">tool.bash_done</span>
+      <span class="event-desc">Bash command completed</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: OpenCode <code>message.part.updated</code> where <code>part.tool === "bash"</code> and <code>part.state.status === "completed"</code></p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"tool.bash_done"</span>,
+  <span class="key">"command"</span>: <span class="str">"python analyses/sec_02_churn_by_tier.py"</span>,
+  <span class="key">"exit_code"</span>: <span class="num">0</span>,
+  <span class="key">"elapsed_ms"</span>: <span class="num">1203</span>,
+  <span class="key">"ts"</span>: <span class="num">1779784978301</span>
+}
+      </div>
+      <p class="routing-note">Activity rail: marks running item as done with elapsed time. Non-zero <code>exit_code</code> renders as an error line (red !) but does not surface a failure banner — agent may self-recover.</p>
+    </div>
+  </div>
+
+  <h3>Section lifecycle events</h3>
+  <p style="font-size:14px;color:var(--ink-2);margin-bottom:16px;">Drive section pane state and Accept/Drop button visibility.</p>
+
+  <!-- section.building -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">section.building</span>
+      <span class="event-desc">Backend started building a section</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: Backend-generated (emitted immediately after firing the section build prompt to OpenCode)</p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"section.building"</span>,
+  <span class="key">"section_id"</span>: <span class="str">"sec_02"</span>,
+  <span class="key">"title"</span>: <span class="str">"Churn by plan tier"</span>,
+  <span class="key">"ts"</span>: <span class="num">1779784970000</span>
+}
+      </div>
+      <p class="routing-note">Stage view: advances section status indicator in left rail to "building". Section pane: clears previous content, shows spinner.</p>
+    </div>
+  </div>
+
+  <!-- section.proposed -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">section.proposed</span>
+      <span class="event-desc">Section complete · awaiting user review</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: Backend-generated on <code>session.idle</code> after verifying all three workspace files exist for the section</p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"section.proposed"</span>,
+  <span class="key">"section_id"</span>: <span class="str">"sec_02"</span>,
+  <span class="key">"py_path"</span>: <span class="str">"analyses/sec_02_churn_by_tier.py"</span>,
+  <span class="key">"png_path"</span>: <span class="str">"charts/sec_02_churn_by_tier.png"</span>,
+  <span class="key">"md_path"</span>: <span class="str">"sections/sec_02_churn_by_tier.md"</span>,
+  <span class="key">"ts"</span>: <span class="num">1779784990000</span>
+}
+      </div>
+      <p class="routing-note">Section pane: surfaces Accept / Drop buttons. Activity rail: appends "Section ready for review" marker. SPA loads files via <code>GET /file?path=...</code>.</p>
+    </div>
+  </div>
+
+  <!-- section.failed -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">section.failed</span>
+      <span class="event-desc">Section build failed · retry available</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: Backend-generated on <code>session.idle</code> when expected workspace files are absent, or on watchdog timeout after abort</p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"section.failed"</span>,
+  <span class="key">"section_id"</span>: <span class="str">"sec_02"</span>,
+  <span class="key">"reason"</span>: <span class="str">"timeout"</span>,   <span class="cmt">// "timeout" | "output_error" | "missing_files"</span>
+  <span class="key">"ts"</span>: <span class="num">1779784995000</span>
+}
+      </div>
+      <p class="routing-note">Section pane: surfaces retry banner — "The agent couldn't complete this section." Buttons: Retry (re-fires section prompt), Drop (removes from plan, advances).</p>
+    </div>
+  </div>
+
+  <h3>Stage transition events</h3>
+  <p style="font-size:14px;color:var(--ink-2);margin-bottom:16px;">Drive top-level stage view switching in the SPA.</p>
+
+  <!-- stage.changed -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">stage.changed</span>
+      <span class="event-desc">Orchestrator moved to a new stage</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: Backend-generated on every <code>state.stage</code> write</p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"stage.changed"</span>,
+  <span class="key">"stage"</span>: <span class="str">"building"</span>,   <span class="cmt">// "profiling" | "planning" | "building" | "done"</span>
+  <span class="key">"ts"</span>: <span class="num">1779784970000</span>
+}
+      </div>
+      <p class="routing-note">Stage view: switches rendered view. SPA does NOT call <code>GET /state</code> again — it trusts the event and updates the stage indicator only. Full hydration only on page load.</p>
+    </div>
+  </div>
+
+  <!-- profile.ready -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">profile.ready</span>
+      <span class="event-desc">Profile structured output parsed and written</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: Backend-generated after parsing the profiling turn's structured output and writing <code>profile.json</code></p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"profile.ready"</span>,
+  <span class="key">"profile"</span>: { <span class="cmt">/* full profile object — see state schema §3 */</span> },
+  <span class="key">"ts"</span>: <span class="num">1779784960000</span>
+}
+      </div>
+      <p class="routing-note">Profile view: renders shape strip and column rows directly from this payload. No additional fetch needed.</p>
+    </div>
+  </div>
+
+  <!-- plan.ready -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">plan.ready</span>
+      <span class="event-desc">Plan structured output parsed and written</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: Backend-generated after parsing the planning turn's structured output and writing <code>plan.json</code></p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"plan.ready"</span>,
+  <span class="key">"sections"</span>: [
+    { <span class="key">"id"</span>: <span class="str">"sec_01"</span>, <span class="key">"title"</span>: <span class="str">"Cohort overview"</span>, <span class="key">"hypothesis"</span>: <span class="str">"..."</span>, <span class="key">"status"</span>: <span class="str">"queued"</span> },
+    <span class="cmt">// …</span>
+  ],
+  <span class="key">"ts"</span>: <span class="num">1779784965000</span>
+}
+      </div>
+      <p class="routing-note">Plan view: renders editable section list directly from this payload.</p>
+    </div>
+  </div>
+
+  <h3>Error and liveness events</h3>
+
+  <!-- turn.error -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">turn.error</span>
+      <span class="event-desc">Agent turn failed · retry banner</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: Backend-generated on structured output failure, watchdog timeout, or provider error</p>
+      <div class="json-block">
+{
+  <span class="key">"type"</span>: <span class="str">"turn.error"</span>,
+  <span class="key">"stage"</span>: <span class="str">"profiling"</span>,    <span class="cmt">// which stage failed</span>
+  <span class="key">"reason"</span>: <span class="str">"structured_output_failed"</span>,  <span class="cmt">// "structured_output_failed" | "timeout" | "provider_error"</span>
+  <span class="key">"ts"</span>: <span class="num">1779784970000</span>
+}
+      </div>
+      <p class="routing-note">Stage view: surfaces inline retry banner "Couldn't complete this step — retry." Retry button calls <code>POST /turn</code> with an empty body (re-fires the last prompt).</p>
+    </div>
+  </div>
+
+  <!-- heartbeat -->
+  <div class="event-card">
+    <div class="event-head">
+      <span class="event-type">heartbeat</span>
+      <span class="event-desc">Keep-alive · connection healthy</span>
+    </div>
+    <div class="event-body">
+      <p class="event-source">Source: Backend-generated every 15s, proxied from OpenCode's <code>server.heartbeat</code></p>
+      <div class="json-block">
+{ <span class="key">"type"</span>: <span class="str">"heartbeat"</span>, <span class="key">"ts"</span>: <span class="num">1779784980000</span> }
+      </div>
+      <p class="routing-note">SPA: resets its own connection-health timer. If no heartbeat for 30s, display reconnecting indicator and call <code>EventSource.close(); new EventSource('/events')</code>.</p>
+    </div>
+  </div>
+
+</section>
+
+<hr class="section-sep"/>
+
+
+<!-- ═══ SECTION 3: GET /state RESPONSE SCHEMA ═══ -->
+
+<section>
+  <span class="section-tag">Section 3</span>
+  <h2>GET /state — full response schema</h2>
+  <p class="section-desc">Complete structure of the <code>GET /state</code> response. Mirrors <code>state.json</code> exactly, minus the internal <code>opencode_session_id</code> field (not exposed to the SPA).</p>
+
+  <div class="state-block">
+    <div class="json-block">
+{
+  <span class="key">"version"</span>: <span class="str">"1"</span>,
+  <span class="key">"stage"</span>: <span class="str">"building"</span>,            <span class="cmt">// "setup"|"profiling"|"planning"|"building"|"done"</span>
+  <span class="key">"aim"</span>: <span class="str">"Understand drivers of customer churn in Q3 2025"</span>,
+  <span class="key">"dataset_path"</span>: <span class="str">"data/customers_q3.csv"</span>,
+  <span class="key">"last_saved"</span>: <span class="str">"2026-05-30T11:08:42Z"</span>,
+
+  <span class="key">"profile"</span>: {
+    <span class="key">"shape"</span>: {
+      <span class="key">"rows"</span>: <span class="num">12450</span>,
+      <span class="key">"columns"</span>: <span class="num">9</span>,
+      <span class="key">"nulls_pct"</span>: <span class="num">0.2</span>,
+      <span class="key">"target"</span>: <span class="str">"churned"</span>         <span class="cmt">// null if not inferred</span>
+    },
+    <span class="key">"columns"</span>: [
+      {
+        <span class="key">"name"</span>: <span class="str">"plan_tier"</span>,
+        <span class="key">"type"</span>: <span class="str">"cat"</span>,              <span class="cmt">// "str"|"int"|"num"|"cat"|"date"|"bool"</span>
+        <span class="key">"summary"</span>: <span class="str">"basic 58% · pro 31% · enterprise 11%"</span>,
+        <span class="key">"nulls_pct"</span>: <span class="num">0.0</span>,
+        <span class="key">"flags"</span>: []
+      }
+      <span class="cmt">// … one entry per column</span>
+    ],
+    <span class="key">"flags"</span>: []                    <span class="cmt">// dataset-level concerns</span>
+  },                                  <span class="cmt">// null until profiling complete</span>
+
+  <span class="key">"plan"</span>: [
+    {
+      <span class="key">"id"</span>: <span class="str">"sec_01"</span>,
+      <span class="key">"title"</span>: <span class="str">"Cohort overview &amp; churn baseline"</span>,
+      <span class="key">"hypothesis"</span>: <span class="str">"Establish the Q3 churn rate and frame the brief."</span>,
+      <span class="key">"status"</span>: <span class="str">"accepted"</span>,     <span class="cmt">// "queued"|"building"|"proposed"|"accepted"|"dropped"|"failed"</span>
+      <span class="key">"py_path"</span>: <span class="str">"analyses/sec_01_cohort_overview.py"</span>,   <span class="cmt">// null until built</span>
+      <span class="key">"png_path"</span>: <span class="str">"charts/sec_01_cohort_overview.png"</span>,
+      <span class="key">"md_path"</span>: <span class="str">"sections/sec_01_cohort_overview.md"</span>
+    }
+    <span class="cmt">// … one entry per plan section</span>
+  ]                                   <span class="cmt">// [] until planning complete</span>
+}
+    </div>
+  </div>
+
+  <p style="font-size:14px;color:var(--ink-2);margin-top:12px;line-height:1.65;">The SPA should treat <code>profile: null</code> and <code>plan: []</code> as valid states — both occur during early stages. The <code>stage</code> field is the primary switch for which view to render.</p>
+</section>
+
+<hr class="section-sep"/>
+
+
+<!-- ═══ SECTION 4: ERROR RESPONSES ═══ -->
+
+<section>
+  <span class="section-tag">Section 4</span>
+  <h2>Error responses</h2>
+  <p class="section-desc">All error responses share a consistent envelope.</p>
+
+  <div class="state-block">
+    <div class="json-block">
+{
+  <span class="key">"error"</span>: <span class="str">"section_not_found"</span>,    <span class="cmt">// machine-readable code</span>
+  <span class="key">"message"</span>: <span class="str">"No section with id sec_99 exists in the current plan."</span>
+}
+    </div>
+  </div>
+
+  <table class="field-table" style="margin-top:20px;">
+    <thead><tr><th style="width:16%">Status</th><th style="width:30%">Error code</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td><span class="status s-400">400</span></td><td><code>invalid_stage</code></td><td>Action is not valid for the current stage (e.g. <code>/section/:id/accept</code> called during <code>planning</code>).</td></tr>
+      <tr><td><span class="status s-400">400</span></td><td><code>section_not_found</code></td><td>Section ID does not exist in the current plan.</td></tr>
+      <tr><td><span class="status s-400">400</span></td><td><code>section_not_proposed</code></td><td>Accept or drop called on a section that is not in <code>proposed</code> status.</td></tr>
+      <tr><td><span class="status s-400">400</span></td><td><code>turn_busy</code></td><td>A <code>/turn</code> request arrived while another agent turn is in flight. SPA should disable the bottom bar while <code>session.idle</code> is pending.</td></tr>
+      <tr><td><span class="status s-400">400</span></td><td><code>missing_file</code></td><td>File requested via <code>GET /file</code> does not exist in the workspace.</td></tr>
+      <tr><td><span class="status s-400">400</span></td><td><code>path_traversal</code></td><td>File path in <code>GET /file</code> contains <code>..</code> or escapes the workspace root.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</body>
+</html>

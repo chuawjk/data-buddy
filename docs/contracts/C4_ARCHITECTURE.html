@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Data Buddy — C4 Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:       #f6f2e9;
+    --bg-2:     #efe9dc;
+    --panel:    #ffffff;
+    --border:   #ddd5c5;
+    --ink:      #1a1a17;
+    --ink-2:    #5d5a52;
+    --ink-3:    #9b9489;
+    --ink-4:    #c6bfb0;
+    --accent:   #b8732a;
+    --purple:   #534AB7;
+    --purple-lt:#EEEDFE;
+    --purple-md:#AFA9EC;
+    --teal:     #0F6E56;
+    --teal-lt:  #E1F5EE;
+    --coral:    #993C1D;
+    --coral-lt: #FAECE7;
+    --coral-md: #F0997B;
+    --amber:    #BA7517;
+    --amber-lt: #FAEEDA;
+    --amber-md: #EF9F27;
+    --gray:     #5F5E5A;
+    --gray-lt:  #F1EFE8;
+    --gray-md:  #B4B2A9;
+    --shadow:   0 1px 3px rgba(26,26,23,0.06), 0 8px 28px -12px rgba(26,26,23,0.14);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: var(--bg); color: var(--ink); font-family: 'Hanken Grotesk', sans-serif; font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  body { max-width: 960px; margin: 0 auto; padding: 56px 32px 96px; }
+
+  /* Header */
+  .doc-header { border-bottom: 1px solid var(--border); padding-bottom: 28px; margin-bottom: 48px; }
+  .doc-eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 10px; }
+  .doc-title { font-family: 'Fraunces', serif; font-weight: 350; font-size: 38px; line-height: 1.1; letter-spacing: -0.015em; margin-bottom: 12px; }
+  .doc-title em { font-style: italic; color: var(--accent); }
+  .doc-meta { display: flex; gap: 24px; margin-top: 16px; }
+  .doc-meta-item { font-size: 13px; color: var(--ink-3); }
+  .doc-meta-item strong { color: var(--ink-2); font-weight: 500; }
+
+  /* Section headings */
+  .level-heading { margin-bottom: 6px; }
+  .level-tag { display: inline-block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; color: var(--accent); margin-bottom: 10px; }
+  h2 { font-family: 'Fraunces', serif; font-weight: 400; font-size: 26px; letter-spacing: -0.01em; margin-bottom: 8px; }
+  .level-desc { color: var(--ink-2); font-size: 14px; max-width: 680px; line-height: 1.65; margin-bottom: 28px; }
+
+  /* Diagram card */
+  .diagram-card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow); padding: 32px 28px; margin-bottom: 20px; }
+  .diagram-card svg { display: block; width: 100%; }
+
+  /* Key table */
+  .key { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 32px; }
+  .key-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+  .key-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+  .ks-purple { background: var(--purple-lt); border: 1.5px solid var(--purple); }
+  .ks-teal   { background: var(--teal-lt);   border: 1.5px solid var(--teal); }
+  .ks-coral  { background: var(--coral-lt);  border: 1.5px solid var(--coral); }
+  .ks-amber  { background: var(--amber-lt);  border: 1.5px dashed var(--amber); }
+  .ks-gray   { background: var(--gray-lt);   border: 1.5px solid var(--gray-md); }
+
+  /* Containers table */
+  .containers-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-bottom: 48px; }
+  .containers-table th { text-align: left; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding: 0 12px 10px; border-bottom: 1px solid var(--border); }
+  .containers-table td { padding: 12px; border-bottom: 1px solid #ede8de; vertical-align: top; line-height: 1.5; }
+  .containers-table tr:last-child td { border-bottom: none; }
+  .ct-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 2px; letter-spacing: 0.04em; white-space: nowrap; }
+  .ct-system  { background: var(--purple-lt); color: var(--purple); }
+  .ct-external{ background: var(--amber-lt);  color: var(--amber); }
+  .ct-infra   { background: var(--gray-lt);   color: var(--gray); }
+  .ct-name { font-weight: 600; color: var(--ink); display: block; margin-bottom: 2px; }
+  .ct-tech { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-3); }
+
+  /* Flows table */
+  .flows-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-bottom: 48px; }
+  .flows-table th { text-align: left; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding: 0 12px 10px; border-bottom: 1px solid var(--border); }
+  .flows-table td { padding: 10px 12px; border-bottom: 1px solid #ede8de; vertical-align: top; line-height: 1.5; }
+  .flows-table tr:last-child td { border-bottom: none; }
+  .flow-proto { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--bg-2, #efe9dc); color: var(--ink-2); padding: 1px 6px; border-radius: 2px; white-space: nowrap; }
+
+  /* Separator -->*/
+  .section-sep { border: none; border-top: 1px solid var(--border); margin: 52px 0; }
+
+  /* Next steps note */
+  .next-note { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 16px 20px; border-radius: 3px; font-size: 14px; color: var(--ink-2); line-height: 1.65; }
+  .next-note strong { color: var(--ink); font-weight: 600; }
+  .next-note ul { margin: 8px 0 0 18px; }
+  .next-note li { margin-bottom: 4px; }
+
+  /* SVG text classes (mirrors the visualizer system) */
+  svg text.t  { font-family: 'Hanken Grotesk', sans-serif; font-size: 14px; font-weight: 400; fill: var(--ink); }
+  svg text.ts { font-family: 'Hanken Grotesk', sans-serif; font-size: 12px; font-weight: 400; fill: var(--ink-2); }
+  svg text.th { font-family: 'Hanken Grotesk', sans-serif; font-size: 14px; font-weight: 500; fill: var(--ink); }
+  svg .arr    { stroke: var(--ink-3); stroke-width: 1.5; fill: none; }
+  svg .leader { stroke: var(--ink-4); stroke-width: 0.5; stroke-dasharray: 4 3; fill: none; }
+  svg .box    { fill: var(--bg-2); stroke: var(--border); }
+
+  /* Color ramps for SVG nodes */
+  svg .c-purple rect, svg .c-purple circle, svg .c-purple ellipse { fill: var(--purple-lt); stroke: var(--purple); }
+  svg .c-purple text.th { fill: #3C3489; }
+  svg .c-purple text.ts { fill: #534AB7; }
+  svg .c-teal rect, svg .c-teal circle, svg .c-teal ellipse { fill: var(--teal-lt); stroke: var(--teal); }
+  svg .c-teal text.th { fill: #085041; }
+  svg .c-teal text.ts { fill: #0F6E56; }
+  svg .c-coral rect, svg .c-coral circle, svg .c-coral ellipse { fill: var(--coral-lt); stroke: var(--coral); }
+  svg .c-coral text.th { fill: #712B13; }
+  svg .c-coral text.ts { fill: #993C1D; }
+  svg .c-amber rect, svg .c-amber circle, svg .c-amber ellipse { fill: var(--amber-lt); stroke: var(--amber); }
+  svg .c-amber text.th { fill: #633806; }
+  svg .c-amber text.ts { fill: #854F0B; }
+  svg .c-gray rect, svg .c-gray circle, svg .c-gray ellipse { fill: var(--gray-lt); stroke: var(--gray-md); }
+  svg .c-gray text.th { fill: #444441; }
+  svg .c-gray text.ts { fill: #5F5E5A; }
+
+  @media (max-width: 640px) {
+    body { padding: 32px 16px 64px; }
+    .doc-title { font-size: 28px; }
+    .doc-meta { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="doc-header">
+  <div class="doc-eyebrow">Architecture · C4 model</div>
+  <h1 class="doc-title">Data Buddy — <em>system architecture</em></h1>
+  <p style="color:var(--ink-2);font-size:14px;max-width:600px;margin-top:10px;line-height:1.65;">
+    C4 Levels 1, 2, and 3 for the Data Buddy prototype. Documents the system boundary, containers, data flows, and internal components of each container. Level 4 (code) to follow.
+  </p>
+  <div class="doc-meta">
+    <div class="doc-meta-item"><strong>Status</strong> · Draft</div>
+    <div class="doc-meta-item"><strong>Last updated</strong> · 30 May 2026</div>
+    <div class="doc-meta-item"><strong>Scope</strong> · Local prototype · single user</div>
+  </div>
+</header>
+
+
+<!-- ═══════════════════════════════════════════════ LEVEL 1 ══ -->
+
+<section>
+  <div class="level-heading">
+    <div class="level-tag">Level 1</div>
+    <h2>System context</h2>
+  </div>
+  <p class="level-desc">
+    The Data Buddy system as a single unit. Shows who uses it and which external systems it depends on. The only external dependency is a cloud AI model provider; everything else runs locally.
+  </p>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 680 420" role="img">
+      <title>C4 Level 1 — System context</title>
+      <desc>Analyst uses the Data Buddy system. The system calls the AI model provider over HTTPS.</desc>
+      <defs>
+        <marker id="arr1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Legend -->
+      <rect x="40" y="24" width="148" height="52" rx="4" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="4 3"/>
+      <rect x="52" y="36" width="16" height="12" rx="2" fill="none" stroke="var(--border)" stroke-width="0.5"/>
+      <text class="ts" x="74" y="46">Person</text>
+      <rect x="52" y="54" width="16" height="12" rx="2" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <text class="ts" x="74" y="64">External system</text>
+
+      <!-- System boundary -->
+      <rect x="200" y="48" width="280" height="324" rx="8" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="6 4"/>
+      <text class="ts" x="340" y="68" text-anchor="middle" style="font-size:11px;fill:var(--ink-4);letter-spacing:0.1em;">SYSTEM BOUNDARY</text>
+
+      <!-- Person -->
+      <g class="c-teal">
+        <rect x="40" y="148" width="120" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="100" y="170" text-anchor="middle" dominant-baseline="central">Analyst</text>
+        <text class="ts" x="100" y="189" text-anchor="middle" dominant-baseline="central">Person</text>
+      </g>
+
+      <!-- System -->
+      <g class="c-purple">
+        <rect x="220" y="148" width="240" height="68" rx="6" stroke-width="1"/>
+        <text class="th" x="340" y="176" text-anchor="middle" dominant-baseline="central">Data Buddy</text>
+        <text class="ts" x="340" y="197" text-anchor="middle" dominant-baseline="central">Software system</text>
+      </g>
+
+      <!-- External -->
+      <g class="c-amber">
+        <rect x="220" y="294" width="240" height="56" rx="6" stroke-width="0.5" stroke-dasharray="5 3"/>
+        <text class="th" x="340" y="316" text-anchor="middle" dominant-baseline="central">AI model provider</text>
+        <text class="ts" x="340" y="334" text-anchor="middle" dominant-baseline="central">External system · OpenAI / Anthropic</text>
+      </g>
+
+      <!-- Analyst → System -->
+      <line x1="160" y1="182" x2="218" y2="182" class="arr" marker-end="url(#arr1)"/>
+      <text class="ts" x="189" y="174" text-anchor="middle">Uses</text>
+
+      <!-- System → External -->
+      <line x1="340" y1="216" x2="340" y2="292" class="arr" marker-end="url(#arr1)"/>
+      <text class="ts" x="358" y="257" text-anchor="start">HTTPS · LLM API</text>
+    </svg>
+  </div>
+</section>
+
+<hr class="section-sep"/>
+
+<!-- ═══════════════════════════════════════════════ LEVEL 2 ══ -->
+
+<section>
+  <div class="level-heading">
+    <div class="level-tag">Level 2</div>
+    <h2>Container diagram</h2>
+  </div>
+  <p class="level-desc">
+    The Data Buddy system decomposed into its runnable containers. Shows what each container is responsible for and the protocols over which they communicate. The workspace filesystem is a shared substrate accessed by both the backend and OpenCode.
+  </p>
+
+  <div class="key">
+    <div class="key-item"><div class="key-swatch ks-purple"></div>System container</div>
+    <div class="key-item"><div class="key-swatch ks-teal"></div>Person</div>
+    <div class="key-item"><div class="key-swatch ks-coral"></div>Agent runtime</div>
+    <div class="key-item"><div class="key-swatch ks-amber"></div>External system</div>
+    <div class="key-item"><div class="key-swatch ks-gray"></div>Infrastructure</div>
+  </div>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 680 620" role="img">
+      <title>C4 Level 2 — Container diagram</title>
+      <desc>Five containers: React SPA in the browser, Backend service, OpenCode server, Workspace filesystem, and the external AI model provider. Flows show REST API and SSE between SPA and Backend; HTTP prompts and SSE event stream between Backend and OpenCode; filesystem read/write between Backend and Workspace and between OpenCode and Workspace; HTTPS LLM API calls between OpenCode and AI model provider.</desc>
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- System boundary -->
+      <rect x="28" y="36" width="514" height="556" rx="8" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="6 4"/>
+      <text class="ts" x="285" y="56" text-anchor="middle" style="font-size:11px;fill:var(--ink-4);letter-spacing:0.1em;">SYSTEM BOUNDARY · Data Buddy</text>
+
+      <!-- Person: Analyst -->
+      <g class="c-teal">
+        <rect x="42" y="116" width="108" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="96" y="139" text-anchor="middle" dominant-baseline="central">Analyst</text>
+        <text class="ts" x="96" y="157" text-anchor="middle" dominant-baseline="central">Person</text>
+      </g>
+
+      <!-- Container: React SPA -->
+      <g class="c-purple">
+        <rect x="182" y="96" width="220" height="96" rx="6" stroke-width="1"/>
+        <text class="th" x="292" y="126" text-anchor="middle" dominant-baseline="central">React SPA</text>
+        <text class="ts" x="292" y="149" text-anchor="middle" dominant-baseline="central">Browser · TypeScript</text>
+        <text class="ts" x="292" y="169" text-anchor="middle" dominant-baseline="central">Renders UI · streams agent events</text>
+      </g>
+
+      <!-- Container: Backend service -->
+      <g class="c-purple">
+        <rect x="182" y="258" width="220" height="96" rx="6" stroke-width="1"/>
+        <text class="th" x="292" y="288" text-anchor="middle" dominant-baseline="central">Backend service</text>
+        <text class="ts" x="292" y="311" text-anchor="middle" dominant-baseline="central">Node / Python · HTTP</text>
+        <text class="ts" x="292" y="331" text-anchor="middle" dominant-baseline="central">Orchestrates stages · owns state.json</text>
+      </g>
+
+      <!-- Container: OpenCode server -->
+      <g class="c-coral">
+        <rect x="182" y="420" width="220" height="96" rx="6" stroke-width="1"/>
+        <text class="th" x="292" y="450" text-anchor="middle" dominant-baseline="central">OpenCode server</text>
+        <text class="ts" x="292" y="473" text-anchor="middle" dominant-baseline="central">opencode serve · HTTP + SSE</text>
+        <text class="ts" x="292" y="493" text-anchor="middle" dominant-baseline="central">Runs agent · writes workspace files</text>
+      </g>
+
+      <!-- Container: Workspace filesystem -->
+      <g class="c-gray">
+        <rect x="42" y="420" width="116" height="96" rx="6" stroke-width="0.5"/>
+        <text class="th" x="100" y="450" text-anchor="middle" dominant-baseline="central">Workspace</text>
+        <text class="ts" x="100" y="472" text-anchor="middle" dominant-baseline="central">Filesystem</text>
+        <text class="ts" x="100" y="492" text-anchor="middle" dominant-baseline="central">state.json · files</text>
+      </g>
+
+      <!-- External: AI model provider -->
+      <g class="c-amber">
+        <rect x="432" y="420" width="192" height="96" rx="6" stroke-width="0.5" stroke-dasharray="5 3"/>
+        <text class="th" x="528" y="450" text-anchor="middle" dominant-baseline="central">AI model provider</text>
+        <text class="ts" x="528" y="472" text-anchor="middle" dominant-baseline="central">OpenAI / Anthropic</text>
+        <text class="ts" x="528" y="492" text-anchor="middle" dominant-baseline="central">External system</text>
+      </g>
+
+      <!-- Analyst → SPA -->
+      <line x1="150" y1="144" x2="180" y2="144" class="arr" marker-end="url(#arr2)"/>
+      <text class="ts" x="165" y="136" text-anchor="middle">Uses</text>
+
+      <!-- SPA → Backend (REST) -->
+      <line x1="268" y1="192" x2="268" y2="256" class="arr" marker-end="url(#arr2)" stroke="var(--ink-3)"/>
+      <!-- Backend → SPA (SSE) -->
+      <line x1="316" y1="256" x2="316" y2="194" class="arr" marker-end="url(#arr2)" stroke="var(--ink-3)"/>
+      <text class="ts" x="348" y="218" text-anchor="start">REST API</text>
+      <text class="ts" x="348" y="234" text-anchor="start">SSE events ↑</text>
+
+      <!-- Backend → OpenCode (HTTP prompts) -->
+      <line x1="268" y1="354" x2="268" y2="418" class="arr" marker-end="url(#arr2)" stroke="var(--ink-3)"/>
+      <!-- OpenCode → Backend (SSE) -->
+      <line x1="316" y1="418" x2="316" y2="356" class="arr" marker-end="url(#arr2)" stroke="var(--ink-3)"/>
+      <text class="ts" x="348" y="378" text-anchor="start">HTTP prompts</text>
+      <text class="ts" x="348" y="394" text-anchor="start">SSE event stream ↑</text>
+
+      <!-- Backend ↔ Filesystem -->
+      <path d="M182 330 L130 330 L130 418" fill="none" stroke="var(--ink-4)" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr2)"/>
+      <text class="ts" x="88" y="376" text-anchor="middle">r/w</text>
+      <text class="ts" x="88" y="390" text-anchor="middle">state.json</text>
+
+      <!-- OpenCode ↔ Filesystem -->
+      <line x1="182" y1="468" x2="160" y2="468" class="arr" marker-end="url(#arr2)" stroke="var(--ink-4)" stroke-dasharray="4 3"/>
+      <text class="ts" x="100" y="536" text-anchor="middle">analyses/</text>
+      <text class="ts" x="100" y="552" text-anchor="middle">charts/</text>
+      <text class="ts" x="100" y="568" text-anchor="middle">sections/</text>
+
+      <!-- OpenCode → AI provider -->
+      <line x1="402" y1="468" x2="430" y2="468" class="arr" marker-end="url(#arr2)"/>
+      <text class="ts" x="416" y="456" text-anchor="middle">HTTPS</text>
+      <text class="ts" x="416" y="480" text-anchor="middle">LLM API</text>
+
+    </svg>
+  </div>
+
+  <!-- Containers table -->
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:18px;margin:36px 0 14px;letter-spacing:-0.01em;">Containers</h3>
+  <table class="containers-table">
+    <thead>
+      <tr>
+        <th style="width:22%">Container</th>
+        <th style="width:14%">Type</th>
+        <th style="width:22%">Technology</th>
+        <th>Responsibility</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="ct-name">React SPA</span><span class="ct-tech">Browser</span></td>
+        <td><span class="ct-pill ct-system">System</span></td>
+        <td>React · TypeScript</td>
+        <td>Renders all UI stages. Subscribes to backend SSE stream and updates the activity rail, section panes, and status indicators in real time. Sends user actions (accept, drop, bottom-bar text) to the backend via REST.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Backend service</span><span class="ct-tech">HTTP server</span></td>
+        <td><span class="ct-pill ct-system">System</span></td>
+        <td>Node.js or Python · Express / FastAPI</td>
+        <td>Owns the orchestration model. Drives OpenCode through the four stages by sending prompts at the right moments. Parses structured output. Writes and reads <code style="font-family:'JetBrains Mono',monospace;font-size:12px">state.json</code>. Proxies OpenCode's SSE stream to the frontend with stage-appropriate enrichment. Handles all backend-only operations (accept, drop, export).</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">OpenCode server</span><span class="ct-tech">Agent runtime</span></td>
+        <td><span class="ct-pill ct-system">System</span></td>
+        <td>opencode serve · v1.15.10+</td>
+        <td>The agent runtime. Receives prompts from the backend, executes tool calls (apply_patch, bash), writes workspace files, and emits a structured SSE event stream of all tool activity. May spawn sub-agents internally. Holds the LLM session; manages context and compaction autonomously.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Workspace</span><span class="ct-tech">Filesystem</span></td>
+        <td><span class="ct-pill ct-infra">Infrastructure</span></td>
+        <td>Local disk · shared directory</td>
+        <td>Shared substrate between backend and OpenCode. Contains <code style="font-family:'JetBrains Mono',monospace;font-size:12px">state.json</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">profile.json</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">plan.json</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">data/</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">analyses/</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">charts/</code>, and <code style="font-family:'JetBrains Mono',monospace;font-size:12px">sections/</code>. Files are the contract: the backend reads agent output from files, not from the agent's memory.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">AI model provider</span><span class="ct-tech">External</span></td>
+        <td><span class="ct-pill ct-external">External</span></td>
+        <td>OpenAI · Anthropic · or Zen</td>
+        <td>Provides the LLM behind OpenCode's agent turns. Not called directly by the backend — OpenCode handles all provider communication. Model and provider are configured in <code style="font-family:'JetBrains Mono',monospace;font-size:12px">opencode.json</code> or passed per-turn.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Flows table -->
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:18px;margin:36px 0 14px;letter-spacing:-0.01em;">Data flows</h3>
+  <table class="flows-table">
+    <thead>
+      <tr>
+        <th style="width:22%">From</th>
+        <th style="width:22%">To</th>
+        <th style="width:20%">Protocol</th>
+        <th>What crosses the boundary</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Analyst</td>
+        <td>React SPA</td>
+        <td><span class="flow-proto">Browser</span></td>
+        <td>File upload, aim text, UI interactions (accept, drop, bottom-bar text, plan edits).</td>
+      </tr>
+      <tr>
+        <td>React SPA</td>
+        <td>Backend service</td>
+        <td><span class="flow-proto">REST / HTTP</span></td>
+        <td>Stage actions: POST /section/:id/accept, POST /section/:id/drop, POST /plan/update, POST /turn (bottom-bar), GET /export. Also page load: GET /state to hydrate UI after refresh.</td>
+      </tr>
+      <tr>
+        <td>Backend service</td>
+        <td>React SPA</td>
+        <td><span class="flow-proto">SSE</span></td>
+        <td>Real-time enriched event stream: activity items (tool name, file path, elapsed time), section status changes, stage transitions, error/retry signals.</td>
+      </tr>
+      <tr>
+        <td>Backend service</td>
+        <td>OpenCode server</td>
+        <td><span class="flow-proto">HTTP</span></td>
+        <td>POST /session (create), POST /session/:id/prompt_async (send prompt with agent, model, parts, format), POST /session/:id/abort.</td>
+      </tr>
+      <tr>
+        <td>OpenCode server</td>
+        <td>Backend service</td>
+        <td><span class="flow-proto">SSE</span></td>
+        <td>Raw event stream: message.part.updated (ToolPart, TextPart, ReasoningPart), file.edited, session.idle, session.status, server.heartbeat. Backend filters and enriches before forwarding to SPA.</td>
+      </tr>
+      <tr>
+        <td>Backend service</td>
+        <td>Workspace</td>
+        <td><span class="flow-proto">Filesystem</span></td>
+        <td>Writes: state.json (all stage transitions), plan.json (plan accept/edit), profile.json (after profiling turn). Reads: state.json on page load; section files for export.</td>
+      </tr>
+      <tr>
+        <td>OpenCode server</td>
+        <td>Workspace</td>
+        <td><span class="flow-proto">Filesystem</span></td>
+        <td>Writes (via apply_patch): analyses/*.py, charts/*.png, sections/*.md. Reads: data/*.csv, profile.json, plan.json, any previously written section files for context.</td>
+      </tr>
+      <tr>
+        <td>OpenCode server</td>
+        <td>AI model provider</td>
+        <td><span class="flow-proto">HTTPS</span></td>
+        <td>LLM inference requests (prompt + tool definitions + conversation history). Streaming completions back. All provider auth handled by OpenCode; backend does not touch credentials.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<hr class="section-sep"/>
+
+<!-- ═══════════════════════════════════════════════ LEVEL 3 ══ -->
+
+<section>
+  <div class="level-heading">
+    <div class="level-tag">Level 3</div>
+    <h2>Component diagrams</h2>
+  </div>
+  <p class="level-desc">
+    Each container decomposed into its internal components. Color encodes role: purple = frontend-facing, coral = coordination/entry, teal = supporting services, amber = core runtime, gray = infrastructure or external reference. Dashed borders indicate external containers shown for context.
+  </p>
+
+  <!-- ── 3a: Backend service ── -->
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:20px;margin:0 0 8px;letter-spacing:-0.01em;">Backend service</h3>
+  <p class="level-desc" style="margin-bottom:20px;">
+    Three tiers: a frontend-facing layer (HTTP router + SSE proxy), a coordination layer (stage orchestrator flanked by state manager, prompt library, and watchdog), and an OpenCode interface layer. The stage orchestrator is the central coordinator — it calls the prompt library to build prompts, tells the state manager when to persist, registers the watchdog per turn, and hands the OpenCode client the prompt to fire.
+  </p>
+
+  <div class="key" style="margin-bottom:20px;">
+    <div class="key-item"><div class="key-swatch ks-purple"></div>Frontend-facing</div>
+    <div class="key-item"><div class="key-swatch ks-coral"></div>Coordination / entry</div>
+    <div class="key-item"><div class="key-swatch" style="background:var(--teal-lt);border:1.5px solid var(--teal);"></div>Supporting services</div>
+    <div class="key-item"><div class="key-swatch ks-gray" style="border-style:dashed;"></div>External (context)</div>
+  </div>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 680 580" role="img">
+      <title>C4 Level 3 — Backend service components</title>
+      <desc>Seven components inside the backend service: HTTP router and SSE proxy face the frontend; stage orchestrator coordinates the others; state manager owns state.json; prompt library holds stage templates; watchdog monitors liveness; OpenCode client wraps the HTTP API with a persistent SSE subscription.</desc>
+      <defs>
+        <marker id="arr3a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <rect x="30" y="30" width="620" height="520" rx="8" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="6 4"/>
+      <text class="ts" x="340" y="50" text-anchor="middle" style="font-size:11px;fill:var(--ink-4);letter-spacing:0.1em;">BACKEND SERVICE</text>
+      <!-- HTTP router -->
+      <g class="c-purple">
+        <rect x="54" y="70" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="140" y="93" text-anchor="middle" dominant-baseline="central">HTTP router</text>
+        <text class="ts" x="140" y="113" text-anchor="middle" dominant-baseline="central">REST endpoints</text>
+      </g>
+      <!-- SSE proxy -->
+      <g class="c-purple">
+        <rect x="254" y="70" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="340" y="93" text-anchor="middle" dominant-baseline="central">SSE proxy</text>
+        <text class="ts" x="340" y="113" text-anchor="middle" dominant-baseline="central">Filters · forwards events</text>
+      </g>
+      <!-- External: React SPA -->
+      <g class="c-gray">
+        <rect x="454" y="70" width="160" height="56" rx="6" stroke-width="0.5" stroke-dasharray="5 3"/>
+        <text class="th" x="534" y="93" text-anchor="middle" dominant-baseline="central">React SPA</text>
+        <text class="ts" x="534" y="113" text-anchor="middle" dominant-baseline="central">External container</text>
+      </g>
+      <line x1="452" y1="88" x2="228" y2="88" class="arr" marker-end="url(#arr3a)" stroke-dasharray="4 3" stroke="var(--ink-4)"/>
+      <line x1="452" y1="112" x2="428" y2="112" class="arr" marker-end="url(#arr3a)" stroke-dasharray="4 3" stroke="var(--ink-4)"/>
+      <!-- Stage orchestrator -->
+      <g class="c-coral">
+        <rect x="200" y="192" width="280" height="56" rx="6" stroke-width="1"/>
+        <text class="th" x="340" y="215" text-anchor="middle" dominant-baseline="central">Stage orchestrator</text>
+        <text class="ts" x="340" y="235" text-anchor="middle" dominant-baseline="central">Drives stages · handles turns</text>
+      </g>
+      <path d="M140 126 L140 172 L270 172 L270 190" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3a)"/>
+      <path d="M340 192 L340 172 L340 128" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3a)"/>
+      <!-- State manager -->
+      <g class="c-teal">
+        <rect x="54" y="318" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="140" y="341" text-anchor="middle" dominant-baseline="central">State manager</text>
+        <text class="ts" x="140" y="361" text-anchor="middle" dominant-baseline="central">Reads · writes state.json</text>
+      </g>
+      <!-- Prompt library -->
+      <g class="c-teal">
+        <rect x="254" y="318" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="340" y="341" text-anchor="middle" dominant-baseline="central">Prompt library</text>
+        <text class="ts" x="340" y="361" text-anchor="middle" dominant-baseline="central">Stage prompt templates</text>
+      </g>
+      <!-- Watchdog -->
+      <g class="c-teal">
+        <rect x="454" y="318" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="540" y="341" text-anchor="middle" dominant-baseline="central">Watchdog</text>
+        <text class="ts" x="540" y="361" text-anchor="middle" dominant-baseline="central">60s timeout · abort · retry</text>
+      </g>
+      <path d="M270 248 L270 280 L140 280 L140 316" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3a)"/>
+      <line x1="340" y1="248" x2="340" y2="316" class="arr" marker-end="url(#arr3a)"/>
+      <path d="M410 248 L410 280 L540 280 L540 316" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3a)"/>
+      <!-- OpenCode client -->
+      <g class="c-coral">
+        <rect x="200" y="444" width="280" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="340" y="467" text-anchor="middle" dominant-baseline="central">OpenCode client</text>
+        <text class="ts" x="340" y="487" text-anchor="middle" dominant-baseline="central">HTTP · persistent SSE sub.</text>
+      </g>
+      <path d="M54 360 L40 360 L40 540 L90 540" fill="none" stroke="var(--ink-4)" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr3a)"/>
+      <text class="ts" x="100" y="554" text-anchor="start">state.json</text>
+      <line x1="340" y1="374" x2="340" y2="442" class="arr" marker-end="url(#arr3a)"/>
+      <path d="M540 374 L540 420 L482 420 L482 442" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3a)"/>
+      <!-- External: OpenCode server -->
+      <g class="c-gray">
+        <rect x="454" y="444" width="160" height="56" rx="6" stroke-width="0.5" stroke-dasharray="5 3"/>
+        <text class="th" x="534" y="467" text-anchor="middle" dominant-baseline="central">OpenCode server</text>
+        <text class="ts" x="534" y="487" text-anchor="middle" dominant-baseline="central">External container</text>
+      </g>
+      <line x1="480" y1="472" x2="454" y2="472" class="arr" marker-end="url(#arr3a)"/>
+    </svg>
+  </div>
+
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:18px;margin:32px 0 14px;letter-spacing:-0.01em;">Components</h3>
+  <table class="containers-table" style="margin-bottom:40px;">
+    <thead>
+      <tr>
+        <th style="width:22%">Component</th>
+        <th style="width:20%">Technology</th>
+        <th>Responsibility</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="ct-name">HTTP router</span><span class="ct-tech">FastAPI / Express</span></td>
+        <td>REST endpoints</td>
+        <td>Exposes all frontend-facing REST routes: <code style="font-family:'JetBrains Mono',monospace;font-size:12px">GET /state</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">POST /turn</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">POST /section/:id/accept</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">POST /section/:id/drop</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">POST /plan/update</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">GET /export</code>. Delegates business logic to the stage orchestrator.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">SSE proxy</span><span class="ct-tech">Async generator</span></td>
+        <td>Event forwarding</td>
+        <td>Holds the frontend SSE connection. Receives enriched events from the stage orchestrator (which filters and annotates raw OpenCode events) and streams them to the browser. Handles client reconnection without losing events mid-turn.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Stage orchestrator</span><span class="ct-tech">Python class</span></td>
+        <td>Core coordination</td>
+        <td>Central coordinator. Knows the current stage and what action is required next. On a user action: reads state via the state manager, selects the right prompt template from the prompt library, fires the turn via the OpenCode client, registers the watchdog, and forwards incoming SSE events to the SSE proxy. On backend-only operations: delegates directly to the state manager.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">State manager</span><span class="ct-tech">File I/O</span></td>
+        <td>Persistence</td>
+        <td>All reads and writes of <code style="font-family:'JetBrains Mono',monospace;font-size:12px">state.json</code>. Owns the schema: stage, aim, OpenCode session ID, plan array, section statuses, profile summary. Provides atomic write (write-to-temp, rename) to avoid partial reads during an active agent turn.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Prompt library</span><span class="ct-tech">Template strings</span></td>
+        <td>Prompt templates</td>
+        <td>One template per agent-driven operation: profile, plan, section build (N), section redirect, plan revision. Each template is a function that accepts context (aim, profile JSON, plan JSON, section metadata) and returns the <code style="font-family:'JetBrains Mono',monospace;font-size:12px">parts</code> and <code style="font-family:'JetBrains Mono',monospace;font-size:12px">format</code> payload for <code style="font-family:'JetBrains Mono',monospace;font-size:12px">prompt_async</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Watchdog</span><span class="ct-tech">Async timer</span></td>
+        <td>Liveness monitoring</td>
+        <td>Started at the beginning of each agent turn, reset on every SSE event (including heartbeats and reasoning deltas). Fires after 60s of silence: calls <code style="font-family:'JetBrains Mono',monospace;font-size:12px">POST /session/:id/abort</code> via the OpenCode client. If the session doesn't return to idle within 10s, creates a fresh OpenCode session and updates <code style="font-family:'JetBrains Mono',monospace;font-size:12px">state.json</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">OpenCode client</span><span class="ct-tech">HTTP + SSE</span></td>
+        <td>OpenCode interface</td>
+        <td>Wraps all OpenCode HTTP calls. Holds the single persistent SSE subscription to <code style="font-family:'JetBrains Mono',monospace;font-size:12px">GET /event</code> (ADR-006). Filters events by current session ID and forwards them to the stage orchestrator. Reconnects automatically if the heartbeat stops. Exposes <code style="font-family:'JetBrains Mono',monospace;font-size:12px">create_session()</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">prompt_async()</code>, and <code style="font-family:'JetBrains Mono',monospace;font-size:12px">abort()</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr class="section-sep" style="margin:40px 0;"/>
+
+  <!-- ── 3b: React SPA ── -->
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:20px;margin:0 0 8px;letter-spacing:-0.01em;">React SPA</h3>
+  <p class="level-desc" style="margin-bottom:20px;">
+    Intentionally lean per ADR-007. Two backend-facing components at the top (API client for REST, SSE handler for the live stream), three rendering components below. There is no client-side state store — stage views re-hydrate from <code style="font-family:'JetBrains Mono',monospace;font-size:12px">GET /state</code> on every page load, and the SSE handler drives live updates only during active agent turns.
+  </p>
+
+  <div class="key" style="margin-bottom:20px;">
+    <div class="key-item"><div class="key-swatch ks-purple"></div>Backend-facing</div>
+    <div class="key-item"><div class="key-swatch" style="background:var(--teal-lt);border:1.5px solid var(--teal);"></div>Rendering</div>
+    <div class="key-item"><div class="key-swatch ks-gray" style="border-style:dashed;"></div>External (context)</div>
+  </div>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 680 460" role="img">
+      <title>C4 Level 3 — React SPA components</title>
+      <desc>Five components inside the React SPA: API client sends REST calls to the backend; SSE handler receives the live event stream; stage views render the current stage; activity rail displays agent events; section pane shows code, chart and interpretation for the current section. A note records that there is no client-side state store per ADR-007.</desc>
+      <defs>
+        <marker id="arr3b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <rect x="30" y="30" width="620" height="400" rx="8" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="6 4"/>
+      <text class="ts" x="340" y="50" text-anchor="middle" style="font-size:11px;fill:var(--ink-4);letter-spacing:0.1em;">REACT SPA</text>
+      <!-- External: Backend service -->
+      <g class="c-gray">
+        <rect x="454" y="64" width="172" height="56" rx="6" stroke-width="0.5" stroke-dasharray="5 3"/>
+        <text class="th" x="540" y="87" text-anchor="middle" dominant-baseline="central">Backend service</text>
+        <text class="ts" x="540" y="107" text-anchor="middle" dominant-baseline="central">External container</text>
+      </g>
+      <!-- API client -->
+      <g class="c-purple">
+        <rect x="54" y="64" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="140" y="87" text-anchor="middle" dominant-baseline="central">API client</text>
+        <text class="ts" x="140" y="107" text-anchor="middle" dominant-baseline="central">REST · GET /state · actions</text>
+      </g>
+      <!-- SSE handler -->
+      <g class="c-purple">
+        <rect x="254" y="64" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="340" y="87" text-anchor="middle" dominant-baseline="central">SSE handler</text>
+        <text class="ts" x="340" y="107" text-anchor="middle" dominant-baseline="central">Receives live event stream</text>
+      </g>
+      <line x1="226" y1="92" x2="452" y2="92" class="arr" marker-end="url(#arr3b)" stroke-dasharray="4 3" stroke="var(--ink-4)"/>
+      <line x1="452" y1="112" x2="428" y2="112" class="arr" marker-end="url(#arr3b)" stroke-dasharray="4 3" stroke="var(--ink-4)"/>
+      <!-- Stage views -->
+      <g class="c-teal">
+        <rect x="54" y="196" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="140" y="219" text-anchor="middle" dominant-baseline="central">Stage views</text>
+        <text class="ts" x="140" y="239" text-anchor="middle" dominant-baseline="central">Setup · profile · plan · build</text>
+      </g>
+      <!-- Activity rail -->
+      <g class="c-teal">
+        <rect x="254" y="196" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="340" y="219" text-anchor="middle" dominant-baseline="central">Activity rail</text>
+        <text class="ts" x="340" y="239" text-anchor="middle" dominant-baseline="central">Live tool · file events</text>
+      </g>
+      <!-- Section pane -->
+      <g class="c-teal">
+        <rect x="454" y="196" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="540" y="219" text-anchor="middle" dominant-baseline="central">Section pane</text>
+        <text class="ts" x="540" y="239" text-anchor="middle" dominant-baseline="central">Code · chart · interpretation</text>
+      </g>
+      <line x1="140" y1="120" x2="140" y2="194" class="arr" marker-end="url(#arr3b)"/>
+      <line x1="340" y1="120" x2="340" y2="194" class="arr" marker-end="url(#arr3b)"/>
+      <path d="M428 120 L428 172 L540 172 L540 194" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3b)"/>
+      <path d="M254 120 L254 160 L140 160 L140 194" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3b)"/>
+      <path d="M54 220 L40 220 L40 92 L52 92" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3b)"/>
+      <!-- Note -->
+      <rect x="54" y="320" width="572" height="44" rx="4" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="4 3"/>
+      <text class="ts" x="340" y="338" text-anchor="middle">No client-side state store (ADR-007). Stage views re-hydrate from</text>
+      <text class="ts" x="340" y="354" text-anchor="middle">GET /state on load. SSE drives live updates only.</text>
+    </svg>
+  </div>
+
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:18px;margin:32px 0 14px;letter-spacing:-0.01em;">Components</h3>
+  <table class="containers-table" style="margin-bottom:40px;">
+    <thead>
+      <tr>
+        <th style="width:22%">Component</th>
+        <th style="width:20%">Technology</th>
+        <th>Responsibility</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="ct-name">API client</span><span class="ct-tech">fetch / axios</span></td>
+        <td>REST</td>
+        <td>All outbound REST calls to the backend. On page load calls <code style="font-family:'JetBrains Mono',monospace;font-size:12px">GET /state</code> and distributes the response to the stage views. On user actions (accept, drop, bottom-bar submit, plan edit) fires the appropriate POST endpoint. Handles loading and error states per call.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">SSE handler</span><span class="ct-tech">EventSource API</span></td>
+        <td>Live events</td>
+        <td>Opens a persistent <code style="font-family:'JetBrains Mono',monospace;font-size:12px">EventSource</code> connection to the backend SSE endpoint on mount. Routes incoming events by type: tool/file events to the activity rail, section file events to the section pane, stage-transition events to the stage views. Reconnects automatically on drop.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Stage views</span><span class="ct-tech">React components</span></td>
+        <td>UI rendering</td>
+        <td>One React component per stage: <code style="font-family:'JetBrains Mono',monospace;font-size:12px">SetupView</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">ProfileView</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">PlanView</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">BuildView</code>. Rendered conditionally based on <code style="font-family:'JetBrains Mono',monospace;font-size:12px">state.stage</code> from the last <code style="font-family:'JetBrains Mono',monospace;font-size:12px">GET /state</code> response. Each view owns its own bottom-bar placeholder text and action buttons. User actions call the API client.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Activity rail</span><span class="ct-tech">React component</span></td>
+        <td>Live event display</td>
+        <td>Right-hand panel showing agent activity in real time. Appends a new item on each tool event from the SSE handler: tool name, file path, elapsed time (from <code style="font-family:'JetBrains Mono',monospace;font-size:12px">state.time.start</code>), and status (running / done / error). Shows <code style="font-family:'JetBrains Mono',monospace;font-size:12px">session.idle</code> as a turn-complete marker.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Section pane</span><span class="ct-tech">React component</span></td>
+        <td>Section rendering</td>
+        <td>Centre panel during Stage 4. Renders the current section's code (read from <code style="font-family:'JetBrains Mono',monospace;font-size:12px">analyses/*.py</code> path in the <code style="font-family:'JetBrains Mono',monospace;font-size:12px">apply_patch</code> event), chart (loaded from disk via a backend file-serve endpoint), and proposed interpretation text. Surfaces Accept / Drop buttons on <code style="font-family:'JetBrains Mono',monospace;font-size:12px">session.idle</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr class="section-sep" style="margin:40px 0;"/>
+
+  <!-- ── 3c: OpenCode server ── -->
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:20px;margin:0 0 8px;letter-spacing:-0.01em;">OpenCode server <span style="font-size:13px;font-family:'Hanken Grotesk',sans-serif;font-weight:400;color:var(--ink-3);letter-spacing:0;margin-left:8px;">reference only — not owned code</span></h3>
+  <p class="level-desc" style="margin-bottom:20px;">
+    OpenCode's internal architecture, documented for reference to understand what events we receive and why. We don't own or modify this code. Sources: official opencode.ai docs, spike event captures, and DeepWiki analysis of the sst/opencode repo.
+  </p>
+
+  <div class="key" style="margin-bottom:20px;">
+    <div class="key-item"><div class="key-swatch ks-coral"></div>Entry / broadcast</div>
+    <div class="key-item"><div class="key-swatch" style="background:var(--amber-lt);border:1.5px solid var(--amber);"></div>Core runtime</div>
+    <div class="key-item"><div class="key-swatch ks-gray"></div>Infrastructure</div>
+    <div class="key-item"><div class="key-swatch ks-gray" style="border-style:dashed;"></div>External (context)</div>
+  </div>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 680 500" role="img">
+      <title>C4 Level 3 — OpenCode server components (reference)</title>
+      <desc>Reference diagram of OpenCode server internals. HTTP API receives prompts; session manager persists sessions in SQLite; event bus broadcasts all activity as SSE; agent loop runs the LLM turn and dispatches tools; compaction manager summarises context at roughly 75 percent capacity; tool executor runs apply_patch and bash against the workspace filesystem; AI model provider is called externally over HTTPS.</desc>
+      <defs>
+        <marker id="arr3c" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <rect x="30" y="30" width="620" height="430" rx="8" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="6 4"/>
+      <text class="ts" x="300" y="50" text-anchor="middle" style="font-size:11px;fill:var(--ink-4);letter-spacing:0.1em;">OPENCODE SERVER · reference only</text>
+      <!-- HTTP API -->
+      <g class="c-coral">
+        <rect x="54" y="66" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="140" y="89" text-anchor="middle" dominant-baseline="central">HTTP API</text>
+        <text class="ts" x="140" y="109" text-anchor="middle" dominant-baseline="central">/session · /event · /abort</text>
+      </g>
+      <!-- Session manager -->
+      <g class="c-coral">
+        <rect x="254" y="66" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="340" y="89" text-anchor="middle" dominant-baseline="central">Session manager</text>
+        <text class="ts" x="340" y="109" text-anchor="middle" dominant-baseline="central">SQLite · history · state</text>
+      </g>
+      <!-- Event bus -->
+      <g class="c-coral">
+        <rect x="454" y="66" width="172" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="540" y="89" text-anchor="middle" dominant-baseline="central">Event bus</text>
+        <text class="ts" x="540" y="109" text-anchor="middle" dominant-baseline="central">Broadcasts all activity → SSE</text>
+      </g>
+      <line x1="226" y1="94" x2="252" y2="94" class="arr" marker-end="url(#arr3c)"/>
+      <line x1="628" y1="94" x2="652" y2="94" class="arr" marker-end="url(#arr3c)" stroke-dasharray="4 3" stroke="var(--ink-4)"/>
+      <text class="ts" x="656" y="90" text-anchor="start">SSE out</text>
+      <!-- Agent loop -->
+      <g class="c-amber">
+        <rect x="130" y="198" width="200" height="56" rx="6" stroke-width="1"/>
+        <text class="th" x="230" y="221" text-anchor="middle" dominant-baseline="central">Agent loop</text>
+        <text class="ts" x="230" y="241" text-anchor="middle" dominant-baseline="central">LLM turn · tool dispatch</text>
+      </g>
+      <!-- Compaction manager -->
+      <g class="c-amber">
+        <rect x="360" y="198" width="200" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="460" y="221" text-anchor="middle" dominant-baseline="central">Compaction manager</text>
+        <text class="ts" x="460" y="241" text-anchor="middle" dominant-baseline="central">Summarises at ~75% context</text>
+      </g>
+      <path d="M340 122 L340 172 L230 172 L230 196" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3c)"/>
+      <path d="M330 221 L400 221 L400 160 L540 160 L540 122" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3c)"/>
+      <line x1="330" y1="240" x2="358" y2="240" class="arr" marker-end="url(#arr3c)"/>
+      <!-- Tool executor -->
+      <g class="c-gray">
+        <rect x="130" y="330" width="200" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="230" y="353" text-anchor="middle" dominant-baseline="central">Tool executor</text>
+        <text class="ts" x="230" y="373" text-anchor="middle" dominant-baseline="central">apply_patch · bash · read</text>
+      </g>
+      <!-- AI provider -->
+      <g class="c-gray">
+        <rect x="360" y="330" width="200" height="56" rx="6" stroke-width="0.5" stroke-dasharray="5 3"/>
+        <text class="th" x="460" y="353" text-anchor="middle" dominant-baseline="central">AI model provider</text>
+        <text class="ts" x="460" y="373" text-anchor="middle" dominant-baseline="central">External · HTTPS</text>
+      </g>
+      <line x1="230" y1="254" x2="230" y2="328" class="arr" marker-end="url(#arr3c)"/>
+      <path d="M330 210 L460 210 L460 328" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3c)"/>
+      <path d="M330 355 L400 355 L400 160 L454 160" fill="none" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr3c)"/>
+      <path d="M130 365 L60 365 L60 456" fill="none" stroke="var(--ink-4)" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr3c)"/>
+      <text class="ts" x="66" y="450">workspace</text>
+    </svg>
+  </div>
+
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:18px;margin:32px 0 14px;letter-spacing:-0.01em;">Components</h3>
+  <table class="containers-table" style="margin-bottom:40px;">
+    <thead>
+      <tr>
+        <th style="width:22%">Component</th>
+        <th style="width:20%">Source</th>
+        <th>What it does (as observed)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="ct-name">HTTP API</span><span class="ct-tech">opencode serve</span></td>
+        <td>Official docs</td>
+        <td>OpenAPI 3.1 server at <code style="font-family:'JetBrains Mono',monospace;font-size:12px">localhost:4096</code>. Key endpoints: <code style="font-family:'JetBrains Mono',monospace;font-size:12px">POST /session</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">POST /session/:id/prompt_async</code> (returns 204 immediately), <code style="font-family:'JetBrains Mono',monospace;font-size:12px">GET /event</code> (SSE stream), <code style="font-family:'JetBrains Mono',monospace;font-size:12px">POST /session/:id/abort</code>. Spec served at <code style="font-family:'JetBrains Mono',monospace;font-size:12px">/doc</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Session manager</span><span class="ct-tech">SQLite / Drizzle</span></td>
+        <td>DeepWiki / spike</td>
+        <td>Persists sessions, messages, and parts to <code style="font-family:'JetBrains Mono',monospace;font-size:12px">~/.local/share/opencode/opencode.db</code> (WAL mode). Sessions survive server restarts. History is re-loaded from the DB on each new turn — the caller does not need to replay it.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Event bus</span><span class="ct-tech">Internal pub/sub</span></td>
+        <td>Official docs / spike</td>
+        <td>All internal components publish to this bus. The HTTP API subscribes and forwards over SSE as <code style="font-family:'JetBrains Mono',monospace;font-size:12px">{"type": "...", "properties": {...}}</code> events. Heartbeat fires every ~10s. Confirmed working on v1.15.10; known regression in v1.14.42–46 (issue #26697).</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Agent loop</span><span class="ct-tech">Internal</span></td>
+        <td>DeepWiki</td>
+        <td>Runs the LLM turn: builds the context window (system prompt + history + tools), calls the model, iterates over tool calls until the model stops. Each tool call dispatches to the tool executor and emits events on the bus. May spawn sub-agent sessions via the Task tool.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Compaction manager</span><span class="ct-tech">Internal</span></td>
+        <td>Official docs / issue #11314</td>
+        <td>Fires automatically when token usage approaches ~75% of the model's context window. Summarises old turns and prunes tool outputs. Emits a <code style="font-family:'JetBrains Mono',monospace;font-size:12px">session.compacted</code> event and a <code style="font-family:'JetBrains Mono',monospace;font-size:12px">CompactionPart</code>. Configurable via <code style="font-family:'JetBrains Mono',monospace;font-size:12px">compaction.auto</code> in <code style="font-family:'JetBrains Mono',monospace;font-size:12px">opencode.json</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="ct-name">Tool executor</span><span class="ct-tech">Internal</span></td>
+        <td>Spike / official docs</td>
+        <td>Runs built-in tools: <code style="font-family:'JetBrains Mono',monospace;font-size:12px">apply_patch</code> (unified diff — confirmed as the file-write tool in the spike), <code style="font-family:'JetBrains Mono',monospace;font-size:12px">bash</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:12px">read</code>. Each tool call emits <code style="font-family:'JetBrains Mono',monospace;font-size:12px">message.part.updated</code> with <code style="font-family:'JetBrains Mono',monospace;font-size:12px">status: pending → running → completed</code>. <code style="font-family:'JetBrains Mono',monospace;font-size:12px">apply_patch</code> results include <code style="font-family:'JetBrains Mono',monospace;font-size:12px">metadata.files[]</code> with per-file diffs and line counts.</td>
+      </tr>
+    </tbody>
+  </table>
+
+</section>
+
+<hr class="section-sep"/>
+
+<!-- ═══════════════════════════════════════════════ LEVEL 4 ══ -->
+
+<section>
+  <div class="level-heading">
+    <div class="level-tag">Level 4</div>
+    <h2>Code diagrams</h2>
+  </div>
+  <p class="level-desc">
+    Implementation detail for the three highest-leverage components: the <code style="font-family:'JetBrains Mono',monospace;font-size:13px">state.json</code> data contract, the stage orchestrator's state machine, and the OpenCode client's SSE connection lifecycle. These are the pieces a Python developer needs to see before writing the first line of code.
+  </p>
+
+  <!-- ── 4a: state.json schema ── -->
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:20px;margin:0 0 8px;letter-spacing:-0.01em;">state.json schema</h3>
+  <p class="level-desc" style="margin-bottom:20px;">
+    The single source of truth for the entire brief. Written atomically by the state manager (write to <code style="font-family:'JetBrains Mono',monospace;font-size:13px">state.tmp.json</code>, rename to <code style="font-family:'JetBrains Mono',monospace;font-size:13px">state.json</code>) to prevent partial reads during active agent turns. The SPA reads it wholesale via <code style="font-family:'JetBrains Mono',monospace;font-size:13px">GET /state</code> on every page load.
+  </p>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 680 540" role="img">
+      <title>L4 — state.json schema</title>
+      <desc>Structural diagram of state.json. Top-level root object contains scalar fields (version, stage, aim, opencode_session_id, dataset_path, last_saved), a profile object (shape and columns array), and a plan array of section objects (id, title, hypothesis, status, and three file paths). Annotations show state manager writes all fields, stage orchestrator reads stage and session id, watchdog reads and writes opencode_session_id, and SPA reads everything via GET /state.</desc>
+      <defs>
+        <marker id="arr4a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <!-- Root -->
+      <g class="c-gray">
+        <rect x="40" y="30" width="420" height="36" rx="6" stroke-width="0.5"/>
+        <text class="th" x="60" y="48" dominant-baseline="central">state.json</text>
+        <text class="ts" x="450" y="48" text-anchor="end" dominant-baseline="central">root object</text>
+      </g>
+      <!-- Scalars -->
+      <g class="c-purple">
+        <rect x="60" y="84" width="380" height="148" rx="6" stroke-width="0.5"/>
+        <text class="th" x="80" y="104" dominant-baseline="central">scalar fields</text>
+        <text class="ts" x="80" y="126" dominant-baseline="central">version</text>
+        <text class="ts" x="240" y="126" dominant-baseline="central">str · "1"</text>
+        <text class="ts" x="80" y="148" dominant-baseline="central">stage</text>
+        <text class="ts" x="240" y="148" dominant-baseline="central">"setup" | "profiling" | "planning" | "building" | "done"</text>
+        <text class="ts" x="80" y="170" dominant-baseline="central">aim</text>
+        <text class="ts" x="240" y="170" dominant-baseline="central">str</text>
+        <text class="ts" x="80" y="192" dominant-baseline="central">opencode_session_id</text>
+        <text class="ts" x="240" y="192" dominant-baseline="central">str | null</text>
+        <text class="ts" x="80" y="214" dominant-baseline="central">dataset_path · last_saved</text>
+        <text class="ts" x="240" y="214" dominant-baseline="central">str · ISO timestamp</text>
+      </g>
+      <!-- Profile -->
+      <g class="c-teal">
+        <rect x="60" y="250" width="380" height="80" rx="6" stroke-width="0.5"/>
+        <text class="th" x="80" y="270" dominant-baseline="central">profile</text>
+        <text class="ts" x="80" y="292" dominant-baseline="central">shape</text>
+        <text class="ts" x="240" y="292" dominant-baseline="central">{ rows, columns, nulls_pct, target }</text>
+        <text class="ts" x="80" y="312" dominant-baseline="central">columns[ ]</text>
+        <text class="ts" x="240" y="312" dominant-baseline="central">{ name, type, summary, flags[ ] }</text>
+      </g>
+      <!-- Plan -->
+      <g class="c-teal">
+        <rect x="60" y="348" width="380" height="116" rx="6" stroke-width="0.5"/>
+        <text class="th" x="80" y="368" dominant-baseline="central">plan[ ]</text>
+        <text class="ts" x="80" y="390" dominant-baseline="central">id</text>
+        <text class="ts" x="240" y="390" dominant-baseline="central">str · "sec_01" …</text>
+        <text class="ts" x="80" y="410" dominant-baseline="central">title · hypothesis</text>
+        <text class="ts" x="240" y="410" dominant-baseline="central">str · str</text>
+        <text class="ts" x="80" y="430" dominant-baseline="central">status</text>
+        <text class="ts" x="240" y="430" dominant-baseline="central">"queued"|"building"|"proposed"|"accepted"|"dropped"|"failed"</text>
+        <text class="ts" x="80" y="452" dominant-baseline="central">py_path · png_path · md_path</text>
+        <text class="ts" x="240" y="452" dominant-baseline="central">str | null</text>
+      </g>
+      <!-- Annotations -->
+      <text class="ts" x="500" y="48" dominant-baseline="central" style="font-size:11px;fill:var(--ink-4);letter-spacing:0.08em;">WRITTEN BY</text>
+      <g class="c-gray">
+        <rect x="496" y="78" width="148" height="30" rx="4" stroke-width="0.5"/>
+        <text class="ts" x="570" y="93" text-anchor="middle" dominant-baseline="central">state manager</text>
+      </g>
+      <line x1="440" y1="158" x2="494" y2="93" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <g class="c-coral">
+        <rect x="496" y="182" width="148" height="30" rx="4" stroke-width="0.5"/>
+        <text class="ts" x="570" y="197" text-anchor="middle" dominant-baseline="central">stage orchestrator</text>
+      </g>
+      <line x1="440" y1="192" x2="494" y2="197" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <g class="c-coral">
+        <rect x="496" y="282" width="148" height="30" rx="4" stroke-width="0.5"/>
+        <text class="ts" x="570" y="297" text-anchor="middle" dominant-baseline="central">watchdog r/w</text>
+      </g>
+      <line x1="440" y1="292" x2="494" y2="297" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <g class="c-purple">
+        <rect x="496" y="390" width="148" height="30" rx="4" stroke-width="0.5"/>
+        <text class="ts" x="570" y="405" text-anchor="middle" dominant-baseline="central">SPA reads via GET /state</text>
+      </g>
+      <line x1="440" y1="406" x2="494" y2="405" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3 2"/>
+      <!-- Atomic write note -->
+      <rect x="60" y="486" width="380" height="34" rx="4" fill="none" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="4 3"/>
+      <text class="ts" x="250" y="503" text-anchor="middle" dominant-baseline="central">Atomic write: write state.tmp.json → os.replace() → state.json</text>
+    </svg>
+  </div>
+
+  <hr class="section-sep" style="margin:40px 0;"/>
+
+  <!-- ── 4b: Stage orchestrator state machine ── -->
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:20px;margin:0 0 8px;letter-spacing:-0.01em;">Stage orchestrator — state machine</h3>
+  <p class="level-desc" style="margin-bottom:20px;">
+    The orchestrator is a state machine at heart. Five stable states: <code style="font-family:'JetBrains Mono',monospace;font-size:13px">idle</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:13px">profiling</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:13px">planning</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:13px">building</code>, <code style="font-family:'JetBrains Mono',monospace;font-size:13px">done</code>. The <code style="font-family:'JetBrains Mono',monospace;font-size:13px">redirecting</code> sub-state sits inside building and doesn't change the section pointer. All three agent-driven states share a single <code style="font-family:'JetBrains Mono',monospace;font-size:13px">failed</code> error state — <code style="font-family:'JetBrains Mono',monospace;font-size:13px">retry</code> re-fires the same prompt for whichever state failed.
+  </p>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 680 600" role="img">
+      <title>L4 — Stage orchestrator state machine</title>
+      <desc>State machine with states idle, profiling, planning, building (with redirecting sub-state), done, and failed. Transitions: setup complete from idle to profiling; session.idle with profile ok from profiling to planning; user accepts plan from planning to building; all sections accepted from building to done; accept next section loops building back to building; bottom bar text from building to redirecting; session.idle from redirecting back to building. Error transitions (dashed red) from profiling, planning, and building all lead to failed. Retry (dashed gray) from failed returns to the originating state.</desc>
+      <defs>
+        <marker id="arr4b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <!-- IDLE -->
+      <g class="c-gray">
+        <rect x="266" y="30" width="148" height="44" rx="6" stroke-width="0.5"/>
+        <text class="th" x="340" y="52" text-anchor="middle" dominant-baseline="central">idle</text>
+      </g>
+      <line x1="340" y1="74" x2="340" y2="114" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr4b)"/>
+      <g class="c-gray">
+        <rect x="272" y="80" width="136" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="340" y="90" text-anchor="middle" dominant-baseline="central">setup complete</text>
+      </g>
+      <!-- PROFILING -->
+      <g class="c-teal">
+        <rect x="230" y="116" width="220" height="56" rx="6" stroke-width="1"/>
+        <text class="th" x="340" y="139" text-anchor="middle" dominant-baseline="central">profiling</text>
+        <text class="ts" x="340" y="159" text-anchor="middle" dominant-baseline="central">prompt · watch SSE · parse profile</text>
+      </g>
+      <line x1="340" y1="172" x2="340" y2="212" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr4b)"/>
+      <g class="c-gray">
+        <rect x="272" y="178" width="136" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="340" y="188" text-anchor="middle" dominant-baseline="central">session.idle · profile ok</text>
+      </g>
+      <!-- PLANNING -->
+      <g class="c-teal">
+        <rect x="230" y="214" width="220" height="56" rx="6" stroke-width="1"/>
+        <text class="th" x="340" y="237" text-anchor="middle" dominant-baseline="central">planning</text>
+        <text class="ts" x="340" y="257" text-anchor="middle" dominant-baseline="central">prompt · watch SSE · parse plan</text>
+      </g>
+      <line x1="340" y1="270" x2="340" y2="310" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr4b)"/>
+      <g class="c-gray">
+        <rect x="272" y="276" width="136" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="340" y="286" text-anchor="middle" dominant-baseline="central">user accepts plan</text>
+      </g>
+      <!-- BUILDING -->
+      <g class="c-coral">
+        <rect x="210" y="312" width="260" height="56" rx="6" stroke-width="1.5"/>
+        <text class="th" x="340" y="335" text-anchor="middle" dominant-baseline="central">building (section N)</text>
+        <text class="ts" x="340" y="355" text-anchor="middle" dominant-baseline="central">prompt · watch SSE · await idle</text>
+      </g>
+      <path d="M210 330 L160 330 L160 350 L208 350" fill="none" stroke="#993C1D" stroke-width="1.5" marker-end="url(#arr4b)"/>
+      <text class="ts" x="80" y="332" text-anchor="middle">accept →</text>
+      <text class="ts" x="80" y="348" text-anchor="middle">next section</text>
+      <line x1="340" y1="368" x2="340" y2="430" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr4b)"/>
+      <g class="c-gray">
+        <rect x="272" y="374" width="136" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="340" y="384" text-anchor="middle" dominant-baseline="central">all sections accepted</text>
+      </g>
+      <!-- DONE -->
+      <g class="c-gray">
+        <rect x="266" y="432" width="148" height="44" rx="6" stroke-width="0.5"/>
+        <text class="th" x="340" y="454" text-anchor="middle" dominant-baseline="central">done</text>
+      </g>
+      <!-- REDIRECTING -->
+      <g class="c-amber">
+        <rect x="490" y="312" width="160" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="570" y="335" text-anchor="middle" dominant-baseline="central">redirecting</text>
+        <text class="ts" x="570" y="355" text-anchor="middle" dominant-baseline="central">re-prompt · watch SSE</text>
+      </g>
+      <line x1="470" y1="336" x2="492" y2="336" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr4b)"/>
+      <text class="ts" x="482" y="326" text-anchor="middle">bottom bar</text>
+      <line x1="490" y1="356" x2="471" y2="356" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr4b)"/>
+      <text class="ts" x="482" y="372" text-anchor="middle">session.idle</text>
+      <!-- FAILED -->
+      <g class="c-red">
+        <rect x="44" y="214" width="148" height="56" rx="6" stroke-width="0.5"/>
+        <text class="th" x="118" y="237" text-anchor="middle" dominant-baseline="central">failed</text>
+        <text class="ts" x="118" y="257" text-anchor="middle" dominant-baseline="central">surface retry banner</text>
+      </g>
+      <path d="M230 144 L118 144 L118 212" fill="none" stroke="#A32D2D" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr4b)"/>
+      <text class="ts" x="156" y="134" text-anchor="middle">timeout / error</text>
+      <path d="M230 242 L118 242 L118 272" fill="none" stroke="#A32D2D" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr4b)"/>
+      <path d="M210 340 L192 340 L192 242 L194 242" fill="none" stroke="#A32D2D" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr4b)"/>
+      <path d="M44 242 L30 242 L30 144 L228 144" fill="none" stroke="#888780" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arr4b)"/>
+      <text class="ts" x="48" y="194" text-anchor="start">retry</text>
+    </svg>
+  </div>
+
+  <hr class="section-sep" style="margin:40px 0;"/>
+
+  <!-- ── 4c: OpenCode client lifecycle ── -->
+  <h3 style="font-family:'Fraunces',serif;font-weight:400;font-size:20px;margin:0 0 8px;letter-spacing:-0.01em;">OpenCode client — SSE connection lifecycle</h3>
+  <p class="level-desc" style="margin-bottom:20px;">
+    The concrete implementation of ADR-006. One <code style="font-family:'JetBrains Mono',monospace;font-size:13px">GET /event</code> connection opened at startup and held for the lifetime of the process. Every <code style="font-family:'JetBrains Mono',monospace;font-size:13px">prompt_async</code> call fires and returns immediately (204); the already-open stream delivers all subsequent events. Session ID filtering is the single line of logic that makes the persistent subscription safe across multiple turns.
+  </p>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 680 520" role="img">
+      <title>L4 — OpenCode client SSE connection lifecycle</title>
+      <desc>Sequence diagram with three participants: orchestrator, OpenCode client, and OpenCode server. Startup: client opens GET /event keep-alive, server responds with server.connected then streams. Per turn: orchestrator calls prompt_async, client fires POST /session/:id/prompt_async, server returns 204 immediately. Events: server streams events, client filters by sessionID, forwards matching ones to orchestrator and resets the watchdog timer. Heartbeat: server.heartbeat every 10 seconds; if none for 30s, client reconnects GET /event. Abort: orchestrator calls abort, client fires POST /session/:id/abort, waits 10 seconds for session.idle; if stuck, creates a new session and updates state.json.</desc>
+      <defs>
+        <marker id="arr4c" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+      <!-- Headers -->
+      <g class="c-purple">
+        <rect x="40" y="30" width="140" height="36" rx="4" stroke-width="0.5"/>
+        <text class="th" x="110" y="48" text-anchor="middle" dominant-baseline="central">Orchestrator</text>
+      </g>
+      <g class="c-coral">
+        <rect x="240" y="30" width="160" height="36" rx="4" stroke-width="0.5"/>
+        <text class="th" x="320" y="48" text-anchor="middle" dominant-baseline="central">OpenCode client</text>
+      </g>
+      <g class="c-gray">
+        <rect x="460" y="30" width="180" height="36" rx="4" stroke-width="0.5"/>
+        <text class="th" x="550" y="48" text-anchor="middle" dominant-baseline="central">OpenCode server</text>
+      </g>
+      <!-- Lifelines -->
+      <line x1="110" y1="66" x2="110" y2="510" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="4 3"/>
+      <line x1="320" y1="66" x2="320" y2="510" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="4 3"/>
+      <line x1="550" y1="66" x2="550" y2="510" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="4 3"/>
+      <!-- Startup -->
+      <text class="ts" x="36" y="94" text-anchor="start" style="font-size:11px;fill:var(--ink-4);">startup</text>
+      <line x1="320" y1="100" x2="548" y2="100" stroke="#993C1D" stroke-width="1.5" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="344" y="86" width="160" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="424" y="96" text-anchor="middle" dominant-baseline="central">GET /event (keep-alive)</text>
+      </g>
+      <line x1="548" y1="116" x2="322" y2="116" stroke="#888780" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="344" y="118" width="160" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="424" y="128" text-anchor="middle" dominant-baseline="central">server.connected · streaming</text>
+      </g>
+      <!-- Per-turn -->
+      <text class="ts" x="36" y="158" text-anchor="start" style="font-size:11px;fill:var(--ink-4);">per turn</text>
+      <line x1="112" y1="164" x2="318" y2="164" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="128" y="150" width="160" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="208" y="160" text-anchor="middle" dominant-baseline="central">prompt_async(parts, format)</text>
+      </g>
+      <line x1="320" y1="180" x2="548" y2="180" stroke="#993C1D" stroke-width="1.5" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="344" y="182" width="160" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="424" y="192" text-anchor="middle" dominant-baseline="central">POST /session/:id/prompt_async</text>
+      </g>
+      <line x1="548" y1="200" x2="322" y2="200" stroke="#888780" stroke-width="1" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="344" y="202" width="160" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="424" y="212" text-anchor="middle" dominant-baseline="central">204 No Content (immediate)</text>
+      </g>
+      <!-- Events -->
+      <text class="ts" x="36" y="244" text-anchor="start" style="font-size:11px;fill:var(--ink-4);">events</text>
+      <line x1="548" y1="250" x2="322" y2="250" stroke="#888780" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="344" y="238" width="160" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="424" y="248" text-anchor="middle" dominant-baseline="central">event {type, properties}</text>
+      </g>
+      <g class="c-gray">
+        <rect x="256" y="264" width="128" height="26" rx="13" stroke-width="0.5"/>
+        <text class="ts" x="320" y="277" text-anchor="middle" dominant-baseline="central">sessionID matches?</text>
+      </g>
+      <line x1="320" y1="290" x2="320" y2="304" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr4c)"/>
+      <line x1="112" y1="316" x2="318" y2="316" stroke="var(--ink-3)" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="128" y="304" width="168" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="212" y="314" text-anchor="middle" dominant-baseline="central">forward to orchestrator</text>
+      </g>
+      <text class="ts" x="328" y="338" text-anchor="start">+ reset watchdog timer</text>
+      <!-- Heartbeat -->
+      <text class="ts" x="36" y="366" text-anchor="start" style="font-size:11px;fill:var(--ink-4);">heartbeat</text>
+      <line x1="548" y1="372" x2="322" y2="372" stroke="#888780" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="344" y="360" width="160" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="424" y="370" text-anchor="middle" dominant-baseline="central">server.heartbeat (~10s)</text>
+      </g>
+      <text class="ts" x="236" y="394" text-anchor="start">if none for 30s → reconnect GET /event</text>
+      <!-- Abort -->
+      <text class="ts" x="36" y="424" text-anchor="start" style="font-size:11px;fill:var(--ink-4);">abort</text>
+      <line x1="112" y1="430" x2="318" y2="430" stroke="var(--ink-3)" stroke-width="1.5" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="128" y="418" width="104" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="180" y="428" text-anchor="middle" dominant-baseline="central">abort(session_id)</text>
+      </g>
+      <line x1="320" y1="444" x2="548" y2="444" stroke="#993C1D" stroke-width="1.5" marker-end="url(#arr4c)"/>
+      <g class="c-gray">
+        <rect x="344" y="446" width="160" height="20" rx="3" stroke-width="0.5"/>
+        <text class="ts" x="424" y="456" text-anchor="middle" dominant-baseline="central">POST /session/:id/abort</text>
+      </g>
+      <text class="ts" x="236" y="480" text-anchor="start">wait 10s for session.idle →</text>
+      <text class="ts" x="236" y="496" text-anchor="start">if stuck: create_session() · update state.json</text>
+    </svg>
+  </div>
+
+</section>
+
+<hr class="section-sep"/>
+
+<div class="next-note">
+  <strong>Architecture documentation complete through L4.</strong> All decisions recorded in the ADR. Ready to begin implementation.
+  <ul>
+    <li>Start with the OpenCode client and a working <code style="font-family:'JetBrains Mono',monospace;font-size:12px">state.json</code> read/write cycle</li>
+    <li>Then the stage orchestrator state machine — the profiling stage first as it's the simplest end-to-end path</li>
+    <li>Frontend last — it has the least uncertainty once the backend API surface is stable</li>
+  </ul>
+</div>
+
+</body>
+</html>

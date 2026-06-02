@@ -1,0 +1,32 @@
+# Secrets — never commit
+.env
+
+# Local settings
+.claude/settings.local.json
+
+# Data
+data/
+
+# Runtime workspace — wiped by make clean
+workspace/
+workspace/state.json
+workspace/plan.json
+workspace/profile.json
+workspace/sections/
+workspace/analyses/
+workspace/charts/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS
+.DS_Store

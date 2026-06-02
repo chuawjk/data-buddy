@@ -1,0 +1,1776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Co-work Brief — UI Mockups (stripped)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f6f2e9;
+    --bg-2: #efe9dc;
+    --panel: #ffffff;
+    --panel-2: #faf7f0;
+    --border: #ddd5c5;
+    --border-2: #e8e1d1;
+    --ink: #1a1a17;
+    --ink-2: #5d5a52;
+    --ink-3: #9b9489;
+    --ink-4: #c6bfb0;
+    --accent: #b8732a;
+    --accent-soft: #f4e5d0;
+    --accent-line: #e8c694;
+    --active: #4a7a76;
+    --active-soft: #dbeae8;
+    --success: #5a7d5f;
+    --danger: #a85c4a;
+    --add: #f0f6ec;
+    --add-line: #cde0c1;
+    --rem: #faecea;
+    --rem-line: #e6c5bf;
+    --shadow: 0 1px 0 rgba(26, 26, 23, 0.04), 0 8px 24px -16px rgba(26, 26, 23, 0.18);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Hanken Grotesk', sans-serif;
+    font-size: 15.4px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page-frame {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 48px 32px 80px;
+  }
+
+  /* Page header */
+  .doc-header {
+    margin-bottom: 36px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+  }
+  .doc-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 350;
+    font-size: 35.2px;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+    margin: 0;
+  }
+  .doc-title em {
+    font-style: italic;
+    color: var(--accent);
+    font-weight: 350;
+  }
+  .doc-sub {
+    color: var(--ink-2);
+    font-size: 14.3px;
+    max-width: 380px;
+    text-align: right;
+    line-height: 1.55;
+  }
+
+  /* Stage selector */
+  .stage-nav {
+    display: flex;
+    gap: 0;
+    margin-bottom: 28px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--panel);
+    overflow: hidden;
+    flex-wrap: wrap;
+  }
+  .stage-btn {
+    flex: 1 1 0;
+    min-width: 160px;
+    padding: 14px 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13.2px;
+    color: var(--ink-2);
+    text-align: left;
+    border-right: 1px solid var(--border);
+    transition: background 0.15s;
+    position: relative;
+  }
+  .stage-btn:last-child { border-right: none; }
+  .stage-btn:hover { background: var(--panel-2); }
+  .stage-btn.active {
+    background: var(--ink);
+    color: var(--panel);
+  }
+  .stage-btn .num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 19.8px;
+    display: block;
+    margin-bottom: 2px;
+    color: var(--accent);
+  }
+  .stage-btn.active .num { color: var(--accent-line); }
+  .stage-btn .label {
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  /* The app mock */
+  .app {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: 760px;
+    min-height: 700px;
+  }
+
+  /* Top bar */
+  .topbar {
+    display: grid;
+    grid-template-columns: 240px 1fr auto;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding: 0;
+    background: var(--panel-2);
+    height: 56px;
+  }
+  .brand {
+    padding: 0 18px;
+    border-right: 1px solid var(--border);
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-mark {
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid var(--ink);
+    border-radius: 2px;
+    position: relative;
+  }
+  .brand-mark::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    background: var(--accent);
+  }
+  .brand-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 17.6px;
+    letter-spacing: -0.01em;
+  }
+  .aim {
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    overflow: hidden;
+  }
+  .aim-label {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .aim-text {
+    font-family: 'Fraunces', serif;
+    font-size: 16.5px;
+    font-weight: 350;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+  .snap-chip, .plan-chip {
+    height: 100%;
+    padding: 0 14px;
+    border-left: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13.2px;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .snap-chip strong, .plan-chip strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--panel);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 12.1px;
+    margin: 0 16px;
+  }
+
+  /* Main grid */
+  .main {
+    display: grid;
+    grid-template-columns: 232px 1fr 296px;
+    overflow: hidden;
+  }
+  .rail {
+    border-right: 1px solid var(--border);
+    background: var(--panel-2);
+    overflow-y: auto;
+  }
+  .rail.right {
+    border-right: none;
+    border-left: 1px solid var(--border);
+  }
+  .rail-section {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .rail-section:last-child { border-bottom: none; }
+  .rail-header {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .rail-header .count {
+    color: var(--ink-3);
+    font-size: 12.1px;
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 400;
+  }
+
+  /* Data inventory */
+  .ds-item {
+    padding: 8px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-bottom: 4px;
+  }
+  .ds-item:hover { background: var(--bg-2); }
+  .ds-item.active {
+    background: var(--panel);
+    border: 1px solid var(--border);
+  }
+  .ds-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.7px;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ds-name .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success);
+  }
+  .ds-meta {
+    color: var(--ink-3);
+    font-size: 12.1px;
+    margin-top: 2px;
+    padding-left: 12px;
+  }
+  .schema-list {
+    margin-top: 8px;
+    border-top: 1px dashed var(--border-2);
+    padding-top: 8px;
+  }
+  .schema-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    padding: 3px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.1px;
+    color: var(--ink-2);
+  }
+  .schema-row .col { color: var(--ink); }
+  .schema-row .type { color: var(--ink-3); }
+
+  /* Center */
+  .center {
+    overflow-y: auto;
+    background: var(--panel);
+    padding: 0;
+    position: relative;
+  }
+  .center-inner {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 56px 80px;
+  }
+
+  /* Hero - aim/title in brief */
+  .brief-hero {
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brief-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .brief-h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 350;
+    font-size: 37.4px;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    margin: 0 0 8px;
+  }
+  .brief-h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+  .brief-deck {
+    color: var(--ink-2);
+    font-size: 15.4px;
+    max-width: 560px;
+  }
+
+  /* Section */
+  .section {
+    margin-bottom: 40px;
+  }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .section-num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 24.2px;
+    color: var(--accent);
+    font-weight: 400;
+    line-height: 1;
+  }
+  .section-h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 24.2px;
+    letter-spacing: -0.01em;
+    margin: 0;
+    flex: 1;
+  }
+  .section-status {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+  }
+  .section-status.done { color: var(--success); border-color: var(--add-line); background: var(--add); }
+  .section-status.active { color: var(--active); border-color: var(--active-soft); background: var(--active-soft); }
+  .section-status.queued { color: var(--ink-3); }
+  .section-body p {
+    margin: 0 0 12px;
+    color: var(--ink);
+  }
+  .section-body p .cite {
+    color: var(--accent);
+    font-size: 11px;
+    vertical-align: super;
+    text-decoration: none;
+    font-weight: 600;
+    margin-left: 1px;
+  }
+
+  /* Chart card */
+  .chart-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 18px 20px;
+    margin: 18px 0;
+  }
+  .chart-cap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .chart-cap-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.1px;
+    color: var(--ink-2);
+  }
+  .chart-cap-actions {
+    display: flex;
+    gap: 4px;
+  }
+  .chart-cap-actions span {
+    font-size: 11px;
+    color: var(--ink-3);
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+  }
+
+  /* Code card */
+  .code-card {
+    background: #1a1a17;
+    color: #e8e1d1;
+    border-radius: 3px;
+    padding: 14px 16px;
+    margin: 14px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.7px;
+    line-height: 1.65;
+    overflow-x: auto;
+  }
+  .code-card .kw { color: #d4a373; }
+  .code-card .str { color: #a9c8b1; }
+  .code-card .com { color: #767264; font-style: italic; }
+  .code-card .fn { color: #e8c694; }
+  .code-card .num { color: #c8a4d4; }
+  .code-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.6px;
+    color: var(--ink-3);
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .code-head .running {
+    color: var(--active);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--active);
+    animation: pulse 1.4s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Proposal block (for in-progress sections) */
+  .proposal {
+    border: 1px solid var(--active-soft);
+    border-left: 3px solid var(--active);
+    background: var(--active-soft);
+    padding: 14px 16px;
+    margin: 16px 0;
+    border-radius: 0 3px 3px 0;
+  }
+  .proposal-head {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--active);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .proposal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .btn {
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 13.2px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--ink);
+    border-radius: 2px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .btn.primary {
+    background: var(--ink);
+    color: var(--panel);
+    border-color: var(--ink);
+  }
+  .btn.danger {
+    color: var(--danger);
+    border-color: var(--rem-line);
+  }
+
+  /* Plan editable */
+  .plan-section {
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    margin-bottom: 10px;
+    background: var(--panel);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .plan-section.proposed {
+    border-style: dashed;
+    background: var(--panel-2);
+  }
+  .plan-num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    color: var(--accent);
+    font-size: 19.8px;
+    width: 24px;
+    line-height: 1.1;
+  }
+  .plan-body {
+    min-width: 0;
+  }
+  .plan-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .plan-hyp {
+    color: var(--ink-2);
+    font-size: 13.8px;
+  }
+  .plan-hyp::before {
+    content: 'Hypothesis · ';
+    color: var(--ink-3);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+  }
+  .plan-actions {
+    display: flex;
+    gap: 4px;
+    color: var(--ink-3);
+    font-size: 12.1px;
+  }
+  .plan-actions span {
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+
+  /* Agent activity */
+  .activity-item {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-2);
+    font-size: 13.2px;
+  }
+  .activity-item:last-child { border-bottom: none; }
+  .activity-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .activity-line {
+    margin-top: 3px;
+    color: var(--ink);
+    line-height: 1.4;
+  }
+  .activity-line .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.1px;
+    color: var(--accent);
+  }
+  .activity-line.done::before {
+    content: '✓';
+    color: var(--success);
+    margin-right: 6px;
+    font-weight: 700;
+  }
+  .activity-line.running {
+    color: var(--active);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .activity-line.error::before {
+    content: '!';
+    color: var(--danger);
+    margin-right: 6px;
+    font-weight: 700;
+  }
+  .activity-detail {
+    color: var(--ink-3);
+    font-size: 12.1px;
+    margin-top: 2px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Bottom input bar */
+  .botbar {
+    border-top: 1px solid var(--border);
+    background: var(--panel-2);
+    padding: 14px 20px;
+    display: grid;
+    grid-template-columns: 232px 1fr 296px;
+    align-items: center;
+  }
+  .input-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 36px;
+  }
+  .input-wrap input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 14.3px;
+    color: var(--ink);
+  }
+  .input-wrap input::placeholder { color: var(--ink-3); }
+  .input-hint {
+    font-size: 12.1px;
+    color: var(--ink-3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .botbar-left, .botbar-right {
+    font-size: 12.1px;
+    color: var(--ink-3);
+    padding: 0 18px;
+  }
+
+  /* Upload zone */
+  .upload {
+    border: 1.5px dashed var(--border);
+    border-radius: 4px;
+    padding: 56px 36px;
+    text-align: center;
+    background: var(--panel-2);
+    margin-top: 20px;
+  }
+  .upload-icon {
+    width: 36px;
+    height: 36px;
+    border: 1.5px solid var(--ink-3);
+    border-radius: 3px;
+    margin: 0 auto 16px;
+    position: relative;
+  }
+  .upload-icon::after {
+    content: '↓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-3);
+    font-size: 19.8px;
+  }
+  .upload-title {
+    font-family: 'Fraunces', serif;
+    font-size: 19.8px;
+    margin-bottom: 4px;
+  }
+  .upload-sub {
+    color: var(--ink-3);
+    font-size: 13.2px;
+  }
+  .aim-input-block {
+    margin-top: 28px;
+  }
+  .aim-input-label {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .aim-input {
+    width: 100%;
+    border: none;
+    border-bottom: 1px solid var(--ink);
+    background: transparent;
+    font-family: 'Fraunces', serif;
+    font-size: 24.2px;
+    font-weight: 350;
+    padding: 8px 0;
+    outline: none;
+    color: var(--ink);
+  }
+  .aim-input::placeholder { color: var(--ink-4); font-style: italic; }
+
+  /* Profile — fixed shape strip + per-column rows */
+  .profile-shape {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    margin: 18px 0 28px;
+    background: var(--panel-2);
+    overflow: hidden;
+  }
+  .shape-item {
+    padding: 14px 18px;
+    border-right: 1px solid var(--border);
+  }
+  .shape-item:last-child { border-right: none; }
+  .shape-num {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 350;
+    display: block;
+    color: var(--ink);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+  }
+  .shape-label {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .shape-sub {
+    font-family: 'Fraunces', serif;
+    font-size: 15.4px;
+    font-style: italic;
+    color: var(--accent);
+    font-weight: 400;
+    display: block;
+    line-height: 1.2;
+  }
+  .col-rows-header {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .col-rows-header .count {
+    color: var(--ink-3);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.1px;
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 400;
+  }
+  .col-rows {
+    border-top: 1px solid var(--border);
+  }
+  .col-row {
+    display: grid;
+    grid-template-columns: 180px 60px 1fr;
+    gap: 16px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border-2);
+    font-size: 13.8px;
+    align-items: baseline;
+  }
+  .col-row:last-child { border-bottom: none; }
+  .col-name {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--ink);
+    font-size: 13.2px;
+  }
+  .col-type {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--ink-3);
+    font-size: 11.6px;
+    padding: 1px 7px;
+    background: var(--panel-2);
+    border-radius: 2px;
+    width: fit-content;
+    border: 1px solid var(--border-2);
+  }
+  .col-summary {
+    color: var(--ink-2);
+    font-size: 13.2px;
+    text-align: right;
+  }
+  .col-summary .muted { color: var(--ink-3); }
+
+  /* Mini bar (for chart) */
+  .barchart {
+    height: 220px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    align-items: flex-end;
+    padding: 8px 4px 0;
+  }
+  .barcol {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: 100%;
+    justify-content: flex-end;
+  }
+  .barvalue {
+    background: var(--accent);
+    border-radius: 1px;
+    position: relative;
+  }
+  .barvalue.alt { background: var(--active); }
+  .barvalue.muted { background: var(--ink-4); }
+  .barlabel {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 12.1px;
+    color: var(--ink-2);
+  }
+  .barlabel strong { color: var(--ink); display: block; font-family: 'JetBrains Mono', monospace; font-size: 13.2px; font-weight: 500; }
+
+  /* Diff view */
+  .diff {
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 14px 0;
+  }
+  .diff-head {
+    background: var(--panel-2);
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.1px;
+    color: var(--ink-2);
+    display: flex;
+    justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .diff-body {
+    padding: 0;
+  }
+  .diff-line {
+    padding: 6px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.7px;
+    line-height: 1.5;
+    border-left: 3px solid transparent;
+  }
+  .diff-line.del {
+    background: var(--rem);
+    border-left-color: var(--danger);
+    color: var(--ink-2);
+    text-decoration: line-through;
+    text-decoration-color: var(--danger);
+  }
+  .diff-line.add {
+    background: var(--add);
+    border-left-color: var(--success);
+    color: var(--ink);
+  }
+
+  /* Snapshot list */
+  .snap-list {
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--panel);
+    margin-bottom: 20px;
+  }
+  .snap-row {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-2);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 16px;
+    align-items: center;
+    cursor: pointer;
+  }
+  .snap-row:hover { background: var(--panel-2); }
+  .snap-row:last-child { border-bottom: none; }
+  .snap-row.current {
+    background: var(--accent-soft);
+  }
+  .snap-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.1px;
+    color: var(--ink-3);
+    width: 90px;
+  }
+  .snap-label {
+    font-family: 'Fraunces', serif;
+    font-size: 16.5px;
+    font-weight: 400;
+  }
+  .snap-label em { font-style: italic; color: var(--accent); }
+  .snap-stats {
+    font-size: 12.1px;
+    color: var(--ink-3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Empty rail messages */
+  .rail-empty {
+    color: var(--ink-3);
+    font-size: 13.2px;
+    padding: 8px 0;
+    font-style: italic;
+  }
+
+  /* Stage description block */
+  .stage-desc {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 14px 18px;
+    margin-bottom: 18px;
+    font-size: 14.3px;
+    line-height: 1.55;
+  }
+  .stage-desc strong {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 500;
+    color: var(--accent);
+    font-size: 15.4px;
+  }
+
+  .hide { display: none !important; }
+
+  /* Refinement annotation */
+  .annot {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    padding: 10px 14px;
+    border-radius: 3px;
+    margin: 12px 0;
+    font-size: 13.2px;
+    color: var(--ink);
+  }
+  .annot strong { color: var(--accent); }
+
+  /* Welcome back banner */
+  .resume-banner {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--active);
+    padding: 16px 20px;
+    border-radius: 3px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .resume-banner .text {
+    flex: 1;
+  }
+  .resume-banner .text strong {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-style: italic;
+  }
+  .resume-banner .text .sub {
+    color: var(--ink-2);
+    font-size: 13.2px;
+    margin-top: 2px;
+  }
+
+  /* Note about how the bar mocks scale */
+  @media (max-width: 1100px) {
+    .main, .botbar { grid-template-columns: 200px 1fr 240px; }
+    .center-inner { padding: 32px 28px 60px; }
+  }
+  @media (max-width: 800px) {
+    .main { grid-template-columns: 1fr; }
+    .rail { display: none; }
+    .botbar { grid-template-columns: 1fr; }
+    .botbar-left, .botbar-right { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-frame">
+
+  <header class="doc-header">
+    <h1 class="doc-title">Co-work brief, <em>UI mockups</em></h1>
+    <p class="doc-sub">Four stages for a data-analysis brief built on OpenCode. Stages 5 (cross-cutting refinement) and 6 (snapshots) cut from scope. Customer-churn analysis as the running example. Click a stage to view.</p>
+  </header>
+
+  <nav class="stage-nav">
+    <button class="stage-btn active" data-stage="1"><span class="num">1</span><span class="label">Setup</span></button>
+    <button class="stage-btn" data-stage="2"><span class="num">2</span><span class="label">Profiling</span></button>
+    <button class="stage-btn" data-stage="3"><span class="num">3</span><span class="label">Plan proposal</span></button>
+    <button class="stage-btn" data-stage="4"><span class="num">4</span><span class="label">Section build</span></button>
+    <button class="stage-btn" data-stage="4b"><span class="num">4b</span><span class="label">Recovery moment</span></button>
+  </nav>
+
+  <!-- ====================== STAGE 1: SETUP ====================== -->
+  <div class="stage-frame" data-stage-frame="1">
+    <div class="stage-desc">
+      <strong>Stage 1 · Setup.</strong> User uploads dataset(s) and states the aim. The whole app is in its empty state — no data, no plan, no brief yet. The aim input is the centerpiece; everything else is dormant. Agent rail is explicitly waiting.
+    </div>
+    <div class="app">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div class="brand-name">Brief</div>
+        </div>
+        <div class="aim">
+          <span class="aim-label">Aim</span>
+          <span class="aim-text" style="color: var(--ink-3); font-style: italic;">Not yet set</span>
+        </div>
+        <div class="topbar-right">
+          <div class="plan-chip">No plan</div>
+          <div class="snap-chip">No snapshots</div>
+          <div class="avatar">KC</div>
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="rail">
+          <div class="rail-section">
+            <div class="rail-header">Datasets <span class="count">0</span></div>
+            <div class="rail-empty">Upload to begin.</div>
+          </div>
+        </div>
+
+        <div class="center">
+          <div class="center-inner">
+            <div class="brief-eyebrow">New brief</div>
+            <h2 class="brief-h1">Start with <em>data</em> and an <em>aim</em>.</h2>
+            <p class="brief-deck">Drop a CSV file below, then tell the agent what you're trying to learn. The plan and the brief follow from there.</p>
+
+            <div class="upload">
+              <div class="upload-icon"></div>
+              <div class="upload-title">Drop a CSV, or browse</div>
+              <div class="upload-sub">CSV · up to 200 MB</div>
+            </div>
+
+            <div class="aim-input-block">
+              <div class="aim-input-label">Aim of investigation</div>
+              <input class="aim-input" placeholder="e.g. understand drivers of customer churn in Q3 2025" />
+            </div>
+          </div>
+        </div>
+
+        <div class="rail right">
+          <div class="rail-section">
+            <div class="rail-header">Agent activity</div>
+            <div class="rail-empty">Waiting for dataset and aim.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================== STAGE 2: PROFILING ====================== -->
+  <div class="stage-frame hide" data-stage-frame="2">
+    <div class="stage-desc">
+      <strong>Stage 2 · Profiling.</strong> Dataset is loaded; the agent's first visible move is to read schema, sample rows, and compute distributions. Left rail fills with schema. Right rail shows the agent working through profiling steps in real time. Center surfaces the profile so the user can sanity-check the data before any plan is proposed.
+    </div>
+    <div class="app">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div class="brand-name">Brief</div>
+        </div>
+        <div class="aim">
+          <span class="aim-label">Aim</span>
+          <span class="aim-text">Understand drivers of customer churn in Q3 2025</span>
+        </div>
+        <div class="topbar-right">
+          <div class="plan-chip">No plan yet</div>
+          <div class="snap-chip">Auto-save · <strong>just now</strong></div>
+          <div class="avatar">KC</div>
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="rail">
+          <div class="rail-section">
+            <div class="rail-header">Datasets <span class="count">1</span></div>
+            <div class="ds-item active">
+              <div class="ds-name"><span class="dot"></span>customers_q3.csv</div>
+              <div class="ds-meta">12,450 rows · 9 cols · 1.8 MB</div>
+              <div class="schema-list">
+                <div class="schema-row"><span class="col">customer_id</span><span class="type">str</span></div>
+                <div class="schema-row"><span class="col">signup_date</span><span class="type">date</span></div>
+                <div class="schema-row"><span class="col">plan_tier</span><span class="type">cat</span></div>
+                <div class="schema-row"><span class="col">monthly_spend</span><span class="type">num</span></div>
+                <div class="schema-row"><span class="col">tenure_months</span><span class="type">int</span></div>
+                <div class="schema-row"><span class="col">support_tickets_30d</span><span class="type">int</span></div>
+                <div class="schema-row"><span class="col">last_login_days</span><span class="type">int</span></div>
+                <div class="schema-row"><span class="col">region</span><span class="type">cat</span></div>
+                <div class="schema-row"><span class="col">churned</span><span class="type">bool</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="center">
+          <div class="center-inner">
+            <div class="brief-hero">
+              <div class="brief-eyebrow">Data profile</div>
+              <h2 class="brief-h1">First look at <em>customers_q3.csv</em></h2>
+              <p class="brief-deck">A quick sanity-check before planning the analysis. Confirm the shape looks right, then proceed.</p>
+            </div>
+
+            <div class="profile-shape">
+              <div class="shape-item">
+                <span class="shape-num">12,450</span>
+                <span class="shape-label">rows</span>
+              </div>
+              <div class="shape-item">
+                <span class="shape-num">9</span>
+                <span class="shape-label">columns</span>
+              </div>
+              <div class="shape-item">
+                <span class="shape-num">0.2%</span>
+                <span class="shape-label">nulls overall</span>
+              </div>
+              <div class="shape-item">
+                <span class="shape-sub">churned</span>
+                <span class="shape-label">target (inferred)</span>
+              </div>
+            </div>
+
+            <div class="col-rows-header">
+              <span>Columns</span>
+              <span class="count">9 of 9 shown</span>
+            </div>
+            <div class="col-rows">
+              <div class="col-row">
+                <span class="col-name">customer_id</span>
+                <span class="col-type">str</span>
+                <span class="col-summary">12,450 unique <span class="muted">· 0 nulls</span></span>
+              </div>
+              <div class="col-row">
+                <span class="col-name">signup_date</span>
+                <span class="col-type">date</span>
+                <span class="col-summary">2019-04 → 2025-09 <span class="muted">· 0 nulls</span></span>
+              </div>
+              <div class="col-row">
+                <span class="col-name">plan_tier</span>
+                <span class="col-type">cat</span>
+                <span class="col-summary">basic 58% · pro 31% · enterprise 11%</span>
+              </div>
+              <div class="col-row">
+                <span class="col-name">monthly_spend</span>
+                <span class="col-type">num</span>
+                <span class="col-summary">median $42 · range $9–$4,200 <span class="muted">· right-skewed</span></span>
+              </div>
+              <div class="col-row">
+                <span class="col-name">tenure_months</span>
+                <span class="col-type">int</span>
+                <span class="col-summary">median 18 · range 1–96 <span class="muted">· bimodal</span></span>
+              </div>
+              <div class="col-row">
+                <span class="col-name">support_tickets_30d</span>
+                <span class="col-type">int</span>
+                <span class="col-summary">mean 0.4 · 82% zero <span class="muted">· long tail to 47</span></span>
+              </div>
+              <div class="col-row">
+                <span class="col-name">last_login_days</span>
+                <span class="col-type">int</span>
+                <span class="col-summary">median 3 · max 120 <span class="muted">· 1.1% nulls</span></span>
+              </div>
+              <div class="col-row">
+                <span class="col-name">region</span>
+                <span class="col-type">cat</span>
+                <span class="col-summary">5 levels <span class="muted">· 0.3% nulls</span></span>
+              </div>
+              <div class="col-row">
+                <span class="col-name">churned</span>
+                <span class="col-type">bool</span>
+                <span class="col-summary">14.3% true · 1,780 of 12,450</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rail right">
+          <div class="rail-section">
+            <div class="rail-header">Agent activity</div>
+            <div class="activity-item">
+              <div class="activity-time">11:02:14</div>
+              <div class="activity-line done">Loaded <span class="mono">customers_q3.csv</span></div>
+              <div class="activity-detail">12,450 × 9 · inferred 9 dtypes</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:02:16</div>
+              <div class="activity-line done">Sampled 200 rows for inspection</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:02:18</div>
+              <div class="activity-line done">Computed null counts per column</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:02:20</div>
+              <div class="activity-line done">Distributions for 6 numeric/categorical cols</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:02:23</div>
+              <div class="activity-line running">
+                <span class="pulse"></span>Checking pairwise correlations
+              </div>
+              <div class="activity-detail">running <span style="color: var(--accent);">profile.py</span> · 0.8s elapsed</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div class="botbar-left">Profile · auto</div>
+        <div class="input-wrap">
+          <input placeholder="Anything to flag before the plan? e.g. 'cap support_tickets at p99'…" />
+          <span class="input-hint">↵ to send</span>
+        </div>
+        <div class="botbar-right">⌘ K · commands</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================== STAGE 3: PLAN PROPOSAL ====================== -->
+  <div class="stage-frame hide" data-stage-frame="3">
+    <div class="stage-desc">
+      <strong>Stage 3 · Plan proposal.</strong> Agent proposes the structure of the brief — sections, hypotheses, analyses per section — before writing anything substantive. User edits the plan inline: rename, reorder, drop, add. HITL at planning level is far cheaper than redirecting after a half-written brief.
+    </div>
+    <div class="app">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div class="brand-name">Brief</div>
+        </div>
+        <div class="aim">
+          <span class="aim-label">Aim</span>
+          <span class="aim-text">Understand drivers of customer churn in Q3 2025</span>
+        </div>
+        <div class="topbar-right">
+          <div class="plan-chip"><strong>Plan</strong> · v1 (proposed)</div>
+          <div class="snap-chip">Auto-save · 2m ago</div>
+          <div class="avatar">KC</div>
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="rail">
+          <div class="rail-section">
+            <div class="rail-header">Datasets <span class="count">1</span></div>
+            <div class="ds-item active">
+              <div class="ds-name"><span class="dot"></span>customers_q3.csv</div>
+              <div class="ds-meta">12,450 rows · 9 cols</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="center">
+          <div class="center-inner">
+            <div class="brief-hero">
+              <div class="brief-eyebrow">Proposed plan · review before building</div>
+              <h2 class="brief-h1">A plan for the <em>churn brief</em>.</h2>
+              <p class="brief-deck">Five sections, each with a hypothesis to test and a planned analysis. Edit, reorder, drop, or add before the agent starts building. Sections in dashed outline are agent-proposed and unconfirmed.</p>
+            </div>
+
+            <div class="plan-section">
+              <div class="plan-num">1</div>
+              <div class="plan-body">
+                <div class="plan-title">Cohort overview &amp; churn baseline</div>
+                <div class="plan-hyp">Establish the Q3 churn rate, segment by signup cohort, and frame the rest of the brief.</div>
+              </div>
+              <div class="plan-actions"><span>edit</span><span>×</span></div>
+            </div>
+
+            <div class="plan-section proposed">
+              <div class="plan-num">2</div>
+              <div class="plan-body">
+                <div class="plan-title">Churn by plan tier</div>
+                <div class="plan-hyp">Lower-tier plans show disproportionately higher churn.</div>
+              </div>
+              <div class="plan-actions"><span>edit</span><span>×</span></div>
+            </div>
+
+            <div class="plan-section proposed">
+              <div class="plan-num">3</div>
+              <div class="plan-body">
+                <div class="plan-title">Engagement signals</div>
+                <div class="plan-hyp">Login recency and support-ticket volume each independently correlate with churn.</div>
+              </div>
+              <div class="plan-actions"><span>edit</span><span>×</span></div>
+            </div>
+
+            <div class="plan-section proposed">
+              <div class="plan-num">4</div>
+              <div class="plan-body">
+                <div class="plan-title">Tenure effects</div>
+                <div class="plan-hyp">Churn risk is non-monotonic across tenure — concentrated in the first 6 months and again post-24 months.</div>
+              </div>
+              <div class="plan-actions"><span>edit</span><span>×</span></div>
+            </div>
+
+            <div class="plan-section proposed">
+              <div class="plan-num">5</div>
+              <div class="plan-body">
+                <div class="plan-title">Multivariate drivers &amp; recommendations</div>
+                <div class="plan-hyp">A regularised logistic model identifies the top 3 independent drivers; recommendations follow.</div>
+              </div>
+              <div class="plan-actions"><span>edit</span><span>×</span></div>
+            </div>
+
+            <div style="margin-top: 14px; padding: 14px 16px; border: 1px dashed var(--border); border-radius: 3px; text-align: center; color: var(--ink-3); font-size: 14.3px; cursor: pointer;">+ add section</div>
+
+            <div class="proposal-actions" style="margin-top: 20px;">
+              <button class="btn primary">Accept plan &amp; start building</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="rail right">
+          <div class="rail-section">
+            <div class="rail-header">Agent activity</div>
+            <div class="activity-item">
+              <div class="activity-time">11:03:01</div>
+              <div class="activity-line done">Profile complete</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:03:04</div>
+              <div class="activity-line done">Drafted 5-section plan</div>
+              <div class="activity-detail">based on aim + profile · ~25 min estimate</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:03:06</div>
+              <div class="activity-line" style="color: var(--ink-2);">Waiting for plan confirmation</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div class="botbar-left">Plan v1 · proposed</div>
+        <div class="input-wrap">
+          <input placeholder="Tell the agent what to change about the plan — add, drop, reframe, or reorder sections…" />
+          <span class="input-hint">↵ to send</span>
+        </div>
+        <div class="botbar-right">⌘ K</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================== STAGE 4: SECTION BUILD ====================== -->
+  <div class="stage-frame hide" data-stage-frame="4">
+    <div class="stage-desc">
+      <strong>Stage 4 · Section-by-section build.</strong> Agent works one section at a time. Section 1 is done (chart + interpretation accepted). Section 2 is currently being built — code visible and running in the right rail, chart proposed, written interpretation drafted, awaiting accept / revise. Sections 3–5 are queued. Avoids the trap of reviewing a 600-line generated brief all at once.
+    </div>
+    <div class="app">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div class="brand-name">Brief</div>
+        </div>
+        <div class="aim">
+          <span class="aim-label">Aim</span>
+          <span class="aim-text">Understand drivers of customer churn in Q3 2025</span>
+        </div>
+        <div class="topbar-right">
+          <div class="plan-chip"><strong>2 of 5</strong> sections</div>
+          <div class="snap-chip">↓ Export</div>
+          <div class="snap-chip">Auto-save · 30s</div>
+          <div class="avatar">KC</div>
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="rail">
+          <div class="rail-section">
+            <div class="rail-header">Datasets <span class="count">1</span></div>
+            <div class="ds-item active">
+              <div class="ds-name"><span class="dot"></span>customers_q3.csv</div>
+              <div class="ds-meta">12,450 × 9</div>
+            </div>
+          </div>
+          <div class="rail-section">
+            <div class="rail-header">Plan</div>
+            <div style="font-size: 13.2px; line-height: 1.7;">
+              <div style="color: var(--success);">✓ 1 · Cohort overview</div>
+              <div style="color: var(--active); font-weight: 600;">→ 2 · Churn by plan tier</div>
+              <div style="color: var(--ink-3);">3 · Engagement signals</div>
+              <div style="color: var(--ink-3);">4 · Tenure effects</div>
+              <div style="color: var(--ink-3);">5 · Multivariate drivers</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="center">
+          <div class="center-inner">
+            <div class="brief-hero">
+              <div class="brief-eyebrow">Draft brief · in progress</div>
+              <h2 class="brief-h1">Drivers of <em>customer churn</em> in Q3 2025</h2>
+              <p class="brief-deck">Five-section analysis of customer behaviour and churn outcomes. Sourced from <code style="font-family: 'JetBrains Mono', monospace;">customers_q3.csv</code> (12,450 customers).</p>
+            </div>
+
+            <!-- Section 1 — done -->
+            <div class="section">
+              <div class="section-head">
+                <span class="section-num">i</span>
+                <h3 class="section-h2">Cohort overview &amp; churn baseline</h3>
+                <span class="section-status done">accepted</span>
+              </div>
+              <div class="section-body">
+                <p>Of 12,450 customers active during Q3 2025, 1,780 churned — a baseline rate of 14.3%.<a href="#" class="cite">1</a> Churn was unevenly distributed across signup cohorts: customers acquired in late 2024 churned at 21.4%, almost twice the rate of customers acquired before mid-2023.<a href="#" class="cite">2</a></p>
+              </div>
+            </div>
+
+            <!-- Section 2 — in progress -->
+            <div class="section" style="border: 1px solid var(--active-soft); border-radius: 4px; padding: 18px 20px; background: #fbfbfa;">
+              <div class="section-head">
+                <span class="section-num">ii</span>
+                <h3 class="section-h2">Churn by plan tier</h3>
+                <span class="section-status active">building</span>
+              </div>
+
+              <div class="code-head">
+                <span>analyses/02_churn_by_tier.py</span>
+                <span class="running"><span class="pulse"></span>running · 1.2s</span>
+              </div>
+              <div class="code-card">
+<span class="com"># Compute churn rate and 95% CI by plan tier</span>
+<span class="kw">import</span> pandas <span class="kw">as</span> pd
+<span class="kw">from</span> scipy <span class="kw">import</span> stats
+
+df = pd.<span class="fn">read_csv</span>(<span class="str">"customers_q3.csv"</span>)
+tier_churn = (df.<span class="fn">groupby</span>(<span class="str">"plan_tier"</span>)[<span class="str">"churned"</span>]
+              .<span class="fn">agg</span>([<span class="str">"mean"</span>, <span class="str">"count"</span>, <span class="str">"sum"</span>]))
+tier_churn[<span class="str">"ci_low"</span>], tier_churn[<span class="str">"ci_high"</span>] = <span class="fn">wilson_ci</span>(
+    tier_churn[<span class="str">"sum"</span>], tier_churn[<span class="str">"count"</span>])
+chi2, p = stats.<span class="fn">chi2_contingency</span>(<span class="fn">pd.crosstab</span>(df.plan_tier, df.churned))[:<span class="num">2</span>]
+              </div>
+
+              <div class="chart-card">
+                <div class="chart-cap">
+                  <span class="chart-cap-title">churn_rate_by_tier · v1</span>
+                  <div class="chart-cap-actions"><span>compare</span><span>edit</span></div>
+                </div>
+                <div class="barchart">
+                  <div class="barcol">
+                    <div class="barvalue" style="height: 92%;"></div>
+                    <div class="barlabel"><strong>18.4%</strong>Basic</div>
+                  </div>
+                  <div class="barcol">
+                    <div class="barvalue" style="height: 48%;"></div>
+                    <div class="barlabel"><strong>9.6%</strong>Pro</div>
+                  </div>
+                  <div class="barcol">
+                    <div class="barvalue" style="height: 21%;"></div>
+                    <div class="barlabel"><strong>4.2%</strong>Enterprise</div>
+                  </div>
+                  <div class="barcol">
+                    <div class="barvalue muted" style="height: 71%;"></div>
+                    <div class="barlabel"><strong>14.3%</strong>Overall</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="proposal">
+                <div class="proposal-head">Proposed interpretation</div>
+                <p style="margin: 0;">Churn rate descends monotonically with plan tier: Basic customers churned at 18.4%, more than four times the Enterprise rate of 4.2%. The contingency test confirms the association is unlikely to be chance (χ² = 287.4, p &lt; 0.001).<a href="#" class="cite">3</a> Tier alone, however, conflates several confounds — Enterprise customers are also longer-tenured and more engaged — so the multivariate model in §5 will revisit this.</p>
+                <div class="proposal-actions">
+                  <button class="btn primary">Accept &amp; continue</button>
+                  <button class="btn danger">Drop section</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sections 3-5 queued -->
+            <div class="section" style="opacity: 0.55;">
+              <div class="section-head">
+                <span class="section-num">iii</span>
+                <h3 class="section-h2">Engagement signals</h3>
+                <span class="section-status queued">queued</span>
+              </div>
+            </div>
+            <div class="section" style="opacity: 0.55;">
+              <div class="section-head">
+                <span class="section-num">iv</span>
+                <h3 class="section-h2">Tenure effects</h3>
+                <span class="section-status queued">queued</span>
+              </div>
+            </div>
+            <div class="section" style="opacity: 0.55;">
+              <div class="section-head">
+                <span class="section-num">v</span>
+                <h3 class="section-h2">Multivariate drivers &amp; recommendations</h3>
+                <span class="section-status queued">queued</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rail right">
+          <div class="rail-section">
+            <div class="rail-header">Agent activity</div>
+            <div class="activity-item">
+              <div class="activity-time">11:08:42</div>
+              <div class="activity-line done">Wrote <span class="mono">02_churn_by_tier.py</span></div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:08:44</div>
+              <div class="activity-line done">Created <span class="mono">churn_by_tier</span> table</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:08:45</div>
+              <div class="activity-line running">
+                <span class="pulse"></span>Rendering chart v1
+              </div>
+              <div class="activity-detail">matplotlib · saving to /charts</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:08:46</div>
+              <div class="activity-line" style="color: var(--ink-2);">Drafting interpretation…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div class="botbar-left">§2 building · auto-pause after</div>
+        <div class="input-wrap">
+          <input placeholder="Comment on §2, or ask the agent to revise the chart, the code, or the interpretation…" />
+          <span class="input-hint">↵</span>
+        </div>
+        <div class="botbar-right">⌘ K</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================== STAGE 4b: RECOVERY MOMENT ====================== -->
+  <div class="stage-frame hide" data-stage-frame="4b">
+    <div class="stage-desc">
+      <strong>Stage 4b · Recovery moment.</strong> The agent has proposed the §2 chart using a simple bar chart, but the user redirects via the bottom bar — "use a grouped bar with CIs instead." The agent cancels the current proposal, acknowledges the redirect in the activity stream, rewrites the analysis script, and re-proposes. The section remains in <em>building</em> state throughout; no new UI state is needed. This is the human-in-the-loop revision loop at its simplest — user types, agent responds, section updates.
+    </div>
+    <div class="app">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div class="brand-name">Brief</div>
+        </div>
+        <div class="aim">
+          <span class="aim-label">Aim</span>
+          <span class="aim-text">Understand drivers of customer churn in Q3 2025</span>
+        </div>
+        <div class="topbar-right">
+          <div class="plan-chip"><strong>2 of 5</strong> sections</div>
+          <div class="snap-chip">↓ Export</div>
+          <div class="avatar">KC</div>
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="rail">
+          <div class="rail-section">
+            <div class="rail-header">Datasets <span class="count">1</span></div>
+            <div class="ds-item active">
+              <div class="ds-name"><span class="dot"></span>customers_q3.csv</div>
+              <div class="ds-meta">12,450 × 9</div>
+            </div>
+          </div>
+          <div class="rail-section">
+            <div class="rail-header">Plan</div>
+            <div style="font-size: 13.2px; line-height: 1.7;">
+              <div style="color: var(--success);">✓ 1 · Cohort overview</div>
+              <div style="color: var(--active); font-weight: 600;">→ 2 · Churn by plan tier</div>
+              <div style="color: var(--ink-3);">3 · Engagement signals</div>
+              <div style="color: var(--ink-3);">4 · Tenure effects</div>
+              <div style="color: var(--ink-3);">5 · Multivariate drivers</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="center">
+          <div class="center-inner">
+            <div class="brief-hero">
+              <div class="brief-eyebrow">Draft brief · in progress</div>
+              <h2 class="brief-h1">Drivers of <em>customer churn</em> in Q3 2025</h2>
+              <p class="brief-deck">Agent redirected on §2 — revising chart from simple bar to grouped bar with 95% CIs.</p>
+            </div>
+
+            <!-- Section 1 — done -->
+            <div class="section">
+              <div class="section-head">
+                <span class="section-num">i</span>
+                <h3 class="section-h2">Cohort overview &amp; churn baseline</h3>
+                <span class="section-status done">accepted</span>
+              </div>
+              <div class="section-body">
+                <p>Of 12,450 customers active during Q3 2025, 1,780 churned — a baseline rate of 14.3%.<a href="#" class="cite">1</a> Customers acquired in late 2024 churned at 21.4%, almost twice the rate of pre-mid-2023 cohorts.<a href="#" class="cite">2</a></p>
+              </div>
+            </div>
+
+            <!-- Section 2 — redirected, rebuilding -->
+            <div class="section" style="border: 1px solid var(--active-soft); border-radius: 4px; padding: 18px 20px; background: #fbfbfa;">
+              <div class="section-head">
+                <span class="section-num">ii</span>
+                <h3 class="section-h2">Churn by plan tier</h3>
+                <span class="section-status active">rebuilding</span>
+              </div>
+
+              <!-- User redirect annotation -->
+              <div class="annot" style="margin-bottom: 14px;">
+                <strong>You · </strong>"Use a grouped bar with 95% confidence intervals instead — I want to show uncertainty." <span style="color: var(--ink-3); margin-left: 6px;">— 11:09:02</span>
+              </div>
+
+              <div class="code-head">
+                <span>analyses/02_churn_by_tier_v2.py</span>
+                <span class="running"><span class="pulse"></span>running · 0.6s</span>
+              </div>
+              <div class="code-card">
+<span class="com"># v2: grouped bar with Wilson 95% CI per tier</span>
+<span class="kw">import</span> pandas <span class="kw">as</span> pd
+<span class="kw">import</span> matplotlib.pyplot <span class="kw">as</span> plt
+<span class="kw">from</span> statsmodels.stats.proportion <span class="kw">import</span> proportion_confint
+
+df = pd.<span class="fn">read_csv</span>(<span class="str">"customers_q3.csv"</span>)
+tiers = [<span class="str">"basic"</span>, <span class="str">"pro"</span>, <span class="str">"enterprise"</span>]
+rates, lo, hi = [], [], []
+<span class="kw">for</span> t <span class="kw">in</span> tiers:
+    sub = df[df.plan_tier == t]
+    r = sub.churned.<span class="fn">mean</span>()
+    l, h = <span class="fn">proportion_confint</span>(sub.churned.<span class="fn">sum</span>(), <span class="fn">len</span>(sub), method=<span class="str">"wilson"</span>)
+    rates.<span class="fn">append</span>(r); lo.<span class="fn">append</span>(r - l); hi.<span class="fn">append</span>(h - r)
+<span class="com"># plot with asymmetric error bars …</span>
+              </div>
+
+              <!-- Proposed chart placeholder — v2 in progress -->
+              <div class="chart-card" style="opacity: 0.5;">
+                <div class="chart-cap">
+                  <span class="chart-cap-title">churn_rate_by_tier · v2 · rendering…</span>
+                  <div class="chart-cap-actions"><span style="color: var(--ink-3);">pending</span></div>
+                </div>
+                <div style="height: 160px; display: flex; align-items: center; justify-content: center;">
+                  <span style="font-size: 13.2px; color: var(--ink-3); font-family: 'JetBrains Mono', monospace;">chart rendering · 0.6s elapsed</span>
+                </div>
+              </div>
+
+              <div style="margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: 3px; font-size: 13.2px; color: var(--ink-3);">
+                Interpretation will be drafted once chart v2 is confirmed.
+              </div>
+            </div>
+
+            <!-- Sections 3-5 queued -->
+            <div class="section" style="opacity: 0.45;">
+              <div class="section-head">
+                <span class="section-num">iii</span>
+                <h3 class="section-h2">Engagement signals</h3>
+                <span class="section-status queued">queued</span>
+              </div>
+            </div>
+            <div class="section" style="opacity: 0.45;">
+              <div class="section-head">
+                <span class="section-num">iv</span>
+                <h3 class="section-h2">Tenure effects</h3>
+                <span class="section-status queued">queued</span>
+              </div>
+            </div>
+            <div class="section" style="opacity: 0.45;">
+              <div class="section-head">
+                <span class="section-num">v</span>
+                <h3 class="section-h2">Multivariate drivers &amp; recommendations</h3>
+                <span class="section-status queued">queued</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rail right">
+          <div class="rail-section">
+            <div class="rail-header">Agent activity</div>
+            <div class="activity-item">
+              <div class="activity-time">11:08:45</div>
+              <div class="activity-line done">Rendered <span class="mono">chart_v1.png</span> · bar chart</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:09:02</div>
+              <div class="activity-line done">Received redirect from user</div>
+              <div class="activity-detail">intent: grouped bar + 95% CI · discarding v1</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:09:04</div>
+              <div class="activity-line done">Rewrote <span class="mono">02_churn_by_tier_v2.py</span></div>
+              <div class="activity-detail">Wilson CI via statsmodels · asymmetric error bars</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">11:09:05</div>
+              <div class="activity-line running">
+                <span class="pulse"></span>Rendering chart v2
+              </div>
+              <div class="activity-detail">matplotlib · saving to /charts/02_v2.png</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-time">—</div>
+              <div class="activity-line" style="color: var(--ink-3);">Interpretation drafting · queued</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div class="botbar-left">§2 rebuilding · redirected</div>
+        <div class="input-wrap">
+          <input placeholder="Further instructions for §2, or wait for the revised chart…" />
+          <span class="input-hint">↵</span>
+        </div>
+        <div class="botbar-right">⌘ K</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const buttons = document.querySelectorAll('.stage-btn');
+  const frames = document.querySelectorAll('.stage-frame');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.stage;
+      buttons.forEach(b => b.classList.toggle('active', b.dataset.stage === target));
+      frames.forEach(f => f.classList.toggle('hide', f.dataset.stageFrame !== target));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+</script>
+
+</body>
+</html>

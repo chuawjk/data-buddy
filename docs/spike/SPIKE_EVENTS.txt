@@ -1,0 +1,112 @@
+=== tool_part_apply_patch_completed ===
+{
+  "id": "evt_e6373abb0001kJ4qSZPampp1sf",
+  "type": "message.part.updated",
+  "properties": {
+    "sessionID": "ses_19c8d84bcffeUjlqbSsxJ6wr2F",
+    "part": {
+      "type": "tool",
+      "tool": "apply_patch",
+      "callID": "call_MC6oU8wS2HuEJbhAEdo5sOsz",
+      "state": {
+        "status": "completed",
+        "input": {
+          "patchText": "*** Begin Patch\n*** Add File: /private/tmp/opencode-spike/hello.txt\n+world\n*** End Patch"
+        },
+        "output": "Success. Updated the following files:\nA private/tmp/opencode-spike/hello.txt",
+        "metadata": {
+          "diff": "Index: /private/tmp/opencode-spike/hello.txt\n===================================================================\n--- /private/tmp/opencode-spike/hello.txt\n+++ /private/tmp/opencode-spike/hello.txt\n@@ -0,0 +1,1 @@\n+world\n\n",
+          "files": [
+            {
+              "filePath": "/private/tmp/opencode-spike/hello.txt",
+              "relativePath": "private/tmp/opencode-spike/hello.txt",
+              "type": "add",
+              "patch": "Index: /private/tmp/opencode-spike/hello.txt\n===================================================================\n--- /private/tmp/opencode-spike/hello.txt\n+++ /private/tmp/opencode-spike/hello.txt\n@@ -0,0 +1,1 @@\n+world\n",
+              "additions": 1,
+              "deletions": 0
+            }
+          ],
+          "diagnostics": {},
+          "truncated": false
+        },
+        "title": "Success. Updated the following files:\nA private/tmp/opencode-spike/hello.txt",
+        "time": {
+          "start": 1779784985515,
+          "end": 1779784985520
+        }
+      },
+      "metadata": {
+        "openai": {
+          "itemId": "fc_077d8693d6fd6584016a155d19261881919f59f307785c8521"
+        }
+      },
+      "id": "prt_e6373ab3f0011BhD2uKJn23gz4",
+      "sessionID": "ses_19c8d84bcffeUjlqbSsxJ6wr2F",
+      "messageID": "msg_e63738b1f001VpahxiW1YqTBxR"
+    },
+    "time": 1779784985520
+  }
+}
+
+=== tool_part_bash_completed ===
+{
+  "id": "evt_e63738acd0010XhIF0YFlMWxd5",
+  "type": "message.part.updated",
+  "properties": {
+    "sessionID": "ses_19c8d84bcffeUjlqbSsxJ6wr2F",
+    "part": {
+      "type": "tool",
+      "tool": "bash",
+      "callID": "call_SlotncEIphD827fRXD01yfsw",
+      "state": {
+        "status": "completed",
+        "input": {
+          "command": "ls",
+          "timeout": 120000,
+          "workdir": "/private/tmp/opencode-spike",
+          "description": "Lists workspace contents"
+        },
+        "output": "events-clean.txt\nprompt1-response.txt\nserver.log\nsse-capture.txt\n",
+        "metadata": {
+          "output": "events-clean.txt\nprompt1-response.txt\nserver.log\nsse-capture.txt\n",
+          "exit": 0,
+          "description": "Lists workspace contents",
+          "truncated": false
+        },
+        "title": "Lists workspace contents",
+        "time": {
+          "start": 1779784977098,
+          "end": 1779784977101
+        }
+      },
+      "metadata": {
+        "openai": {
+          "itemId": "fc_036c6885a50f505e016a155d10faa88191a5ef80be8646d164"
+        }
+      },
+      "id": "prt_e63738aa7001tOdx94IGUwWFz1",
+      "sessionID": "ses_19c8d84bcffeUjlqbSsxJ6wr2F",
+      "messageID": "msg_e63737661001prf6YFnzPxqovj"
+    },
+    "time": 1779784977101
+  }
+}
+
+=== file_edited ===
+{
+  "id": "evt_e6373abad001t9yEU7LHwxU6wa",
+  "type": "file.edited",
+  "properties": {
+    "file": "/private/tmp/opencode-spike/hello.txt"
+  }
+}
+
+=== session_idle ===
+{
+  "id": "evt_e6373b155002w4Jvs0pYiwUbRC",
+  "type": "session.idle",
+  "properties": {
+    "sessionID": "ses_19c8d84bcffeUjlqbSsxJ6wr2F"
+  }
+}
+
