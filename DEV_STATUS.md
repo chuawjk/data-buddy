@@ -43,18 +43,28 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - Hard boundary respected: no `httpx` in router/orchestrator; no orchestrator import in client code
   - Process note: PR #6 branch also contained the original N1-S13 FE commit (branch collision); FE work was lane-clean (touches `frontend/` only). Stale remote branch `origin/feat/n1-s13-frontend-routing` confirmed identical to PR #6's FE commit and deleted post-merge.
 
+- `feat/n1-s14-api-sse-hooks` — **N1-S14 · API & event hooks** (PR #8, squash `008a6ba`)
+  - `frontend/src/hooks/useApi.ts`: `api` object with 9 typed async functions covering all REST endpoints; FormData for `/setup`; query-param encoding for `/file`; `ApiError` thrown on non-2xx
+  - `frontend/src/hooks/useSSE.ts`: `useSSE(onEvent)` React hook; `EventSource("/api/events")`; 2 s reconnect on error; cleans up on unmount; returns `{ connected: boolean }`
+  - `frontend/src/types/events.ts`: `SSEEvent` discriminated union over all 13 types from `SSE_CONTRACT.md §2`; field shapes match contract exactly
+  - `frontend/src/types/api.ts`: `Stage`, `SectionStatus`, `ColumnType`, `ColumnProfile`, `Profile`, `Section`, `StateResponse`, `SetupResponse`, `PlanUpdateRequest`, `PlanUpdateResponse`, `ApiError` — all derived from `API_CONTRACT.html`
+  - 29 tests pass (13 useApi + 8 useSSE + 8 App.test); lint clean; CI green on merge
+
 ### In Dev / In Review / In QA
 
 *(see startable set below)*
 
-### Startable set (post N1-S02 + N1-S13 merge)
+### Startable set (post N1-S14 merge)
 
-All of N1-S01, N1-S07, N1-S02, and N1-S13 are now on `develop`:
+All of N1-S01, N1-S07, N1-S02, N1-S13, and N1-S14 are now on `develop`:
 
-- **N1-S14** (FE) — SSE hook & activity rail *(fully unblocked: N1-S07 ✅ + N1-S13 ✅)*
+- **N1-S15** (FE) — Setup screen *(fully unblocked: N1-S13 ✅ + N1-S14 ✅)*
+- **N1-S17** (FE) — Activity rail *(fully unblocked: N1-S13 ✅ + N1-S14 ✅)*
 - **N1-S03** (BE) — State manager *(fully unblocked: N1-S02 ✅)*
 - **N1-S10** (BE) — SSE proxy / event streaming *(fully unblocked: N1-S02 ✅ + N1-S07 ✅)*
 - **N1-S08** (BE) — OpenCode client & SSE normalisation *(fully unblocked: N1-S02 ✅ + N1-S07 ✅)*
+
+N1-S16 (FE) — Section view: still blocked on N1-S17.
 
 ### Blockers
 
