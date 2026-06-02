@@ -43,8 +43,8 @@ async def lifespan(app: FastAPI):
        ``SKIP_OPENCODE`` environment variable is set to a truthy value
        (``1``, ``true``, or ``yes``) -- for CI and environments without the
        binary installed.
-    4. Orchestrator -- minimal stub for the setup->profiling handoff (N1-S05).
-       The full state machine (N1-S04) will expand this once N1-S08 is merged.
+    4. Orchestrator -- full setup→profiling state machine (N1-S04).
+       Holds a reference to the OpenCodeClient for the narrow prompt interface.
 
     Shutdown order (reverse):
     3. OpenCodeClient.stop() -- SIGTERM then SIGKILL after 5 s.
@@ -85,10 +85,11 @@ async def lifespan(app: FastAPI):
 
     app.state.opencode_client = client
 
-    # Wire up the minimal orchestrator stub (N1-S05).
+    # Wire up the stage orchestrator (N1-S04: setup→profiling state machine).
     app.state.orchestrator = Orchestrator(
         state_manager=state_manager,
         bus=app.state.bus,
+        client=client,  # None when SKIP_OPENCODE=1; orchestrator guards internally.
     )
 
     yield
