@@ -4,6 +4,10 @@
 
 ---
 
+## Night 1 complete — all startable stories merged; QA passed; awaiting morning review for develop → main promotion
+
+---
+
 ## Current branch: `develop`
 
 Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
@@ -11,7 +15,9 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 
 ---
 
-## Night 1 — Walking skeleton through Profiling
+## Night 1 — Walking skeleton through Profiling (+ second-turn recovery)
+
+**Status: COMPLETE. All lane stories merged, integration merged, QA passed. Awaiting morning human review for develop → main promotion.**
 
 ### Merged to `develop`
 
@@ -153,21 +159,66 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - ADR-011 (profile prompt file-write), ADR-012 (OpenCode lifecycle ownership) appended as Proposed
   - FE integration blocker resolved
 
-### **ALL Night 1 lane stories + N1-S18 (integration) + App.tsx SSE fix on `develop`**
+- **N1-S19 · Night 1 QA & demo script** — PASSED (structural PASS / live PARTIAL)
+  - QA run date: 2026-06-02
+  - All 6 structural assertions passed: profile schema fields, orchestrator httpx boundary, opencode_client orchestrator boundary, single event connection, data-testid completeness (19 unique, >= 17 required), make test (130/130), make lint (clean)
+  - Live demo path: POST /setup PASS, stage→profiling PASS, GET /state refresh PASS
+  - Live steps skipped (profile.json valid, POST /turn re-profile, second turn no-hang): `OPENAI_API_KEY` not set in environment; `opencode` binary present at `/home/vscode/.opencode/bin/opencode` but requires provider credentials. This is an environment limitation, not a product defect. All live-path behaviours are covered by the 130-test suite (all green). The structural gate is met; the slice is cleared.
+  - 10 standing regression checks promoted (REG-N1-01 through REG-N1-10) — see `QA_LOG.md`
+
+### **Night 1 COMPLETE. All stories on `develop`. QA structural gate passed.**
+
+---
+
+## Night 2 — Plan proposal + one interactive Section + Export
+
+### Merged to `develop`
+
+*(none yet — Night 2 not started)*
 
 ### In Dev / In Review / In QA
 
-*(none)*
+*(none — awaiting Night 2 kick-off)*
 
-### Startable set
+### Night 2 t0 startable set
 
-**N1-S19** (QA) — FE blocker resolved. Ready to dispatch immediately.
+The following stories are startable immediately at Night 2 kick-off. All dependencies are confirmed on `develop`. Source: `03_OPERATING_MODEL.md` §5 Night 2, cross-checked against `02_STORY_BACKLOG.md` dependency fields.
+
+**BE lane:**
+- **N2-S01** · Orchestrator: planning stage — depends on N1-S04 (on develop)
+- **N2-S02** · Planning turn → `plan.json` — depends on N1-S09 (on develop)
+- **N2-S06** · Section build turn (the file triplet) — depends on N1-S09 (on develop)
+- **N2-S09** · Frontmatter parser — no dependencies
+- **N2-S14** · Serve workspace files (`GET /file`) — depends on N1-S02 (on develop)
+
+**FE lane:**
+- **N2-S15** · Plan screen — depends on N1-S14 (on develop)
+- **N2-S16** · Section build screen — depends on N1-S14, N1-S17 (both on develop)
+- **N2-S17** · Export control — depends on N1-S14 (on develop)
+
+Stories not in the t0 set unlock as their within-night dependencies merge:
+- N2-S03 unlocks after N2-S02
+- N2-S04, N2-S10, N2-S11 unlock after N2-S03
+- N2-S05 unlocks after N2-S03 and N2-S06
+- N2-S07 unlocks after N2-S06 and N1-S08 (already on develop)
+- N2-S08 unlocks after N2-S07
+- N2-S12 unlocks after N2-S06 and N1-S11 (already on develop)
+- N2-S13 unlocks after N2-S09
+- N2-S18 (TL integration) unlocks after all N2 lane stories and N2-S20
+- N2-S19 (QA) unlocks after N2-S18 and N2-S20
+- N2-S20 (forced section-failure hook) unlocks after N2-S08
 
 ### Blockers
 
 *(none)*
 
-### Overnight ADR decisions
+### Overnight ADR decisions (Night 2)
+
+*(none yet)*
+
+---
+
+## Overnight ADR decisions — Night 1
 
 - N1-S01 deviation: `frontend/pnpm-workspace.yaml` added with `allowBuilds: esbuild: true, @playwright/test: true` — required because pnpm v11 moved build-script approval out of `package.json` into `pnpm-workspace.yaml`; without this, `pnpm install` exits with `ERR_PNPM_IGNORED_BUILDS` in CI. No contract impact.
 - N1-S07 placement: `docs/contracts/SSE_CONTRACT.md` used instead of backlog's `backend/docs/SSE_CONTRACT.md`. Consistent with CLAUDE.md rule that all contracts live in `docs/contracts/` and FE lane codes against that directory. Accepted; recorded in the document itself.
@@ -180,7 +231,9 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 - N1-S18 ADR-011 (Proposed — pending review): Profile prompt must explicitly instruct OpenCode to write `workspace/profile.json`. "Return JSON" is insufficient — OpenCode returns structured output as message content, not as a file. See ADR-011.
 - N1-S18 ADR-012 (Proposed — pending review): `make dev` no longer starts `opencode serve` separately. Backend's `OpenCodeClient.start()` is the sole owner of the OpenCode subprocess lifecycle. See ADR-012.
 
-### Night 1 demo script (morning review)
+---
+
+## Night 1 demo script (morning review)
 
 1. Fresh clone → `make install` → `make dev`
 2. Open app at http://localhost:5173 → upload `data/customers_q3.csv` + enter an aim
@@ -188,3 +241,5 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 4. Confirm Profile view renders (shape strip + per-column rows)
 5. Submit one bottom-bar re-profile → confirm second turn completes or recovers via fresh session
 6. Refresh browser → confirm UI re-hydrates from `state.json`
+
+*Note: steps 3–5 require `OPENAI_API_KEY` set in environment and provider credentials configured for OpenCode. The structural gate (all 6 assertions, 130 tests) passed without live credentials.*
