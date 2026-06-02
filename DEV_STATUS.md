@@ -127,20 +127,26 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - 58 BE tests pass, 50 FE tests pass (108 total); lint clean; CI green on merge
   - Self-approve not possible (same account owns PR); merged after all three gates verified green
 
+- `feat/n1-s11-watchdog` — **N1-S11 · Stuck-turn watchdog & recovery** + **N1-S20 · Testability seams** (PR #21, squash `5efd7fe`)
+  - `backend/watchdog.py` (new): `Watchdog` class — `start_turn()` creates an `asyncio.Task` sleeping `WATCHDOG_TIMEOUT` seconds; `heartbeat()` cancels and restarts the task (timer reset); `cancel()` cancels it; on expiry: `_handle_timeout()` calls `client.abort(session_id)` best-effort (errors swallowed), sleeps 10s grace, calls `client.create_fresh_session()`, calls `state_manager.update(opencode_session_id=new_id)`, publishes `turn.error`; no-session-id edge case handled (skips abort/fresh-session, still publishes `turn.error`); `WATCHDOG_TIMEOUT` read from `WATCHDOG_TIMEOUT_SECONDS` env var (default 60)
+  - `backend/opencode_client.py` (additive only relative to N1-S09): `abort(session_id)` — best-effort POST to `/session/:id/abort`, all errors swallowed; `create_fresh_session()` — delegates to refactored `_create_session()` which now returns `str` (no side effects); `start()` owns side effects (`self._session_id = session_id`, `state_manager.update()`); `QA_FORCE_STALL=1` seam in `_run_one_connection` suppresses events after the first, off by default, zero production path impact
+  - `backend/tests/unit/app/test_watchdog.py` (new): 8 TDD tests — timeout triggers abort, fresh session after grace, state updated with new session ID, `turn.error` emitted, heartbeat resets timer (no abort), cancel stops watch (no abort), `WATCHDOG_TIMEOUT_SECONDS` env var override, no-session-id skips abort but still emits `turn.error`
+  - Rebase: conflict in `opencode_client.py` between N1-S09's `_create_session()` (void, side effects) and N1-S11's refactor (returns `str`, no side effects). Resolved: kept N1-S11's design (`_create_session()` returns `str`, `start()` owns side effects) — correct because `create_fresh_session()` must reuse `_create_session()` without duplicating logic. All N1-S09 changes (`prompt()` method) preserved intact.
+  - 66 BE tests pass, 50 FE tests pass (116 total); lint clean; CI green on merge
+
 ### In Dev / In Review / In QA
 
 *(none)*
 
-### Startable set (post N1-S04 merge)
+### Startable set (post N1-S11 merge)
 
-All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08, N1-S09, N1-S04.
+All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08, N1-S09, N1-S04, N1-S11, N1-S20.
 
 Remaining unmerged N1 BE stories:
 
-- **N1-S11** (BE) — Stuck-turn watchdog & recovery *(unblocked: N1-S06 ✅ + N1-S08 ✅)*
-- **N1-S12** (BE) — Re-profile turn *(blocked: requires N1-S04 ✅ + N1-S11)*
+- **N1-S12** (BE) — Re-profile turn *(unblocked: N1-S04 ✅ + N1-S09 ✅ + N1-S11 ✅)*
 
-N1-S18 (integration) requires N1-S04 ✅ + N1-S05 ✅ + N1-S06 ✅ + N1-S08 ✅ + N1-S09 ✅ + N1-S10 ✅ + N1-S11 — blocked on N1-S11 only.
+N1-S18 (integration) requires N1-S04 ✅ + N1-S05 ✅ + N1-S06 ✅ + N1-S08 ✅ + N1-S09 ✅ + N1-S10 ✅ + N1-S11 ✅ + N1-S12 — blocked on N1-S12 only. Unblocked for dispatch immediately after N1-S12 merges.
 
 ### Blockers
 
