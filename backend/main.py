@@ -18,6 +18,7 @@ from fastapi import FastAPI
 
 from backend.event_bus import EventBus
 from backend.router import router
+from backend.state_manager import StateManager
 
 
 @asynccontextmanager
@@ -25,16 +26,20 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler.
 
     Runs once at startup (before the first request) and once at shutdown (after
-    the last request).  The EventBus is created here and stored on
-    ``app.state.bus`` so it outlives individual requests and can be injected
-    via FastAPI's dependency system in later stories.
+    the last request).  The EventBus and StateManager are created here and
+    stored on ``app.state`` so they outlive individual requests and can be
+    injected via FastAPI's dependency system in later stories.
     """
     # --- startup ---
     app.state.bus = EventBus()
+    app.state.state_manager = StateManager()
+    # Load persisted state from disk (no-op if workspace/state.json does not
+    # exist yet — returns the default shape and leaves _state at defaults).
+    app.state.state_manager.load()
     yield
     # --- shutdown ---
-    # Nothing to tear down for the bus itself; later stories (OpenCode process,
-    # watchdog) will add cleanup here inside the lifespan.
+    # Nothing to tear down for the bus or state manager; later stories
+    # (OpenCode process, watchdog) will add cleanup here inside the lifespan.
 
 
 app = FastAPI(

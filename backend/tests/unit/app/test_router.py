@@ -6,6 +6,8 @@ Acceptance criteria:
 - GET /state returns a minimal valid state object.
 """
 
+import threading
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,7 +16,10 @@ from backend.main import app
 
 @pytest.fixture()
 def client():
-    return TestClient(app)
+    # Use the context-manager form so the lifespan runs (EventBus +
+    # StateManager are initialised on app.state before requests are sent).
+    with TestClient(app) as c:
+        yield c
 
 
 # ---------------------------------------------------------------------------
@@ -49,12 +54,49 @@ def test_post_setup(client):
 
 
 def test_get_events_registered(client):
-    """GET /events is registered (SSE stub — must not 404)."""
-    # We cannot hold open an SSE stream in a unit test; just confirm the route exists.
-    # stream=True avoids blocking on the streaming response.
-    with client.stream("GET", "/events") as r:
-        assert r.status_code != 404
-        assert r.status_code < 500
+    """GET /events is registered, returns 200 text/event-stream with the correct headers.
+
+    The real implementation (N1-S10) is an infinite SSE stream backed by the
+    EventBus.  TestClient's ASGI transport runs the generator synchronously so
+    we cannot consume it directly without blocking forever.  Instead we run the
+    stream in a daemon thread and join with a short timeout; the thread is
+    interrupted by the daemon flag when the test exits.
+
+    We assert:
+    - Status 200 (not 404 or 5xx).
+    - Content-Type includes ``text/event-stream``.
+    - ``Cache-Control: no-cache`` is set (contract requirement).
+    - ``X-Accel-Buffering: no`` is set (contract requirement).
+    """
+    result: dict = {}
+    event = threading.Event()
+
+    def _stream():
+        try:
+            with client.stream("GET", "/events") as r:
+                result["status"] = r.status_code
+                result["content_type"] = r.headers.get("content-type", "")
+                result["cache_control"] = r.headers.get("cache-control", "")
+                result["x_accel"] = r.headers.get("x-accel-buffering", "")
+                event.set()
+                # Block in the stream until the daemon thread is killed.
+                for _ in r.iter_bytes():
+                    pass
+        except Exception as exc:
+            result["error"] = str(exc)
+            event.set()
+
+    t = threading.Thread(target=_stream, daemon=True)
+    t.start()
+
+    # Wait up to 5 s for the response headers to arrive.
+    assert event.wait(timeout=5), "GET /events did not respond within 5 s"
+
+    assert "error" not in result, f"stream thread raised: {result.get('error')}"
+    assert result["status"] == 200
+    assert "text/event-stream" in result["content_type"]
+    assert result["cache_control"] == "no-cache"
+    assert result["x_accel"] == "no"
 
 
 def test_post_turn(client):

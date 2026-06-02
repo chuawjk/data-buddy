@@ -23,7 +23,7 @@ from __future__ import annotations
 import time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 
 router = APIRouter()
@@ -32,26 +32,25 @@ router = APIRouter()
 # GET /state
 # ---------------------------------------------------------------------------
 
-_STUB_STATE: dict[str, Any] = {
-    "version": "1",
-    "stage": "setup",
-    "aim": None,
-    "dataset_path": None,
-    "last_saved": None,
-    "profile": None,
-    "plan": [],
-}
+# Fields that are internal to the backend and must NOT be exposed to the SPA
+# (API contract §3: "Mirrors state.json exactly, minus the internal
+# opencode_session_id field").
+_INTERNAL_FIELDS = {"opencode_session_id"}
 
 
 @router.get("/state")
-async def get_state() -> dict[str, Any]:
+async def get_state(request: Request) -> dict[str, Any]:
     """Return the current application state.
 
-    Real implementation lives in N1-S03 (state_manager).  Until then, returns
-    a minimal valid state object at stage ``"setup"`` so callers can confirm
-    the app is healthy and the contract shape is correct.
+    Reads from the StateManager on ``app.state.state_manager`` (set in the
+    lifespan in ``main.py``).  Internal fields (``opencode_session_id``) are
+    stripped before returning so they are never exposed to the SPA.
     """
-    return _STUB_STATE
+    state_manager = request.app.state.state_manager
+    state = state_manager.get_state()
+
+    # Strip internal-only fields per the contract (§3).
+    return {k: v for k, v in state.items() if k not in _INTERNAL_FIELDS}
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +73,7 @@ async def post_setup() -> dict[str, Any]:
 
 
 async def _stub_sse_stream():
-    """Yield a single SSE comment as a keep-alive, then close."""
+    """Yield a single SSE heartbeat as a keep-alive, then close."""
     ts = int(time.time() * 1000)
     yield f'event: heartbeat\ndata: {{"type": "heartbeat", "ts": {ts}}}\n\n'
 
