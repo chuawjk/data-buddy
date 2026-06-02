@@ -24,6 +24,7 @@ from backend.opencode_client import OpenCodeClient
 from backend.orchestrator import Orchestrator
 from backend.router import router
 from backend.state_manager import StateManager
+from backend.watchdog import Watchdog
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +86,21 @@ async def lifespan(app: FastAPI):
 
     app.state.opencode_client = client
 
+    # Wire up the watchdog (N1-S11 / N1-S12).  Only created when OpenCode is running;
+    # Watchdog requires a live client reference so it can call abort() and
+    # create_fresh_session().  When SKIP_OPENCODE=1, watchdog is omitted and the
+    # orchestrator guards internally (no-op start_turn path).
+    watchdog: Watchdog | None = None
+    if client is not None:
+        watchdog = Watchdog(client=client, state_manager=state_manager, bus=app.state.bus)
+        app.state.watchdog = watchdog
+
     # Wire up the stage orchestrator (N1-S04: setup→profiling state machine).
     app.state.orchestrator = Orchestrator(
         state_manager=state_manager,
         bus=app.state.bus,
         client=client,  # None when SKIP_OPENCODE=1; orchestrator guards internally.
+        watchdog=watchdog,  # None when SKIP_OPENCODE=1; orchestrator guards internally.
     )
 
     yield

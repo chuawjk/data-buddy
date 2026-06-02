@@ -24,7 +24,7 @@ import asyncio
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, Query, Request, UploadFile
+from fastapi import APIRouter, Body, File, Form, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from backend.sse_proxy import event_stream
@@ -186,12 +186,40 @@ async def get_events(request: Request) -> StreamingResponse:
 
 
 @router.post("/turn", status_code=204)
-async def post_turn() -> Response:
+async def post_turn(request: Request, body: dict = Body(...)) -> Response:
     """Route bottom-bar text to the agent.
 
-    Real implementation: N1-S12.  Stub returns 204 No Content.
+    Context-aware: dispatches to the appropriate orchestrator method based on
+    the current stage.  Returns 204 immediately; agent progress arrives via SSE.
+
+    Currently implemented stages (N1-S12):
+    - ``profiling``: calls ``orchestrator.re_profile(text)``
+
+    Night 2 will add:
+    - ``planning``: calls ``orchestrator.re_plan(text)``
+    - ``building``: calls ``orchestrator.redirect_section(text)``
+
+    Error envelopes (API contract S4):
+    - 422 invalid_text -- text field missing or empty/whitespace-only.
+    - 422 invalid_stage -- POST /turn is not valid in the current stage.
     """
-    return Response(status_code=204)
+    text: str = (body.get("text") or "").strip()
+    if not text:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "invalid_text", "message": "text is required and must not be empty"},
+        )
+
+    stage: str = request.app.state.state_manager.get_state().get("stage", "")
+    if stage == "profiling":
+        asyncio.create_task(request.app.state.orchestrator.re_profile(text))
+        return Response(status_code=204)
+
+    # Night 2: planning and building stages will be added here.
+    return JSONResponse(
+        status_code=422,
+        content={"error": "invalid_stage", "message": f"POST /turn not valid in stage {stage!r}"},
+    )
 
 
 # ---------------------------------------------------------------------------
