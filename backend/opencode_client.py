@@ -1,4 +1,4 @@
-"""OpenCode process management and session lifecycle.
+"""OpenCode process management, session lifecycle, and persistent event subscription.
 
 Responsibilities:
 - Resolve the ``opencode`` binary via ``shutil.which`` at startup (raises
@@ -8,27 +8,43 @@ Responsibilities:
   expires.
 - Create a single session via the **v1 /session** API and persist the session
   ID to ``state.json`` through the ``StateManager``.
+- Maintain a single persistent ``GET /event`` SSE subscription (N1-S08):
+  normalise raw OpenCode events and publish them to the ``EventBus``.
+  Reconnects automatically if no ``server.heartbeat`` arrives for 30s.
 - Tear down the subprocess cleanly on shutdown (SIGTERM, then SIGKILL after 5 s).
 
-Out of scope (later stories):
-- The persistent ``GET /event`` SSE subscription (N1-S08).
-- ``prompt()`` / event iteration (N1-S08).
+Out of scope:
 - Watchdog abort/recovery (N1-S11).
 
 Hard boundary: this module never imports the orchestrator.  The orchestrator
 calls this client through the narrow interface only.  ``httpx`` is imported
 here; the orchestrator must not import ``httpx`` directly.
+
+Normalisation rules (from docs/contracts/SSE_CONTRACT.md):
+  raw type                        → bus event
+  message.part.delta              → message.part  (text streaming)
+  message.part.updated (bash, running)  → tool.bash_running
+  message.part.updated (bash, completed) → tool.bash_done
+  message.part.updated (*, completed, metadata.files present) → tool.file_written
+  session.idle (own session)      → session.idle
+  server.heartbeat                → reset timer only; nothing published
+  file.edited                     → file.ready   (global — no sessionID filter)
+  all others                      → drop silently
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shutil
+import time
 from typing import Any
 
 import httpx
+from httpx_sse import aconnect_sse
 
+from backend.event_bus import EventBus
 from backend.state_manager import StateManager
 
 logger = logging.getLogger(__name__)
@@ -49,6 +65,25 @@ _POLL_INTERVAL_S: float = 0.5  # seconds between health polls
 
 # Shutdown grace period before SIGKILL.
 _SIGKILL_GRACE_S: float = 5.0
+
+# Heartbeat absence threshold before reconnect (seconds).
+_HEARTBEAT_TIMEOUT_S: float = 30.0
+
+# Events that carry a sessionID in properties — must match the active session.
+_SESSION_SCOPED_TYPES: frozenset[str] = frozenset(
+    {
+        "message.part.updated",
+        "message.part.delta",
+        "session.idle",
+        "session.status",
+        "session.diff",
+        "session.next.agent.switched",
+        "session.next.model.switched",
+    }
+)
+
+# Events with no sessionID — always relevant (global).
+_GLOBAL_TYPES: frozenset[str] = frozenset({"server.heartbeat", "server.connected", "file.edited"})
 
 
 class OpenCodeClient:
@@ -85,6 +120,9 @@ class OpenCodeClient:
 
         self._process: asyncio.subprocess.Process | None = None
         self._session_id: str | None = None
+
+        # Subscription state (N1-S08).
+        self._subscription_task: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------------
     # Public interface
@@ -138,6 +176,278 @@ class OpenCodeClient:
             process.kill()
             await process.wait()
             logger.info("OpenCode process killed.")
+
+    async def start_event_subscription(
+        self,
+        bus: EventBus,
+        heartbeat_timeout: float = _HEARTBEAT_TIMEOUT_S,
+    ) -> None:
+        """Open one persistent GET /event SSE connection; normalise and publish events to bus.
+
+        Designed to run as a background asyncio Task (see ``main.py`` lifespan).
+        Reconnects automatically when ``server.heartbeat`` has been absent for
+        ``heartbeat_timeout`` seconds.
+
+        Session filtering:
+          Events whose ``properties.sessionID`` does not match the current active
+          session are silently dropped (SSE_CONTRACT.md §5).  Global events
+          (``server.heartbeat``, ``file.edited``, ``server.connected``) carry no
+          sessionID and are always processed.
+
+        Args:
+            bus: The EventBus onto which normalised events are published.
+            heartbeat_timeout: Seconds without a ``server.heartbeat`` before the
+                client reconnects.  Defaults to 30 s.
+        """
+        event_url = f"{self._base_url}/event"
+        logger.info("Starting persistent SSE subscription to %s", event_url)
+
+        while True:
+            try:
+                await self._run_one_connection(bus, event_url, heartbeat_timeout)
+                # _run_one_connection returns (rather than raising) when it
+                # detects a heartbeat timeout or a clean stream end.
+                logger.info("SSE connection ended -- reconnecting.")
+            except asyncio.CancelledError:
+                logger.info("SSE subscription cancelled -- stopping.")
+                raise
+            except Exception as exc:
+                logger.warning("SSE subscription error (%s) -- will reconnect.", exc)
+            # Brief back-off before every reconnect (normal or error) to avoid
+            # a tight spin if the server closes the stream immediately.
+            await asyncio.sleep(0.1)
+
+    async def _run_one_connection(
+        self,
+        bus: EventBus,
+        event_url: str,
+        heartbeat_timeout: float,
+    ) -> None:
+        """Consume one SSE connection until cancelled or heartbeat timeout fires.
+
+        Uses ``asyncio.wait_for`` on each ``__anext__`` call so that silence
+        on the wire (no events arriving) is detected within ``heartbeat_timeout``
+        seconds and causes this coroutine to return, prompting a reconnect.
+
+        Args:
+            bus: EventBus to publish normalised events onto.
+            event_url: Full URL of the OpenCode ``/event`` endpoint.
+            heartbeat_timeout: Maximum seconds to wait for the next event before
+                treating the connection as stale and returning.
+        """
+        async with httpx.AsyncClient(timeout=None) as http_client:
+            async with await aconnect_sse(http_client, "GET", event_url) as sse_response:
+                sse_iter = sse_response.aiter_sse().__aiter__()
+                last_heartbeat = asyncio.get_event_loop().time()
+
+                while True:
+                    # How long until the heartbeat window closes.
+                    remaining = heartbeat_timeout - (
+                        asyncio.get_event_loop().time() - last_heartbeat
+                    )
+                    if remaining <= 0:
+                        logger.warning(
+                            "No server.heartbeat for %.1fs -- reconnecting.",
+                            heartbeat_timeout,
+                        )
+                        return  # Caller reconnects.
+
+                    try:
+                        raw_sse = await asyncio.wait_for(
+                            sse_iter.__anext__(),
+                            timeout=remaining,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "No server.heartbeat for %.1fs -- reconnecting.",
+                            heartbeat_timeout,
+                        )
+                        return  # Caller reconnects.
+                    except StopAsyncIteration:
+                        # Stream ended cleanly (server closed it).
+                        logger.info("SSE stream ended (StopAsyncIteration) -- will reconnect.")
+                        return
+
+                    try:
+                        raw = json.loads(raw_sse.data)
+                    except (json.JSONDecodeError, AttributeError):
+                        logger.debug(
+                            "Skipping non-JSON SSE data: %r",
+                            getattr(raw_sse, "data", None),
+                        )
+                        continue
+
+                    event_type: str = raw.get("type", "")
+                    properties: dict[str, Any] = raw.get("properties", {})
+
+                    # Heartbeat: reset timer; do NOT publish.
+                    if event_type == "server.heartbeat":
+                        last_heartbeat = asyncio.get_event_loop().time()
+                        logger.debug("server.heartbeat received -- timer reset.")
+                        continue
+
+                    # Session filter for session-scoped events.
+                    if event_type in _SESSION_SCOPED_TYPES:
+                        incoming_session = properties.get("sessionID")
+                        active_session = self._state_manager.get_state().get("opencode_session_id")
+                        if incoming_session != active_session:
+                            logger.debug(
+                                "Dropping event %r: sessionID %r != active %r",
+                                event_type,
+                                incoming_session,
+                                active_session,
+                            )
+                            continue
+
+                    # Normalise and publish to the bus.
+                    await self._normalise_and_publish(event_type, properties, bus)
+
+    async def stop_event_subscription(self) -> None:
+        """Cancel the background subscription task cleanly.
+
+        Safe to call even if ``start_event_subscription`` was never scheduled
+        as a Task (i.e. when the subscription is awaited directly in tests).
+        This method only cancels the stored ``_subscription_task`` handle
+        registered via ``_register_subscription_task``.
+        """
+        if self._subscription_task is not None and not self._subscription_task.done():
+            self._subscription_task.cancel()
+            try:
+                await self._subscription_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("SSE subscription task stopped.")
+        self._subscription_task = None
+
+    def _register_subscription_task(self, task: asyncio.Task[None]) -> None:
+        """Record the asyncio Task so ``stop_event_subscription`` can cancel it.
+
+        Called from ``main.py`` after
+        ``asyncio.create_task(client.start_event_subscription(bus))``.
+        """
+        self._subscription_task = task
+
+    # ------------------------------------------------------------------
+    # Normalisation helpers (SSE_CONTRACT.md §2)
+    # ------------------------------------------------------------------
+
+    async def _normalise_and_publish(
+        self,
+        event_type: str,
+        properties: dict[str, Any],
+        bus: EventBus,
+    ) -> None:
+        """Translate a raw OpenCode event into a bus event and publish it.
+
+        Mapping (SSE_CONTRACT.md §2):
+          message.part.delta               → message.part
+          message.part.updated (text)      → dropped (no delta in updated; use delta event)
+          message.part.updated (bash, running) → tool.bash_running
+          message.part.updated (bash, completed) → tool.bash_done
+          message.part.updated (*, completed, metadata.files) → tool.file_written
+          message.part.updated (*, pending) → silently dropped
+          session.idle                     → session.idle
+          file.edited                      → file.ready
+          server.connected                 → logged only
+          all others                       → silently dropped (DEBUG log)
+        """
+        ts = properties.get("time") or int(time.time() * 1000)
+
+        if event_type == "message.part.delta":
+            part_id = properties.get("partID") or properties.get("part", {}).get("id", "")
+            delta = properties.get("delta", "")
+            await bus.publish(
+                "message.part",
+                {"part_id": part_id, "content": delta, "ts": ts},
+            )
+            return
+
+        if event_type == "message.part.updated":
+            part: dict[str, Any] = properties.get("part", {})
+            part_type = part.get("type", "")
+            state: dict[str, Any] = part.get("state", {})
+            status = state.get("status", "")
+
+            if part_type == "tool":
+                tool_name = part.get("tool", "")
+
+                if status == "running" and tool_name == "bash":
+                    inp = state.get("input", {})
+                    await bus.publish(
+                        "tool.bash_running",
+                        {
+                            "command": inp.get("command", ""),
+                            "description": inp.get("description"),
+                            "started_at": ts,
+                            "ts": ts,
+                        },
+                    )
+                    return
+
+                if status == "completed":
+                    metadata: dict[str, Any] = state.get("metadata", {})
+                    timing: dict[str, Any] = state.get("time", {})
+                    elapsed_ms = timing.get("end", 0) - timing.get("start", 0)
+
+                    # tool.file_written — filter on metadata.files presence (D1: don't
+                    # hardcode tool name; any completed tool with files qualifies).
+                    files: list[dict[str, Any]] = metadata.get("files") or []
+                    if files:
+                        for file_entry in files:
+                            await bus.publish(
+                                "tool.file_written",
+                                {
+                                    "file": file_entry.get("relativePath", ""),
+                                    "op": file_entry.get("type", "modify"),
+                                    "additions": file_entry.get("additions", 0),
+                                    "deletions": file_entry.get("deletions", 0),
+                                    "elapsed_ms": elapsed_ms,
+                                    "ts": ts,
+                                },
+                            )
+                        return
+
+                    if tool_name == "bash":
+                        inp = state.get("input", {})
+                        await bus.publish(
+                            "tool.bash_done",
+                            {
+                                "command": inp.get("command", ""),
+                                "exit_code": metadata.get("exit", -1),
+                                "elapsed_ms": elapsed_ms,
+                                "ts": ts,
+                            },
+                        )
+                        return
+
+                # pending or unrecognised status — drop silently.
+                logger.debug(
+                    "Dropping message.part.updated: part_type=%r tool=%r status=%r",
+                    part_type,
+                    tool_name,
+                    status,
+                )
+            else:
+                # text or other non-tool part — no delta in updated; drop.
+                logger.debug("Dropping message.part.updated: non-tool part_type=%r", part_type)
+            return
+
+        if event_type == "session.idle":
+            await bus.publish("session.idle", {"ts": ts})
+            return
+
+        if event_type == "file.edited":
+            path = properties.get("file", "")
+            await bus.publish("file.ready", {"path": path, "ts": ts})
+            return
+
+        if event_type == "server.connected":
+            logger.info("OpenCode SSE connected (server.connected received).")
+            return
+
+        # All other events (session.status, session.diff, step-start, step-finish,
+        # reasoning, session.next.*) — drop silently per SSE_CONTRACT.md §2 mapping table.
+        logger.debug("Dropping unhandled event type: %r", event_type)
 
     # ------------------------------------------------------------------
     # Private helpers
