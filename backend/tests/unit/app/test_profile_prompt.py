@@ -197,13 +197,22 @@ def test_profile_schema_valid() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_build_profile_prompt_contains_dataset() -> None:
-    """build_profile_prompt() includes the dataset filename in the returned prompt."""
+def test_build_profile_prompt_contains_dataset(tmp_path: Path) -> None:
+    """build_profile_prompt() includes absolute paths so OpenCode can find gitignored files."""
     dataset = "customers_q3.csv"
     aim = "Understand churn drivers"
-    prompt = build_profile_prompt(dataset, aim)
+    workspace_root = tmp_path / "workspace"
+    prompt = build_profile_prompt(dataset, aim, workspace_root)
 
     assert dataset in prompt, (
         f"Expected dataset '{dataset}' to appear in prompt.\nPrompt:\n{prompt}"
     )
     assert aim in prompt, f"Expected aim '{aim}' to appear in prompt.\nPrompt:\n{prompt}"
+    # Paths must be absolute so OpenCode can find files even when workspace/ is gitignored.
+    assert str(workspace_root.resolve()) in prompt, (
+        f"Expected absolute workspace path in prompt.\nPrompt:\n{prompt}"
+    )
+    # Must NOT use a bare relative path — the absolute prefix must appear before "data/".
+    assert " workspace/data/" not in prompt, (
+        f"Prompt must not contain bare relative 'workspace/data/' path.\nPrompt:\n{prompt}"
+    )

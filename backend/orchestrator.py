@@ -258,13 +258,14 @@ class Orchestrator:
         try:
             from backend.prompts.profile import build_profile_prompt  # noqa: PLC0415
 
-            return build_profile_prompt(dataset, aim)
+            return build_profile_prompt(dataset, aim, self._workspace_root.resolve())
         except ImportError:
             logger.debug(
                 "_build_profile_prompt: backend.prompts.profile not yet available "
                 "(N1-S09 not merged); using placeholder."
             )
-            return f"Profile the dataset at workspace/data/{dataset} with aim: {aim}"
+            ws = self._workspace_root.resolve()
+            return f"Profile the dataset at {ws / 'data' / dataset} with aim: {aim}"
 
     # ------------------------------------------------------------------
     # Fire-and-forget helpers

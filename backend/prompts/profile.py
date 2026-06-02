@@ -15,6 +15,8 @@ Out of scope: plan / section prompts (own stories).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 PROFILE_SCHEMA: dict = {
     "type": "object",
     "required": ["shape", "columns", "flags"],
@@ -48,29 +50,34 @@ PROFILE_SCHEMA: dict = {
 }
 
 
-def build_profile_prompt(dataset: str, aim: str) -> str:
+def build_profile_prompt(dataset: str, aim: str, workspace_root: Path | str) -> str:
     """Build the profiling turn prompt for OpenCode.
 
     Args:
         dataset: Filename of the uploaded dataset (e.g. ``"customers_q3.csv"``).
-            Referenced without the ``data/`` prefix so the prompt stays readable;
-            the full workspace path is included in the body text.
         aim: The user's stated analysis aim.
+        workspace_root: Absolute (or resolvable) path to the workspace directory.
+            Passed as an absolute path so OpenCode can locate files even when the
+            workspace directory is excluded from git (and therefore invisible to
+            OpenCode's glob tooling, which respects .gitignore).
 
     Returns:
         A fully self-contained prompt string for the profiling turn.
     """
+    ws = Path(workspace_root).resolve()
+    csv_path = ws / "data" / dataset
+    profile_path = ws / "profile.json"
     return (
-        f"You are a data analyst. Profile the CSV at workspace/data/{dataset}.\n\n"
+        f"You are a data analyst. Profile the CSV at {csv_path}.\n\n"
         f"Analysis aim: {aim}\n\n"
         "Read the file and analyse it. Then write a JSON object to "
-        "workspace/profile.json describing:\n"
+        f"{profile_path} describing:\n"
         "- shape: total rows and columns\n"
         "- columns: for each column, its name, inferred type "
         "(numeric/categorical/datetime/text), notable flags "
         "(nullable, low_cardinality, high_cardinality, skewed, constant, id_like), "
         "and a one-sentence summary\n"
         "- flags: dataset-level flags (e.g. small_dataset, high_dimensionality)\n\n"
-        "Write valid JSON matching the schema exactly to workspace/profile.json. "
+        f"Write valid JSON matching the schema exactly to {profile_path}. "
         "Do not output the JSON to the console — write it directly to the file."
     )
