@@ -112,21 +112,29 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - `backend/tests/unit/app/test_event_subscription.py`: 9 new unit tests; 49 BE tests total pass; 50 FE tests pass; lint clean; CI green on merge
   - Self-approve not possible (same account owns PR); merged after all three gates verified green
 
+- `feat/n1-s09-profiling-turn` — **N1-S09 · Profiling turn → `profile.json`** (PR #19, squash `ca389ac`)
+  - `backend/opencode_client.py`: `prompt(session_id, text, schema=None)` added — POSTs to `/session/:id/prompt_async` (spike-confirmed v1 path); returns immediately (204); when schema provided, payload includes `format: {type: "json_schema", json_schema: {name: "output", schema: <schema>}, retryCount: 2}`; no format key when schema=None
+  - `backend/prompts/__init__.py` (new): package init
+  - `backend/prompts/profile.py` (new): `PROFILE_SCHEMA` — top-level required: `shape{rows,columns}`, `columns[]{name,type,flags,summary}`, `flags[]`; `build_profile_prompt(dataset, aim)` references `workspace/data/<dataset>` and aim text
+  - `backend/tests/unit/app/test_profile_prompt.py` (new): 4 TDD tests — schema payload with/without format block, schema field validation, prompt content; 53 BE tests total pass; 50 FE tests pass; lint clean; CI green on merge
+  - Hard boundary clean: `opencode_client.py` does not import orchestrator; deviation noted in PR — `session.idle → profile.ready` wired in orchestrator (N1-S04), not client, which is correct per boundary rules
+  - Self-approve not possible (same account owns PR); merged after all three gates verified green
+
 ### In Dev / In Review / In QA
 
 *(none)*
 
-### Startable set (post N1-S08 merge)
+### Startable set (post N1-S09 merge)
 
-All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08.
+All N1 lane stories on `develop`: N1-S01, N1-S07, N1-S02, N1-S13, N1-S14, N1-S03, N1-S17, N1-S10, N1-S06, N1-S05, N1-S15, N1-S16, N1-S21, N1-S08, N1-S09.
 
-All three start simultaneously (all dependencies now on `develop`):
+Remaining unmerged N1 BE stories:
 
 - **N1-S04** (BE) — Stage orchestrator setup→profiling *(unblocked: N1-S03 ✅ + N1-S08 ✅)*
-- **N1-S09** (BE) — Profiling turn → `profile.json` *(unblocked: N1-S08 ✅)*
 - **N1-S11** (BE) — Stuck-turn watchdog & recovery *(unblocked: N1-S06 ✅ + N1-S08 ✅)*
+- **N1-S12** (BE) — Re-profile turn *(blocked: requires N1-S04 + N1-S11)*
 
-N1-S18 (integration) requires N1-S04 + N1-S05 ✅ + N1-S06 ✅ + N1-S08 ✅ + N1-S09 + N1-S10 ✅ + N1-S11 — blocked on N1-S04, N1-S09, N1-S11.
+N1-S18 (integration) requires N1-S04 + N1-S05 ✅ + N1-S06 ✅ + N1-S08 ✅ + N1-S09 ✅ + N1-S10 ✅ + N1-S11 — blocked on N1-S04, N1-S11.
 
 ### Blockers
 
