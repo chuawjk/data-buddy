@@ -3,7 +3,7 @@
 // Acceptance criteria from docs/planning/02_STORY_BACKLOG.md and story brief.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 import SetupView from "./SetupView";
@@ -136,5 +136,52 @@ describe("SetupView", () => {
     });
 
     expect(screen.getByTestId("setup-error")).toHaveTextContent("Not in setup stage.");
+  });
+
+  // ── Drag-and-drop tests ──────────────────────────────────────────────────
+
+  // ── test_dropzone_renders ────────────────────────────────────────────────
+
+  it("test_dropzone_renders — data-testid='drop-zone' is in the document", () => {
+    render(<SetupView />);
+    expect(screen.getByTestId("drop-zone")).toBeInTheDocument();
+  });
+
+  // ── test_drag_over_sets_active_state ─────────────────────────────────────
+
+  it("test_drag_over_sets_active_state — dragover on drop-zone sets data-dragging=true", () => {
+    render(<SetupView />);
+    const dropZone = screen.getByTestId("drop-zone");
+
+    fireEvent.dragOver(dropZone);
+
+    expect(dropZone).toHaveAttribute("data-dragging", "true");
+  });
+
+  // ── test_drag_leave_clears_active_state ──────────────────────────────────
+
+  it("test_drag_leave_clears_active_state — dragleave removes the dragging state", () => {
+    render(<SetupView />);
+    const dropZone = screen.getByTestId("drop-zone");
+
+    fireEvent.dragOver(dropZone);
+    expect(dropZone).toHaveAttribute("data-dragging", "true");
+
+    fireEvent.dragLeave(dropZone);
+    expect(dropZone).not.toHaveAttribute("data-dragging", "true");
+  });
+
+  // ── test_drop_sets_file ──────────────────────────────────────────────────
+
+  it("test_drop_sets_file — drop event with CSV file sets the file and shows filename", () => {
+    render(<SetupView />);
+    const dropZone = screen.getByTestId("drop-zone");
+    const file = makeFile("dropped.csv");
+
+    fireEvent.drop(dropZone, {
+      dataTransfer: { files: [file] },
+    });
+
+    expect(screen.getByText(/dropped\.csv/)).toBeInTheDocument();
   });
 });
