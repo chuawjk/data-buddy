@@ -23,23 +23,25 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - `.pre-commit-config.yaml`: ruff hooks
   - `CLAUDE.md`: frontend module map updated
   - CI green on merge
+- `feat/n1-s07-sse-contract` — **N1-S07 · Reconciled SSE event contract** (PR #5, squash `117dfc1`)
+  - `docs/contracts/SSE_CONTRACT.md`: authoritative mapping of all 13 backend→SPA event types
+  - All 6 divergences (D1–D6) documented with handler-actionable detail
+  - Placement at `docs/contracts/` (not `backend/docs/`) accepted; rationale recorded in the doc
+  - CI pending at merge time (pre-N1-S01 state; expected); merged with `--admin`
 
 ### In Dev / In Review / In QA
 
-*(none yet — N1-S01 just landed; dependent stories now startable)*
+*(see startable set below)*
 
-### t0 Startable set
+### Startable set (post N1-S07 merge)
 
-All Night 1 stories with no dependencies, or whose dependencies are now merged:
+N1-S07 was the blocking prerequisite for all SSE handler work. With it merged:
 
-- **N1-S07** (BE) — Reconciled event contract ⛔ BLOCKING *(no deps — must merge before any SSE work)*
-
-Unlocked by N1-S01 (now merged):
-- **N1-S02** (BE) — FastAPI app skeleton & event bus
-- **N1-S13** (FE) — Frontend scaffold & routing
-
-Unlocks after N1-S07:
-- N1-S08 (BE) · N1-S14 (FE) *(both depend on N1-S07)*
+- **N1-S02** (BE) — FastAPI app skeleton & event bus *(depends on N1-S01 — now unblocked)*
+- **N1-S13** (FE) — Frontend scaffold & routing *(depends on N1-S01 — now unblocked)*
+- **N1-S08** (BE) — OpenCode client & SSE normalisation *(depends on N1-S07 + N1-S02; partially unblocked — needs N1-S02 first)*
+- **N1-S10** (BE) — Watchdog & session recovery *(depends on N1-S07 + N1-S02; partially unblocked — needs N1-S02 first)*
+- **N1-S14** (FE) — SSE hook & activity rail *(depends on N1-S07 + N1-S13; partially unblocked — needs N1-S13 first)*
 
 ### Blockers
 
@@ -48,6 +50,7 @@ Unlocks after N1-S07:
 ### Overnight ADR decisions
 
 - N1-S01 deviation: `frontend/pnpm-workspace.yaml` added with `allowBuilds: esbuild: true, @playwright/test: true` — required because pnpm v11 moved build-script approval out of `package.json` into `pnpm-workspace.yaml`; without this, `pnpm install` exits with `ERR_PNPM_IGNORED_BUILDS` in CI. No contract impact.
+- N1-S07 placement: `docs/contracts/SSE_CONTRACT.md` used instead of backlog's `backend/docs/SSE_CONTRACT.md`. Consistent with CLAUDE.md rule that all contracts live in `docs/contracts/` and FE lane codes against that directory. Accepted; recorded in the document itself.
 
 ### Night 1 demo script (morning review)
 
