@@ -539,6 +539,201 @@ async def test_plan_turn_error_publishes_turn_error(tmp_path):
     assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
 
 
+# ---------------------------------------------------------------------------
+# N2-S02: session.idle in planning stage → plan.json → plan.ready
+# ---------------------------------------------------------------------------
+
+
+def _make_orchestrator_planning(
+    tmp_path: Path,
+    *,
+    session_id: str | None = "sess-abc",
+) -> tuple[Orchestrator, StateManager, EventBus, AsyncMock]:
+    """Orchestrator pre-set to planning stage."""
+    sm = _make_state_manager(tmp_path, session_id=session_id)
+    sm.update(stage="planning", dataset="data.csv", aim="find patterns")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    return orch, sm, bus, mock_client
+
+
+def _write_valid_plan_json(tmp_path: Path, num_sections: int = 3) -> None:
+    """Write a valid plan.json to tmp_path."""
+    import json
+
+    sections = [
+        {"id": f"sec_{i:02d}", "title": f"Section {i}", "hypothesis": f"Hypothesis {i}"}
+        for i in range(1, num_sections + 1)
+    ]
+    (tmp_path / "plan.json").write_text(json.dumps({"sections": sections}), encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_emits_plan_ready(tmp_path):
+    """Valid plan.json in planning stage → plan.ready emitted with sections."""
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    _write_valid_plan_json(tmp_path, num_sections=3)
+
+    sub = bus.subscribe()
+    await orch._handle_plan_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "plan.ready", f"Expected plan.ready; got {event['type']!r}"
+    assert "sections" in event
+    assert len(event["sections"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_updates_state(tmp_path):
+    """Valid plan.json → state_manager updated with plan sections."""
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    _write_valid_plan_json(tmp_path, num_sections=4)
+
+    await orch._handle_plan_idle()
+
+    state = sm.get_state()
+    assert "plan" in state
+    assert len(state["plan"]) == 4
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_injects_queued_status(tmp_path):
+    """Each section in the plan gets status='queued' injected by the orchestrator."""
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    _write_valid_plan_json(tmp_path, num_sections=3)
+
+    await orch._handle_plan_idle()
+
+    state = sm.get_state()
+    for section in state["plan"]:
+        assert section.get("status") == "queued", f"Section missing status=queued: {section}"
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_max_sections_six(tmp_path):
+    """plan.json with exactly 6 sections → plan.ready emitted successfully."""
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    _write_valid_plan_json(tmp_path, num_sections=6)
+
+    sub = bus.subscribe()
+    await orch._handle_plan_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "plan.ready"
+    assert len(event["sections"]) == 6
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_missing_plan_json_emits_turn_error(tmp_path):
+    """Missing plan.json in planning stage → turn.error emitted."""
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    # Do NOT write plan.json.
+
+    sub = bus.subscribe()
+    await orch._handle_plan_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_invalid_json_emits_turn_error(tmp_path):
+    """Malformed JSON in plan.json → turn.error emitted."""
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    (tmp_path / "plan.json").write_text("{not valid json", encoding="utf-8")
+
+    sub = bus.subscribe()
+    await orch._handle_plan_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_too_few_sections_emits_turn_error(tmp_path):
+    """plan.json with < 3 sections → turn.error emitted."""
+    import json
+
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    sections = [{"id": "sec_01", "title": "T1", "hypothesis": "H1"}]  # only 1 section
+    (tmp_path / "plan.json").write_text(json.dumps({"sections": sections}), encoding="utf-8")
+
+    sub = bus.subscribe()
+    await orch._handle_plan_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_too_many_sections_emits_turn_error(tmp_path):
+    """plan.json with > 6 sections → turn.error emitted."""
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    _write_valid_plan_json(tmp_path, num_sections=7)
+
+    sub = bus.subscribe()
+    await orch._handle_plan_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_missing_hypothesis_emits_turn_error(tmp_path):
+    """Section missing 'hypothesis' field → turn.error emitted."""
+    import json
+
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    sections = [
+        {"id": "sec_01", "title": "T1", "hypothesis": "H1"},
+        {"id": "sec_02", "title": "T2"},  # missing hypothesis
+        {"id": "sec_03", "title": "T3", "hypothesis": "H3"},
+    ]
+    (tmp_path / "plan.json").write_text(json.dumps({"sections": sections}), encoding="utf-8")
+
+    sub = bus.subscribe()
+    await orch._handle_plan_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_null_sections_emits_turn_error(tmp_path):
+    """plan.json with null sections field → turn.error emitted."""
+    import json
+
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    (tmp_path / "plan.json").write_text(json.dumps({"sections": None}), encoding="utf-8")
+
+    sub = bus.subscribe()
+    await orch._handle_plan_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_idle_wrong_stage_returns_early(tmp_path):
+    """_handle_plan_idle when stage is not planning → no-op."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    # Write a valid plan.json anyway.
+    _write_valid_plan_json(tmp_path, num_sections=3)
+
+    sub = bus.subscribe()
+    await orch._handle_plan_idle()
+
+    # No event should have been emitted.
+    assert sub._queue.empty(), "No events should be emitted when stage != planning"
+
+
 @pytest.mark.asyncio
 async def test_plan_turn_calls_watchdog_if_wired(tmp_path):
     """_handle_planning_transition arms the watchdog before firing the plan turn."""
@@ -596,3 +791,81 @@ async def test_bus_listener_handles_profile_ready(tmp_path):
     types = [e["type"] for e in received]
     assert "stage.changed" in types, f"Expected stage.changed in {types}"
     assert sm.get_state()["stage"] == "planning"
+
+
+@pytest.mark.asyncio
+async def test_session_idle_stage_aware_dispatch_profiling(tmp_path):
+    """session.idle in profiling stage dispatches to _handle_profile_idle, not plan handler."""
+    import json
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    profile_data = {
+        "shape": {"rows": 10, "columns": 2},
+        "columns": [{"name": "x", "type": "numeric", "flags": [], "summary": "col x"}],
+        "flags": [],
+    }
+    (tmp_path / "profile.json").write_text(json.dumps(profile_data), encoding="utf-8")
+
+    sub = bus.subscribe()
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    await bus.publish("session.idle", {"ts": 100})
+
+    received = []
+    try:
+        for _ in range(3):
+            event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+            received.append(event)
+    except asyncio.TimeoutError:
+        pass
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    types = [e["type"] for e in received]
+    # session.idle in profiling → should emit profile.ready (not plan.ready or turn.error)
+    assert "profile.ready" in types, f"Expected profile.ready; got {types}"
+    assert "plan.ready" not in types, f"plan.ready must not fire in profiling stage; got {types}"
+
+
+@pytest.mark.asyncio
+async def test_session_idle_stage_aware_dispatch_planning(tmp_path):
+    """session.idle in planning stage dispatches to _handle_plan_idle, not profile handler."""
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    _write_valid_plan_json(tmp_path, num_sections=3)
+
+    sub = bus.subscribe()
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    await bus.publish("session.idle", {"ts": 200})
+
+    received = []
+    try:
+        for _ in range(3):
+            event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+            received.append(event)
+    except asyncio.TimeoutError:
+        pass
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    types = [e["type"] for e in received]
+    # session.idle in planning → should emit plan.ready (not profile.ready)
+    assert "plan.ready" in types, f"Expected plan.ready; got {types}"
+    assert "profile.ready" not in types, (
+        f"profile.ready must not fire in planning stage; got {types}"
+    )
