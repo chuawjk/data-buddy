@@ -4,6 +4,7 @@ import ProfileView from "./components/StageViews/ProfileView";
 import PlanView from "./components/StageViews/PlanView";
 import BuildView from "./components/StageViews/BuildView";
 import ActivityRail from "./components/ActivityRail";
+import ExportButton from "./components/ExportButton";
 import { useSSE } from "./hooks/useSSE";
 import { api } from "./hooks/useApi";
 import type { Profile, Section } from "./types/api";
@@ -66,11 +67,7 @@ export default function App() {
   }, []);
 
   useSSE((event: SSEEvent) => {
-    if (
-      event.type === "stage.changed" ||
-      event.type === "profile.ready" ||
-      event.type === "plan.ready"
-    ) {
+    if (event.type === "stage.changed" || event.type === "profile.ready") {
       api
         .getState()
         .then((data) => {
@@ -113,10 +110,16 @@ export default function App() {
     );
   }
 
+  const acceptedSectionCount = state.plan.filter((s) => s.status === "accepted").length;
+  const showExport = state.stage === "planning" || state.stage === "building" || state.stage === "done";
+
   return (
     <div className="min-h-screen bg-[#f6f2e9] text-[#1a1a17]">
-      <header className="border-b border-[#ddd5c5] bg-white px-8 py-4">
+      <header className="border-b border-[#ddd5c5] bg-white px-8 py-4 flex items-center justify-between">
         <span className="font-serif text-3xl font-light text-[#b8732a]">Data Buddy</span>
+        {showExport && (
+          <ExportButton disabled={acceptedSectionCount === 0} />
+        )}
       </header>
       <div className="max-w-6xl mx-auto px-8 py-10 flex gap-6">
         <div className="flex-1">{renderStageView(state.stage, state.profile, state.plan)}</div>

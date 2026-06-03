@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import App from "./App";
-import type { Section } from "./types/api";
+import type { Section, SectionStatus } from "./types/api";
 import type { SSEEvent } from "./types/events";
 
 // Collect all onEvent callbacks registered by any component using useSSE.
@@ -299,6 +299,89 @@ describe("App stage routing", () => {
     // Plan state updated — new section visible
     await waitFor(() => {
       expect(screen.getByTestId("plan-section-sec_new_01")).toBeInTheDocument();
+    });
+  });
+
+  it("export-btn is disabled when GET /state returns plan=[] at building stage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ stage: "building", profile: null, plan: [] }),
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("export-btn")).toBeDisabled();
+    });
+  });
+
+  it("export-btn is enabled when GET /state returns plan with an accepted section at building stage", async () => {
+    const acceptedSection: Section = {
+      id: "sec_01",
+      title: "Overview",
+      hypothesis: "Revenue correlates with age",
+      status: "accepted" as SectionStatus,
+      py_path: "sections/sec_01.py",
+      png_path: "sections/sec_01.png",
+      md_path: "sections/sec_01.md",
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ stage: "building", profile: null, plan: [acceptedSection] }),
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("export-btn")).not.toBeDisabled();
+    });
+  });
+
+  it("reacts to plan.ready — updates plan state and enables export-btn when sections are accepted", async () => {
+    const acceptedSection: Section = {
+      id: "sec_01",
+      title: "Overview",
+      hypothesis: "Revenue correlates with age",
+      status: "accepted" as SectionStatus,
+      py_path: "sections/sec_01.py",
+      png_path: "sections/sec_01.png",
+      md_path: "sections/sec_01.md",
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ stage: "building", profile: null, plan: [] }),
+      })
+    );
+
+    render(<App />);
+
+    // Initially, no accepted sections → button disabled
+    await waitFor(() => {
+      expect(screen.getByTestId("export-btn")).toBeDisabled();
+    });
+
+    // Simulate plan.ready SSE event with an accepted section
+    await act(async () => {
+      capturedOnEvent!({
+        type: "plan.ready",
+        sections: [acceptedSection],
+        ts: Date.now(),
+      });
+    });
+
+    // Now plan has an accepted section → button enabled
+    await waitFor(() => {
+      expect(screen.getByTestId("export-btn")).not.toBeDisabled();
     });
   });
 });
