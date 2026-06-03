@@ -19,11 +19,6 @@ const INITIAL: ActivityRailState = {
 };
 
 const LOG_CAP = 20;
-const CMD_MAX = 40;
-
-function trimCmd(cmd: string): string {
-  return cmd.length > CMD_MAX ? cmd.slice(0, CMD_MAX - 1) + "…" : cmd;
-}
 
 function appendLog(existing: string[], entry: string): string[] {
   const next = [...existing, entry];
@@ -49,14 +44,14 @@ export function useActivityState(): ActivityRailState {
             return {
               ...base,
               bashCount: base.bashCount + 1,
-              log: appendLog(base.log, `✓ ${trimCmd(event.command as string)}`),
+              log: appendLog(base.log, `$ ${event.command as string}`),
             };
           }
           if (event.type === "tool.file_written") {
             return {
               ...base,
               fileCount: base.fileCount + 1,
-              log: appendLog(base.log, event.file as string),
+              log: appendLog(base.log, `✎ ${event.file as string}`),
             };
           }
           return base;
