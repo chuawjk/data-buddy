@@ -315,6 +315,15 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
 - ADR-015 (Proposed — pending review): plan.ready SSE handler updates App state directly from event.sections without API refresh. stage.changed and profile.ready still trigger getState() (they don't carry full state). plan.ready is self-contained. Fix in ececc79.
 - ADR-016 (Proposed — pending review): build_section_prompt() plan parameter type corrected to list|dict. Orchestrator always passes list; dict annotation was wrong but caused no runtime error. Fixed in N2-S18 integration commit.
 
+### Post-Night-2 fixes
+
+- **fix: profiling stage now pauses for user review** — `fix/profiling-pause` → develop, merge commit `e4dca81` (2026-06-03)
+  - `backend/orchestrator.py`: removed `profile.ready → _handle_planning_transition` wiring from `start_bus_listener`; added `accept_profile()` public method (delegates to `_handle_planning_transition`)
+  - `backend/router.py`: added `POST /profile/accept` endpoint — calls `orchestrator.accept_profile()` as fire-and-forget task; returns 204; idempotent
+  - `backend/tests/unit/app/test_orchestrator.py`: `test_bus_listener_handles_profile_ready` replaced by two tests — one asserting stage stays `profiling` after `profile.ready` (no auto-advance), one asserting `accept_profile()` transitions to `planning` and emits `stage.changed`
+  - **Behaviour change:** app now pauses at profiling stage after `profile.ready` fires. User must call `POST /profile/accept` to advance to planning. The frontend `ProfileView` needs an "Accept" button wired to this endpoint (next fix).
+  - Demo script step 3 updated: profiling completes → user presses Accept profile → plan view renders.
+
 ### Post-Night-1 fixes (QA-01, QA-02)
 
 - ADR-013 (Proposed — pending review): `prompt_async` payload shape changed in v1.15.13 relative to v1.15.10 (spike). `text` → `parts[{type,text}]`; `format.json_schema.schema` → `format.schema`. Confirmed from live OpenAPI spec at `/doc`. See ADR.md.
@@ -340,7 +349,7 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
 
 1. `make clean` (reset workspace) → `make install` → `make dev`
 2. Open http://localhost:5173 → upload `data/customers_q3.csv` + enter an aim
-3. Watch profiling complete → Profile view renders
+3. Watch profiling complete → Profile view renders → click **Accept profile**
 4. Plan view renders with sections (plan.json written, plan.ready event received)
 5. Edit a section title inline → POST /plan/update → section list refreshes
 6. Accept plan → POST /plan/accept → stage transitions to building → first section build starts
