@@ -117,17 +117,17 @@ export default function SetupView() {
             </div>
           </div>
 
-          {/* Aim textarea */}
+          {/* Aim input */}
           <div className="mt-4">
             <label className="block text-sm font-medium text-[#1a1a17]">
               Aim of investigation
             </label>
-            <textarea
+            <input
               data-testid="aim-input"
+              type="text"
               placeholder="e.g. understand drivers of customer churn in Q3 2025"
               value={aim}
-              rows={2}
-              className="mt-1 w-full border border-[#ddd5c5] rounded p-3 text-sm text-[#1a1a17] resize-none focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
+              className="mt-1 w-full border border-[#ddd5c5] rounded p-3 text-sm text-[#1a1a17] focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
               onChange={(e) => {
                 setAim(e.target.value);
                 setError(null);
