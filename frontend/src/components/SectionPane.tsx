@@ -9,7 +9,7 @@
 //   section-code, section-chart, section-interpretation,
 //   section-file-error, section-accept-btn, section-drop-btn
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../hooks/useApi";
 import type { Section } from "../types/api";
 
@@ -39,6 +39,14 @@ export default function SectionPane({
     fileError: null,
   });
   const [artefactsLoaded, setArtefactsLoaded] = useState(false);
+  const [codeExpanded, setCodeExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Collapse code when the section changes so stale expand state doesn't carry over.
+  useEffect(() => {
+    setCodeExpanded(false);
+  }, [section.id]);
 
   const isBuilding = section.status === "building";
   const isProposed =
@@ -159,11 +167,26 @@ export default function SectionPane({
       {/* Artefacts (shown when proposed or hydrated from state) */}
       {isProposed && (
         <>
-          {/* Code block */}
-          {artefacts.pyContent != null && (
+          {/* Code block — collapsed by default */}
+          {codeExpanded && artefacts.pyContent != null && (
             <div data-testid="section-code" className="mt-4">
-              <div className="text-xs font-medium text-[#9b9489] mb-1">
-                {section.py_path ?? "code"}
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-[#9b9489]">
+                  {section.py_path ?? "code"}
+                </span>
+                <button
+                  data-testid="section-code-copy-btn"
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(artefacts.pyContent ?? "");
+                    setCopied(true);
+                    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+                    copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
+                  }}
+                  className="text-xs text-[#9b9489] hover:text-[#1a1a17] px-2 py-0.5 rounded border border-[#ddd5c5] hover:border-[#b8b0a4] transition-colors"
+                >
+                  {copied ? "Copied!" : "Copy"}
+                </button>
               </div>
               <pre className="bg-[#f6f2e9] border border-[#ddd5c5] rounded p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap text-[#1a1a17]">
                 {artefacts.pyContent}
@@ -213,6 +236,28 @@ export default function SectionPane({
                 className="border border-[#c8563d] text-[#c8563d] rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#c8563d]/5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Drop section
+              </button>
+            </div>
+          )}
+
+          {/* Show / hide code toggle — always at the bottom when code is available */}
+          {artefacts.pyContent != null && (
+            <div className="mt-4 pt-3 border-t border-[#ece8df]">
+              <button
+                data-testid="section-code-toggle"
+                type="button"
+                onClick={() => setCodeExpanded((e) => !e)}
+                className="text-xs text-[#9b9489] hover:text-[#1a1a17] flex items-center gap-1 transition-colors"
+              >
+                <svg
+                  className={`h-3 w-3 transition-transform ${codeExpanded ? "rotate-90" : ""}`}
+                  viewBox="0 0 12 12"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {codeExpanded ? "Hide code" : "Show code"}
               </button>
             </div>
           )}

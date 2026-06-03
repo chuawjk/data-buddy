@@ -101,15 +101,61 @@ describe("SectionPane", () => {
 
   // ── test_renders_code_and_interpretation_for_proposed ───────────────────
 
-  it("test_renders_code_and_interpretation_for_proposed — code and interpretation shown after fetch", async () => {
+  it("test_renders_code_and_interpretation_for_proposed — interpretation shown; code collapsed behind toggle", async () => {
+    render(<SectionPane section={PROPOSED_SECTION} onAccept={mockOnAccept} onDrop={mockOnDrop} />);
+
+    // Interpretation renders immediately after fetch.
+    await waitFor(() => {
+      expect(screen.getByTestId("section-interpretation")).toHaveTextContent("Churn rate is 14.3%");
+    });
+
+    // Code block is collapsed by default.
+    expect(screen.queryByTestId("section-code")).toBeNull();
+    // Toggle button is visible.
+    expect(screen.getByTestId("section-code-toggle")).toHaveTextContent("Show code");
+  });
+
+  // ── test_code_toggle_expands_and_collapses ───────────────────────────────
+
+  it("test_code_toggle_expands_and_collapses — clicking toggle shows then hides code block", async () => {
+    const user = userEvent.setup();
     render(<SectionPane section={PROPOSED_SECTION} onAccept={mockOnAccept} onDrop={mockOnDrop} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("section-code")).toBeInTheDocument();
+      expect(screen.getByTestId("section-code-toggle")).toBeInTheDocument();
     });
 
+    // Expand.
+    await user.click(screen.getByTestId("section-code-toggle"));
     expect(screen.getByTestId("section-code")).toHaveTextContent("import pandas");
-    expect(screen.getByTestId("section-interpretation")).toHaveTextContent("Churn rate is 14.3%");
+    expect(screen.getByTestId("section-code-toggle")).toHaveTextContent("Hide code");
+
+    // Collapse.
+    await user.click(screen.getByTestId("section-code-toggle"));
+    expect(screen.queryByTestId("section-code")).toBeNull();
+    expect(screen.getByTestId("section-code-toggle")).toHaveTextContent("Show code");
+  });
+
+  // ── test_copy_button_calls_clipboard ────────────────────────────────────
+
+  it("test_copy_button_calls_clipboard — copy button writes py content to clipboard", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    render(<SectionPane section={PROPOSED_SECTION} onAccept={mockOnAccept} onDrop={mockOnDrop} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("section-code-toggle")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("section-code-toggle"));
+    await user.click(screen.getByTestId("section-code-copy-btn"));
+
+    expect(writeText).toHaveBeenCalledWith(MOCK_PY_CONTENT);
   });
 
   // ── test_renders_chart_img_with_correct_src ──────────────────────────────
@@ -290,7 +336,7 @@ describe("SectionPane", () => {
 
   // ── test_no_code_when_no_py_path ─────────────────────────────────────────
 
-  it("test_no_code_when_no_py_path — section-code absent when py_path is null", async () => {
+  it("test_no_code_when_no_py_path — section-code and toggle absent when py_path is null", async () => {
     const sectionNoPy: Section = {
       ...PROPOSED_SECTION,
       py_path: null,
@@ -307,6 +353,7 @@ describe("SectionPane", () => {
     });
 
     expect(screen.queryByTestId("section-code")).toBeNull();
+    expect(screen.queryByTestId("section-code-toggle")).toBeNull();
   });
 
   // ── test_no_chart_when_no_png_path ────────────────────────────────────────
@@ -319,8 +366,9 @@ describe("SectionPane", () => {
 
     render(<SectionPane section={sectionNoPng} onAccept={mockOnAccept} onDrop={mockOnDrop} />);
 
+    // Wait for artefacts to load (code toggle appears when pyContent is ready).
     await waitFor(() => {
-      expect(screen.getByTestId("section-code")).toBeInTheDocument();
+      expect(screen.getByTestId("section-code-toggle")).toBeInTheDocument();
     });
 
     expect(screen.queryByTestId("section-chart")).toBeNull();
