@@ -1,8 +1,8 @@
-"""Stage orchestrator -- setup → profiling state machine.
+"""Stage orchestrator -- setup → profiling → planning state machine.
 
-This module implements the first two stages of the Data Buddy state machine:
-``setup`` and ``profiling``.  The planning and building stages (Night 2) will
-extend this module further.
+This module implements the first three stages of the Data Buddy state machine:
+``setup``, ``profiling``, and ``planning``.  The building stage (Night 2/3)
+will extend this module further.
 
 Architecture boundaries (from backlog):
 - The orchestrator calls the OpenCode client through the narrow interface only:
@@ -13,10 +13,11 @@ Architecture boundaries (from backlog):
 
 State transitions implemented here:
   setup → profiling   (via ``setup_complete``)
+  profiling → planning  (N2-S01/N2-S02: via ``session.idle`` → plan.json read)
 
-Night 2 will add:
-  profiling → planning
-  planning → building
+N2-S02: ``session.idle`` during planning stage reads ``plan.json`` from disk,
+validates it, injects ``status: "queued"`` on each section, persists to state,
+and emits ``plan.ready``.  ``session.idle`` dispatch is now stage-aware.
 """
 
 from __future__ import annotations
@@ -176,15 +177,20 @@ class Orchestrator:
 
         Currently handled:
           - ``session.idle`` in profiling stage → ``_handle_profile_idle``
-
-        Night 2 will add handlers for planning and building stages.
+          - ``session.idle`` in planning stage → ``_handle_plan_idle``  (N2-S02)
         """
         subscription = self._bus.subscribe()
         try:
             async for envelope in subscription:
                 event_type: str = envelope.get("type", "")
                 if event_type == "session.idle":
-                    await self._handle_profile_idle()
+                    stage = self._state_manager.get_state().get("stage", "")
+                    if stage == "profiling":
+                        await self._handle_profile_idle()
+                    elif stage == "planning":
+                        await self._handle_plan_idle()
+                    else:
+                        logger.debug("session.idle: no handler for stage=%r", stage)
         except asyncio.CancelledError:
             logger.info("Orchestrator bus listener cancelled.")
             raise
@@ -236,6 +242,83 @@ class Orchestrator:
         ts = int(time.time() * 1000)
         await self._bus.publish("profile.ready", {"profile": profile, "ts": ts})
         logger.info("profile.ready emitted (ts=%d)", ts)
+
+    async def _handle_plan_idle(self) -> None:
+        """Called when ``session.idle`` fires during the planning stage.
+
+        Reads ``workspace/plan.json``, validates it has ``sections`` (3–6 entries,
+        each with ``id``, ``title``, ``hypothesis``), injects ``status: "queued"``
+        on each section, updates ``state.json``, and emits ``plan.ready``.
+
+        If the file is absent or the output is invalid, emits ``turn.error``
+        with ``stage="planning"`` and ``reason="structured_output_failed"``.
+
+        N2-S02.
+        """
+        state = self._state_manager.get_state()
+        current_stage: str = state.get("stage", "")
+        if current_stage != "planning":
+            logger.debug("_handle_plan_idle: ignoring (stage=%r)", current_stage)
+            return
+
+        plan_path = self._workspace_root / "plan.json"
+
+        async def _emit_error(reason: str) -> None:
+            ts = int(time.time() * 1000)
+            await self._bus.publish(
+                "turn.error",
+                {"stage": "planning", "reason": reason, "ts": ts},
+            )
+
+        # Read and parse plan.json.
+        if not plan_path.exists():
+            logger.warning("_handle_plan_idle: %s not found.", plan_path)
+            await _emit_error("structured_output_failed")
+            return
+
+        try:
+            raw = plan_path.read_text(encoding="utf-8")
+            plan_data: dict[str, Any] = json.loads(raw)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.error("_handle_plan_idle: failed to read/parse plan.json: %s", exc)
+            await _emit_error("structured_output_failed")
+            return
+
+        # Validate sections field.
+        sections = plan_data.get("sections")
+        if not isinstance(sections, list):
+            logger.error("_handle_plan_idle: sections is not a list (got %r)", type(sections))
+            await _emit_error("structured_output_failed")
+            return
+
+        if not (3 <= len(sections) <= 6):
+            logger.error("_handle_plan_idle: sections count %d outside [3, 6]", len(sections))
+            await _emit_error("structured_output_failed")
+            return
+
+        # Validate each section has required fields.
+        required_fields = {"id", "title", "hypothesis"}
+        for section in sections:
+            if not isinstance(section, dict) or not required_fields.issubset(section.keys()):
+                missing = required_fields - set(section.keys() if isinstance(section, dict) else [])
+                logger.error("_handle_plan_idle: section missing required fields: %s", missing)
+                await _emit_error("structured_output_failed")
+                return
+
+        # Inject status: "queued" on each section (schema does not include status;
+        # orchestrator injects it per TL note N2-S02).
+        sections_with_status = [{**s, "status": "queued"} for s in sections]
+
+        # Persist to state.json.
+        self._state_manager.update(plan=sections_with_status)
+
+        # Emit plan.ready.
+        ts = int(time.time() * 1000)
+        await self._bus.publish(
+            "plan.ready",
+            {"sections": sections_with_status, "ts": ts},
+        )
+        logger.info("plan.ready emitted (%d sections, ts=%d)", len(sections_with_status), ts)
 
     # ------------------------------------------------------------------
     # Prompt construction
