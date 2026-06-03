@@ -599,8 +599,12 @@ async def test_handle_plan_idle_updates_state(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_handle_plan_idle_injects_queued_status(tmp_path):
-    """Each section in the plan gets status='queued' injected by the orchestrator."""
+async def test_handle_plan_idle_injects_proposed_status(tmp_path):
+    """Each section in the plan gets status='proposed' injected by the orchestrator.
+
+    N2-S03: initial section status is 'proposed' (plan proposed to user for
+    review), not 'queued' (which is the status after plan acceptance, pre-build).
+    """
     orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
     _write_valid_plan_json(tmp_path, num_sections=3)
 
@@ -608,7 +612,7 @@ async def test_handle_plan_idle_injects_queued_status(tmp_path):
 
     state = sm.get_state()
     for section in state["plan"]:
-        assert section.get("status") == "queued", f"Section missing status=queued: {section}"
+        assert section.get("status") == "proposed", f"Section missing status=proposed: {section}"
 
 
 @pytest.mark.asyncio
