@@ -180,7 +180,7 @@ export default function BuildView({ sections: initialSections = [], onSectionsCh
       {sections.length > 0 && (
         <div
           data-testid="section-list"
-          className="bg-white border border-[#ddd5c5] rounded-lg overflow-hidden"
+          className="bg-white border border-[#ddd5c5] rounded overflow-hidden"
         >
           {sections.map((section, idx) => (
             <div
@@ -194,7 +194,7 @@ export default function BuildView({ sections: initialSections = [], onSectionsCh
               <span className="flex-1 font-medium text-[#1a1a17]">{section.title}</span>
               <span
                 data-testid={`section-status-${section.id}`}
-                className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_CLASS[section.status]}`}
+                className={`text-xs px-2 py-0.5 rounded-sm font-medium ${STATUS_CLASS[section.status]}`}
               >
                 {STATUS_LABEL[section.status]}
               </span>

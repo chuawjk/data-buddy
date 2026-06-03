@@ -69,7 +69,7 @@ export default function ExportButton({ disabled }: ExportButtonProps) {
         type="button"
         disabled={disabled || isExporting}
         onClick={() => void handleClick()}
-        className="flex items-center gap-1.5 bg-[#1a1a17] text-white rounded-lg px-4 py-1.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#333330] transition-colors"
+        className="flex items-center gap-1.5 bg-[#1a1a17] text-white rounded-sm px-4 py-1.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#333330] transition-colors"
       >
         {isExporting ? "Exporting…" : "↓ Export zip"}
       </button>

@@ -21,7 +21,7 @@ export default function ActivityRail() {
   return (
     <div data-testid="activity-rail">
       <p className="text-xs font-semibold uppercase tracking-wide text-[#9b9489] mb-3">
-        Activity
+        Agent Activity
       </p>
 
       {!isRunning && !hasActivity && (

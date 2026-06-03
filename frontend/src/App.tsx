@@ -124,8 +124,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f6f2e9] text-[#1a1a17]">
-      <header className="border-b border-[#ddd5c5] bg-white px-8 py-4 flex items-center justify-between">
-        <span className="font-serif text-3xl font-light text-[#b8732a]">Data Buddy</span>
+      <header className="border-b border-[#ddd5c5] bg-[#faf7f0] px-8 py-4 flex items-center justify-between">
+        <span className="font-serif text-[17.6px] font-medium tracking-tight text-[#1a1a17]">Data Buddy</span>
         {showExport && <ExportButton disabled={acceptedSectionCount === 0} />}
       </header>
       <div className="max-w-6xl mx-auto px-8 py-10 flex gap-6">
@@ -134,7 +134,7 @@ export default function App() {
         </div>
         {state.stage !== "setup" && (
           <div className="w-72 shrink-0">
-            <div className="bg-white border border-[#ddd5c5] rounded-lg p-4">
+            <div className="bg-white border border-[#ddd5c5] rounded p-4">
               <ActivityRail />
             </div>
           </div>

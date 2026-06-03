@@ -248,7 +248,7 @@ export default function PlanView({ initialSections }: PlanViewProps) {
       {error !== null && (
         <div
           data-testid="plan-error"
-          className="bg-[#fdf0ed] border border-[#e8c4bb] rounded-lg px-4 py-3 text-sm text-[#a85c4a]"
+          className="bg-[#fdf0ed] border border-[#e8c4bb] rounded px-4 py-3 text-sm text-[#a85c4a]"
         >
           {error}
         </div>
@@ -306,7 +306,7 @@ export default function PlanView({ initialSections }: PlanViewProps) {
               <div
                 key={section.id}
                 data-testid={`plan-section-${section.id}`}
-                className="bg-white border border-[#ddd5c5] rounded-lg px-4 py-3"
+                className="bg-white border border-[#ddd5c5] rounded px-4 py-3"
               >
                 {isEditing ? (
                   /* Edit mode */
@@ -421,7 +421,7 @@ export default function PlanView({ initialSections }: PlanViewProps) {
             data-testid="plan-add-section"
             type="button"
             onClick={handleAddSection}
-            className="text-sm text-[#b8732a] border border-dashed border-[#ddd5c5] rounded-lg px-4 py-2 w-full hover:bg-[#f4e5d0]/50 transition-colors"
+            className="text-sm text-[#b8732a] border border-dashed border-[#ddd5c5] rounded px-4 py-2 w-full hover:bg-[#f4e5d0]/50 transition-colors"
           >
             + Add section
           </button>
@@ -439,14 +439,14 @@ export default function PlanView({ initialSections }: PlanViewProps) {
             onKeyDown={handleTurnKeyDown}
             placeholder="Tell the agent what to change…"
             disabled={isTurnInFlight}
-            className="flex-1 border border-[#ddd5c5] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30 disabled:opacity-50"
+            className="flex-1 border border-[#ddd5c5] rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30 disabled:opacity-50"
           />
           <button
             data-testid="plan-turn-submit"
             type="button"
             disabled={isTurnSubmitDisabled}
             onClick={() => void handleTurnSubmit()}
-            className="bg-[#b8732a] text-white rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            className="bg-[#b8732a] text-white rounded-sm px-5 py-2.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Revise
           </button>
@@ -457,7 +457,7 @@ export default function PlanView({ initialSections }: PlanViewProps) {
           type="button"
           disabled={isAccepting || sections.length === 0}
           onClick={() => void handleAccept()}
-          className="bg-[#4a7a76] text-white rounded-lg px-6 py-3 text-sm font-medium self-start disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#3f6965] transition-colors"
+          className="bg-[#4a7a76] text-white rounded-sm px-6 py-3 text-sm font-medium self-start disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#3f6965] transition-colors"
         >
           {isAccepting ? "Accepting..." : "Accept plan & start building"}
         </button>
