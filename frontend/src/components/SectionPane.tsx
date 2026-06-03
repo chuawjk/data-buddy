@@ -43,7 +43,7 @@ export default function SectionPane({
   const isProposed =
     section.status === "proposed" || section.status === "accepted" || section.status === "dropped";
   const hasArtefacts =
-    section.py_path !== null || section.md_path !== null || section.png_path !== null;
+    section.py_path != null || section.md_path != null || section.png_path != null;
 
   // Fetch text artefacts when paths change (not on every re-render).
   // Key: py_path + md_path so heartbeats don't cause spurious re-fetches.
@@ -55,7 +55,7 @@ export default function SectionPane({
     async function fetchArtefacts() {
       const results: Partial<ArtefactState> = { fileError: null };
 
-      if (section.py_path !== null) {
+      if (section.py_path != null) {
         try {
           results.pyContent = await api.getFile(section.py_path);
         } catch {
@@ -69,7 +69,7 @@ export default function SectionPane({
         }
       }
 
-      if (section.md_path !== null) {
+      if (section.md_path != null) {
         try {
           const raw = await api.getFile(section.md_path);
           // Strip YAML frontmatter (--- ... ---) if present
@@ -157,7 +157,7 @@ export default function SectionPane({
       {isProposed && (
         <>
           {/* Code block */}
-          {artefacts.pyContent !== null && (
+          {artefacts.pyContent != null && (
             <div data-testid="section-code" className="mt-4">
               <div className="text-xs font-medium text-[#9b9489] mb-1">
                 {section.py_path ?? "code"}
@@ -169,7 +169,7 @@ export default function SectionPane({
           )}
 
           {/* Chart image — browser handles binary GET, not api.getFile */}
-          {section.png_path !== null && (
+          {section.png_path != null && (
             <div className="mt-4">
               <img
                 data-testid="section-chart"
@@ -181,7 +181,7 @@ export default function SectionPane({
           )}
 
           {/* Interpretation */}
-          {artefacts.mdBody !== null && (
+          {artefacts.mdBody != null && (
             <div
               data-testid="section-interpretation"
               className="mt-4 text-sm text-[#1a1a17] leading-relaxed"
