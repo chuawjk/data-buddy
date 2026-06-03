@@ -372,6 +372,18 @@ class Orchestrator:
     # Bus listener — session.idle / profile.ready → stage output handling
     # ------------------------------------------------------------------
 
+    async def accept_profile(self) -> None:
+        """Transition from profiling → planning and trigger the plan turn.
+
+        Called by ``POST /profile/accept`` after the user reviews the profile
+        and explicitly accepts it.  Returns immediately; the plan turn runs as
+        a fire-and-forget asyncio Task.
+
+        Delegates to ``_handle_planning_transition`` which handles the stage
+        guard, state persistence, event emission, and plan turn dispatch.
+        """
+        await self._handle_planning_transition()
+
     async def start_bus_listener(self) -> None:
         """Subscribe to the EventBus and handle internal events.
 
@@ -383,7 +395,9 @@ class Orchestrator:
           - ``session.idle`` in profiling stage → ``_handle_profile_idle``
           - ``session.idle`` in planning stage → ``_handle_plan_idle``  (N2-S02)
           - ``session.idle`` in building stage → ``_handle_section_idle``  (N2-S07)
-          - ``profile.ready`` → ``_handle_planning_transition``  (N2-S01)
+
+        Note: ``profile.ready`` no longer auto-advances to planning.  The user
+        must explicitly call ``POST /profile/accept`` to trigger the transition.
         """
         subscription = self._bus.subscribe()
         try:
@@ -399,8 +413,6 @@ class Orchestrator:
                         await self._handle_section_idle()
                     else:
                         logger.debug("session.idle: no handler for stage=%r", stage)
-                elif event_type == "profile.ready":
-                    await self._handle_planning_transition()
         except asyncio.CancelledError:
             logger.info("Orchestrator bus listener cancelled.")
             raise

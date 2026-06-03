@@ -759,8 +759,12 @@ async def test_plan_turn_calls_watchdog_if_wired(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_bus_listener_handles_profile_ready(tmp_path):
-    """start_bus_listener routes profile.ready → planning transition."""
+async def test_bus_listener_does_not_auto_advance_on_profile_ready(tmp_path):
+    """profile.ready on bus must NOT auto-advance to planning.
+
+    The transition is now gated on explicit user acceptance via
+    POST /profile/accept → orchestrator.accept_profile().
+    """
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
     bus = EventBus()
@@ -775,14 +779,12 @@ async def test_bus_listener_handles_profile_ready(tmp_path):
 
     await bus.publish("profile.ready", {"profile": {}, "ts": 12345})
 
-    # Wait for stage.changed to arrive.
+    # Drain events briefly — no stage.changed should arrive.
     received = []
     try:
         for _ in range(3):
-            event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+            event = await asyncio.wait_for(sub.__anext__(), timeout=0.3)
             received.append(event)
-            if event["type"] == "stage.changed":
-                break
     except asyncio.TimeoutError:
         pass
 
@@ -793,8 +795,40 @@ async def test_bus_listener_handles_profile_ready(tmp_path):
         pass
 
     types = [e["type"] for e in received]
-    assert "stage.changed" in types, f"Expected stage.changed in {types}"
+    assert "stage.changed" not in types, (
+        f"profile.ready must NOT auto-advance to planning; got events: {types}"
+    )
+    assert sm.get_state()["stage"] == "profiling", (
+        "Stage must remain 'profiling' until user accepts"
+    )
+
+
+@pytest.mark.asyncio
+async def test_accept_profile_transitions_to_planning(tmp_path):
+    """accept_profile() persists stage=planning and emits stage.changed."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    sub = bus.subscribe()
+
+    await orch.accept_profile()
+    await asyncio.sleep(0)
+
+    received = []
+    try:
+        for _ in range(3):
+            event = await asyncio.wait_for(sub.__anext__(), timeout=0.5)
+            received.append(event)
+    except asyncio.TimeoutError:
+        pass
+
     assert sm.get_state()["stage"] == "planning"
+    types = [e["type"] for e in received]
+    assert "stage.changed" in types, f"Expected stage.changed; got {types}"
 
 
 @pytest.mark.asyncio
