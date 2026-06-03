@@ -253,12 +253,13 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 
 ### Merged to `develop` — Wave 3 (2026-06-03)
 
-**2 additional BE stories merged. 239 BE + 154 FE = 393 total tests pass.**
+**4 BE stories merged. 246 BE + 154 FE = 400 total tests pass.**
 
 | Story | PR | Squash SHA | Notes |
 |---|---|---|---|
 | N2-S07 · Section build events | #40 | `eeca6b0` | `start_build_section`, `_handle_section_idle`, `_build_section_prompt`, `_run_section_turn`; bus listener extended for building-stage dispatch; 12 new tests. Conflict resolved: docstring only (develop's N2-S03 "proposed" note merged with incoming N2-S07 note) |
 | N2-S12 · Redirect a section (Stage 4b) | #42 | `c83e24b` | `redirect_section`, `_build_redirect_prompt` in orchestrator; `backend/prompts/redirect.py` (new); `POST /turn` building-stage dispatch in router; 17 new tests. Conflict resolved: S12's `_build_redirect_prompt` added alongside S07's `_build_section_prompt` (both new vs merge base, different insertion point conflict); duplicate `_run_section_turn` from S12 removed (S07's version kept — functionally identical) |
+| N2-S08 · Detect failed section | #46 | `2d56b48` | 7 new tests in `test_section_failed.py` verifying `_handle_section_idle()` failure detection: AC1 (missing .md/.png/.py → section.failed + payload shape), AC2 (mid-turn tool events do not trigger section.failed), regression guard (triplet present → section.proposed), stage guard (non-building → no emit). No production code changed — N2-S07 already implemented the logic. CI green (run 26863165041). |
 
 ### NOW STARTABLE (as of Wave 3)
 
@@ -268,19 +269,16 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 - **N2-S10** · Accept section (POST /section/:id/accept) — depends on N2-S03 ✓
 - **N2-S11** · Drop section (POST /section/:id/drop) — depends on N2-S03 ✓
 
-**Unlocked by N2-S07 merge:**
-- **N2-S08** · Detect failed section — depends on N2-S07 ✓ (now startable)
+**Unlocked by N2-S08 merge:**
+- **N2-S20** · Forced section-failure hook — depends on N2-S08 ✓ (now startable)
 
-**Unlocks after N2-S08 merges:**
-- **N2-S20** · Forced section-failure hook
-
-**Integration and QA after all third-wave stories:**
+**Integration and QA after all remaining stories:**
 - **N2-S18** (TL integration)
 - **N2-S19** (QA)
 
 ### In Dev / In Review / In QA
 
-*(N2-S07 and N2-S12 merged. N2-S08 now startable.)*
+*(N2-S07, N2-S12, N2-S08 merged. N2-S20 now startable.)*
 
 ### Blockers
 
