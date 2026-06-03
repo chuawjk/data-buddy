@@ -49,10 +49,10 @@ export default function ActivityRail() {
       {log.length > 0 && (
         <div
           data-testid="activity-log"
-          className="mt-2 max-h-48 overflow-y-auto rounded bg-[#1e1c1a] p-2 font-mono text-xs text-[#c6bfb0] space-y-0.5"
+          className="mt-2 max-h-[27rem] overflow-y-auto rounded bg-[#1e1c1a] p-2 font-mono text-xs text-[#c6bfb0] space-y-0.5"
         >
           {log.map((entry, i) => (
-            <div key={i} className="truncate leading-5">
+            <div key={i} className="line-clamp-3 leading-5">
               {entry}
             </div>
           ))}
