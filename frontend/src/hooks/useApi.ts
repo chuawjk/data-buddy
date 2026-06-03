@@ -125,14 +125,14 @@ export const api = {
   },
 
   /**
-   * GET /api/export — export brief as Markdown.
+   * GET /api/export — export brief as a ZIP archive.
    * API_CONTRACT.html §1 · GET /export
-   * Returns the raw Markdown text (file download body).
+   * Returns a Blob (application/zip) for browser download.
    */
-  async getExport(): Promise<string> {
+  async getExport(): Promise<Blob> {
     const res = await fetch("/api/export", { method: "GET" });
     await throwIfError(res);
-    return res.text();
+    return res.blob();
   },
 
   /**

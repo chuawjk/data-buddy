@@ -67,7 +67,7 @@ describe("ExportButton", () => {
 
   it("triggers download when clicked and api.getExport resolves", async () => {
     const user = userEvent.setup();
-    mockGetExport.mockResolvedValue("# My Brief\n\nContent here.");
+    mockGetExport.mockResolvedValue(new Blob(["zip-content"], { type: "application/zip" }));
 
     render(<ExportButton disabled={false} />);
 
@@ -86,9 +86,9 @@ describe("ExportButton", () => {
     expect(blobArg).toBeInstanceOf(Blob);
   });
 
-  it("anchor download attribute is set to brief.md on export", async () => {
+  it("anchor download attribute is set to brief.zip on export", async () => {
     const user = userEvent.setup();
-    mockGetExport.mockResolvedValue("# Brief");
+    mockGetExport.mockResolvedValue(new Blob(["zip"], { type: "application/zip" }));
 
     const originalCreateElement = document.createElement.bind(document);
     let capturedAnchor: HTMLAnchorElement | null = null;
@@ -102,14 +102,14 @@ describe("ExportButton", () => {
     await user.click(screen.getByTestId("export-btn"));
 
     await waitFor(() => {
-      expect(capturedAnchor?.download).toBe("brief.md");
+      expect(capturedAnchor?.download).toBe("brief.zip");
     });
   });
 
-  it("handles a very long markdown string without truncation", async () => {
+  it("passes the zip blob directly to createObjectURL", async () => {
     const user = userEvent.setup();
-    const longMarkdown = "# Section\n\n" + "word ".repeat(10000);
-    mockGetExport.mockResolvedValue(longMarkdown);
+    const zipBlob = new Blob(["PK\x03\x04"], { type: "application/zip" });
+    mockGetExport.mockResolvedValue(zipBlob);
 
     render(<ExportButton disabled={false} />);
     await user.click(screen.getByTestId("export-btn"));
@@ -119,7 +119,7 @@ describe("ExportButton", () => {
     });
 
     const blobArg = mockCreateObjectURL.mock.calls[0][0] as Blob;
-    expect(blobArg.size).toBeGreaterThan(10000);
+    expect(blobArg).toBe(zipBlob);
   });
 
   // ── Error paths ───────────────────────────────────────────────────────────
@@ -199,7 +199,7 @@ describe("ExportButton", () => {
     // First call fails, second succeeds
     mockGetExport
       .mockRejectedValueOnce({ error: "export_failed", message: "First failure." })
-      .mockResolvedValueOnce("# Brief");
+      .mockResolvedValueOnce(new Blob(["zip"], { type: "application/zip" }));
 
     render(<ExportButton disabled={false} />);
 

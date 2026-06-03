@@ -24,6 +24,8 @@ import type { SSEEvent } from "../../types/events";
 interface BuildViewProps {
   /** Sections injected from App.tsx (hydrated from GET /state). */
   sections?: Section[];
+  /** Called whenever sections change locally (accept/drop) so App can update its plan state. */
+  onSectionsChange?: (sections: Section[]) => void;
 }
 
 const STATUS_LABEL: Record<Section["status"], string> = {
@@ -49,7 +51,7 @@ function getSectionPanes(sections: Section[]): Section[] {
   return sections.filter((s) => s.status !== "queued");
 }
 
-export default function BuildView({ sections: initialSections = [] }: BuildViewProps) {
+export default function BuildView({ sections: initialSections = [], onSectionsChange }: BuildViewProps) {
   const [sections, setSections] = useState<Section[]>(initialSections);
   const [redirectText, setRedirectText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -131,26 +133,38 @@ export default function BuildView({ sections: initialSections = [] }: BuildViewP
   useSSE(handleEvent);
 
   const handleAccept = useCallback(async (id: string) => {
-    // Optimistic update
-    setSections((prev) => prev.map((s) => (s.id === id ? { ...s, status: "accepted" } : s)));
+    setSections((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, status: "accepted" as const } : s));
+      onSectionsChange?.(next);
+      return next;
+    });
     try {
       await api.postSectionAccept(id);
     } catch {
-      // Revert optimistic update on failure
-      setSections((prev) => prev.map((s) => (s.id === id ? { ...s, status: "proposed" } : s)));
+      setSections((prev) => {
+        const reverted = prev.map((s) => (s.id === id ? { ...s, status: "proposed" as const } : s));
+        onSectionsChange?.(reverted);
+        return reverted;
+      });
     }
-  }, []);
+  }, [onSectionsChange]);
 
   const handleDrop = useCallback(async (id: string) => {
-    // Optimistic update
-    setSections((prev) => prev.map((s) => (s.id === id ? { ...s, status: "dropped" } : s)));
+    setSections((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, status: "dropped" as const } : s));
+      onSectionsChange?.(next);
+      return next;
+    });
     try {
       await api.postSectionDrop(id);
     } catch {
-      // Revert optimistic update on failure
-      setSections((prev) => prev.map((s) => (s.id === id ? { ...s, status: "proposed" } : s)));
+      setSections((prev) => {
+        const reverted = prev.map((s) => (s.id === id ? { ...s, status: "proposed" as const } : s));
+        onSectionsChange?.(reverted);
+        return reverted;
+      });
     }
-  }, []);
+  }, [onSectionsChange]);
 
   const handleSend = useCallback(async () => {
     const text = redirectText.trim();

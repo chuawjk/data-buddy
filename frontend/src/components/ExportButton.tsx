@@ -1,6 +1,6 @@
 // ExportButton — N2-S17
 // Renders in the App header for planning and building/done stages.
-// Calls GET /api/export and triggers a .md file download.
+// Calls GET /api/export and triggers a .zip file download.
 // Disabled when no sections have status "accepted".
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -39,14 +39,13 @@ export default function ExportButton({ disabled }: ExportButtonProps) {
     setError(null);
 
     try {
-      const markdown = await api.getExport();
+      const blob = await api.getExport();
 
       // Trigger browser download
-      const blob = new Blob([markdown], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "brief.md";
+      anchor.download = "brief.zip";
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
@@ -72,7 +71,7 @@ export default function ExportButton({ disabled }: ExportButtonProps) {
         onClick={() => void handleClick()}
         className="flex items-center gap-1.5 bg-[#1a1a17] text-white rounded-lg px-4 py-1.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#333330] transition-colors"
       >
-        {isExporting ? "Exporting…" : "↓ Export"}
+        {isExporting ? "Exporting…" : "↓ Export zip"}
       </button>
       {error !== null && (
         <span
