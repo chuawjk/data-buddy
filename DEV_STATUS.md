@@ -347,6 +347,12 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
   - `backend/orchestrator.py`: `_SECTION_WATCHDOG_TIMEOUT = 180` constant; `accept_plan`, `start_build_section`, `redirect_section` all pass `timeout=_SECTION_WATCHDOG_TIMEOUT`; profiling and planning turns unchanged at 60s
   - 3 new watchdog tests + 1 orchestrator test; 311 BE tests total pass
 
+- **fix(be+fe): section auto-sequencing, watchdog reset per section, buttons gated on load** — `fix/section-sequencing` → develop, merge commit `f9d8eb9` (2026-06-03)
+  - `backend/orchestrator.py`: `accept_plan()` transitions "proposed" sections → "queued" (build-queue status); `start_build_section()` persists `index` alongside status; `_handle_section_idle()` cancels watchdog immediately on completion, calls new `_start_next_queued_section()` to auto-advance — re-arms watchdog for next section or leaves cancelled when done
+  - `frontend/src/components/StageViews/BuildView.tsx`: replaced single `deriveActiveSection` with `getSectionPanes()` — renders one `SectionPane` per non-queued section, top-to-bottom in plan order
+  - `frontend/src/components/SectionPane.tsx`: added `artefactsLoaded` state; Accept/Drop buttons disabled until all file fetches complete, then enabled
+  - 6 new orchestrator tests + 1 new SectionPane test; 319 BE + 172 FE tests pass
+
 - **fix(be+fe): section artefact paths not rendering** — `fix/section-paths-in-state` → develop, merge commit `569deb4` (2026-06-03)
   - Root cause: `py_path`/`png_path`/`md_path` only existed in the `section.proposed` SSE event payload — never persisted to `state.json`. `GET /state` returned sections without these fields (JS `undefined`), and `SectionPane`'s `!== null` guards passed for `undefined`, triggering file fetches with `path=undefined` (400 Bad Request) and broken chart images
   - `backend/orchestrator.py`: `_handle_plan_ready` now initialises `py_path/png_path/md_path = None` on each section; `start_build_section` persists `status=building`; `_handle_section_idle` persists paths + `status=proposed` or `status=failed` to state.json after events fire
