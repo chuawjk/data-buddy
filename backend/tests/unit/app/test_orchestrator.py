@@ -907,3 +907,34 @@ async def test_session_idle_stage_aware_dispatch_planning(tmp_path):
     assert "profile.ready" not in types, (
         f"profile.ready must not fire in planning stage; got {types}"
     )
+
+
+@pytest.mark.asyncio
+async def test_section_build_uses_extended_watchdog_timeout(tmp_path):
+    """start_build_section() calls watchdog.start_turn(timeout=180), not the default 60s."""
+    from unittest.mock import MagicMock
+
+    from backend.orchestrator import _SECTION_WATCHDOG_TIMEOUT
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building", dataset="data.csv", aim="find patterns")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    watchdog = MagicMock()
+    watchdog.start_turn = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm, bus=bus, client=mock_client, watchdog=watchdog, workspace_root=tmp_path
+    )
+
+    await orch.start_build_section(
+        section_id="sec_01",
+        section_index=1,
+        title="Churn drivers",
+        hypothesis="Age predicts churn",
+        profile={},
+    )
+    await asyncio.sleep(0)
+
+    watchdog.start_turn.assert_called_once_with(timeout=_SECTION_WATCHDOG_TIMEOUT)
+    assert _SECTION_WATCHDOG_TIMEOUT == 180

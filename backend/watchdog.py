@@ -62,15 +62,21 @@ class Watchdog:
         self._bus = bus
         self._task: asyncio.Task[None] | None = None
 
-    def start_turn(self) -> None:
-        """Call when a turn begins. Cancels any existing timer and starts a fresh one."""
+    def start_turn(self, timeout: int | None = None) -> None:
+        """Call when a turn begins. Cancels any existing timer and starts a fresh one.
+
+        Args:
+            timeout: Silence threshold in seconds before recovery fires.  Defaults
+                to ``WATCHDOG_TIMEOUT`` (60 s).  Pass a larger value (e.g. 180) for
+                long-running turns such as section builds.
+        """
         self.cancel()
-        self._task = asyncio.create_task(self._watch())
+        self._task = asyncio.create_task(self._watch(timeout or WATCHDOG_TIMEOUT))
 
     def heartbeat(self) -> None:
         """Call on every event received to reset the silence timer.
 
-        Restarts the internal watch task, effectively resetting the countdown.
+        Restarts the internal watch task with the same default timeout.
         """
         self.start_turn()
 
@@ -80,16 +86,16 @@ class Watchdog:
             self._task.cancel()
             self._task = None
 
-    async def _watch(self) -> None:
-        """Wait WATCHDOG_TIMEOUT seconds; if not cancelled, handle the timeout."""
+    async def _watch(self, timeout: int) -> None:
+        """Wait ``timeout`` seconds; if not cancelled, handle the timeout."""
         try:
-            await asyncio.sleep(WATCHDOG_TIMEOUT)
+            await asyncio.sleep(timeout)
         except asyncio.CancelledError:
             logger.debug("Watchdog timer cancelled before timeout.")
             return
         logger.warning(
             "Watchdog fired: no events for %ds.  Initiating abort + fresh-session recovery.",
-            WATCHDOG_TIMEOUT,
+            timeout,
         )
         await self._handle_timeout()
 
