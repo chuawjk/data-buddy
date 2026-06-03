@@ -326,11 +326,56 @@ async def post_section_accept(request: Request, section_id: str) -> Response:
 
 
 @router.post("/section/{section_id}/drop", status_code=204)
-async def post_section_drop(section_id: str) -> Response:
-    """Drop a proposed section and trigger the next.
+async def post_section_drop(request: Request, section_id: str) -> Response:
+    """Drop a proposed section.
 
-    Real implementation: N2-S11.  Stub returns 204 No Content.
+    N2-S11 real implementation.
+
+    Marks the section's status from ``"proposed"`` to ``"dropped"`` in
+    ``state.json``.  Returns 204 No Content.  No OpenCode call is made.
+    Dropped sections are excluded from ``GET /export`` because that endpoint
+    only includes sections with status ``"accepted"``.
+
+    Error envelopes (API contract §4):
+    - 400 section_not_found -- no section with that ID in the current plan.
+    - 400 section_not_proposed -- section exists but is not in proposed status.
     """
+    state_manager = request.app.state.state_manager
+    state = state_manager.get_state()
+    plan: list[dict[str, Any]] = state.get("plan", [])
+
+    # Find section by ID.
+    section_index = next(
+        (i for i, s in enumerate(plan) if s.get("id") == section_id),
+        None,
+    )
+    if section_index is None:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "section_not_found",
+                "message": f"No section with id {section_id!r} exists in the current plan.",
+            },
+        )
+
+    section = plan[section_index]
+    if section.get("status") != "proposed":
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "section_not_proposed",
+                "message": (
+                    f"Section {section_id!r} is not in 'proposed' status "
+                    f"(current status: {section.get('status')!r})."
+                ),
+            },
+        )
+
+    # Update section status to dropped.
+    updated_plan = [dict(s) for s in plan]
+    updated_plan[section_index]["status"] = "dropped"
+    state_manager.update(plan=updated_plan)
+
     return Response(status_code=204)
 
 
