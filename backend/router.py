@@ -351,6 +351,27 @@ async def post_plan_update(request: Request, body: dict = Body(...)) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# POST /profile/accept
+# ---------------------------------------------------------------------------
+
+
+@router.post("/profile/accept", status_code=204)
+async def post_profile_accept(request: Request) -> Response:
+    """Accept the profile and advance to planning.
+
+    Called by the SPA after the user reviews the profiling output and is
+    satisfied with it.  Delegates to ``orchestrator.accept_profile()`` as a
+    fire-and-forget task.  Returns 204 immediately; the stage transition and
+    plan-turn progress arrive via SSE.
+
+    Idempotent: calling when already in ``planning`` stage is a no-op
+    (guarded inside ``_handle_planning_transition``).
+    """
+    asyncio.create_task(request.app.state.orchestrator.accept_profile())
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
 # POST /plan/accept
 # ---------------------------------------------------------------------------
 
