@@ -34,6 +34,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 
+from backend.frontmatter_parser import parse_section_file
 from backend.sse_proxy import event_stream
 
 router = APIRouter()
@@ -286,21 +287,110 @@ async def post_section_drop(section_id: str) -> Response:
 
 
 # ---------------------------------------------------------------------------
+# GET /export helpers
+# ---------------------------------------------------------------------------
+
+
+def _find_section_file(workspace_root: Path, section: dict[str, Any]) -> Path | None:
+    """Resolve the ``.md`` file path for a plan section.
+
+    Resolution order:
+    1. If ``section`` has an ``md_path`` key (set by N2-S07 after building),
+       try ``workspace_root / section["md_path"]``.  Return it if the file
+       exists.
+    2. Otherwise, glob ``workspace_root/sections/<section_id>_*.md`` and
+       return the first match.
+    3. Return ``None`` if no file is found.
+
+    Args:
+        workspace_root: Absolute path to the ``workspace/`` directory.
+        section: A section dict from ``state.json["plan"]`` with at least
+            an ``"id"`` key.
+
+    Returns:
+        A ``Path`` to the first matching ``.md`` file, or ``None``.
+    """
+    # Try stored md_path first (set by N2-S07).
+    stored_path = section.get("md_path")
+    if stored_path:
+        candidate = workspace_root / stored_path
+        if candidate.is_file():
+            return candidate
+
+    # Fall back to glob: sections/<section_id>_*.md
+    section_id: str = section.get("id", "")
+    if not section_id:
+        return None
+
+    matches = sorted((workspace_root / "sections").glob(f"{section_id}_*.md"))
+    return matches[0] if matches else None
+
+
+# ---------------------------------------------------------------------------
 # GET /export
 # ---------------------------------------------------------------------------
 
 
 @router.get("/export")
-async def get_export() -> PlainTextResponse:
+async def get_export(request: Request) -> PlainTextResponse:
     """Export the brief as a Markdown file.
 
-    Real implementation: N2-S13.  Stub returns an empty Markdown document with
-    the correct Content-Disposition header.
+    N2-S13 real implementation.
+
+    Concatenates the body of every section whose status is ``"accepted"`` in
+    plan order into a single Markdown document.  Sections with status
+    ``"dropped"``, ``"proposed"``, ``"building"``, or ``"failed"`` are excluded.
+
+    The body of each section is extracted from its ``.md`` file in
+    ``workspace/sections/`` using ``parse_section_file()`` (N2-S09).  If the
+    ``.md`` file cannot be found for a section, that section is silently skipped
+    so the export always succeeds.
+
+    Zero OpenCode calls: this endpoint reads from disk only.
+
+    Returns:
+        A ``text/markdown`` response with
+        ``Content-Disposition: attachment; filename="brief.md"``.
+        If no sections are accepted, returns a default "no accepted sections"
+        document with the same headers.
     """
+    _DEFAULT_EXPORT = "# Brief\n\n*(no accepted sections yet)*\n"
+    _EXPORT_HEADERS = {"Content-Disposition": 'attachment; filename="brief.md"'}
+
+    state_manager = request.app.state.state_manager
+    state = state_manager.get_state()
+    workspace_root: Path = state_manager._path.parent.resolve()
+
+    plan_sections: list[dict[str, Any]] = state.get("plan", [])
+
+    # Collect bodies for accepted sections in plan order.
+    bodies: list[str] = []
+    for section in plan_sections:
+        if section.get("status") != "accepted":
+            continue
+
+        md_file = _find_section_file(workspace_root, section)
+        if md_file is None:
+            # Section file not found — skip gracefully.
+            continue
+
+        parsed = parse_section_file(md_file)
+        body = parsed.get("body", "")
+        if body:
+            bodies.append(body)
+
+    if not bodies:
+        return PlainTextResponse(
+            content=_DEFAULT_EXPORT,
+            media_type="text/markdown",
+            headers=_EXPORT_HEADERS,
+        )
+
+    combined = "\n\n---\n\n".join(bodies)
     return PlainTextResponse(
-        content="# Brief\n\n*(no accepted sections yet)*\n",
+        content=combined,
         media_type="text/markdown",
-        headers={"Content-Disposition": 'attachment; filename="brief.md"'},
+        headers=_EXPORT_HEADERS,
     )
 
 
