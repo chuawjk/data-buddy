@@ -6,7 +6,7 @@ import BuildView from "./components/StageViews/BuildView";
 import ActivityRail from "./components/ActivityRail";
 import { useSSE } from "./hooks/useSSE";
 import { api } from "./hooks/useApi";
-import type { Profile } from "./types/api";
+import type { Profile, Section } from "./types/api";
 import type { SSEEvent } from "./types/events";
 
 type Stage = "setup" | "profiling" | "planning" | "building" | "done";
@@ -14,11 +14,13 @@ type Stage = "setup" | "profiling" | "planning" | "building" | "done";
 interface AppState {
   stage: Stage | null;
   profile: Profile | null;
+  /** Plan sections — populated once planning completes or on hydration. */
+  sections: Section[];
   loading: boolean;
   error: string | null;
 }
 
-function renderStageView(stage: Stage, profile: Profile | null): JSX.Element {
+function renderStageView(stage: Stage, profile: Profile | null, sections: Section[]): JSX.Element {
   switch (stage) {
     case "setup":
       return <SetupView />;
@@ -28,7 +30,7 @@ function renderStageView(stage: Stage, profile: Profile | null): JSX.Element {
       return <PlanView />;
     case "building":
     case "done":
-      return <BuildView />;
+      return <BuildView sections={sections} />;
   }
 }
 
@@ -36,6 +38,7 @@ export default function App() {
   const [state, setState] = useState<AppState>({
     stage: null,
     profile: null,
+    sections: [],
     loading: true,
     error: null,
   });
@@ -46,30 +49,40 @@ export default function App() {
         if (!res.ok) {
           throw new Error(`GET /api/state returned ${res.status}`);
         }
-        return res.json() as Promise<{ stage: Stage; profile: Profile | null }>;
+        return res.json() as Promise<{
+          stage: Stage;
+          profile: Profile | null;
+          plan: Section[];
+        }>;
       })
       .then((data) => {
         setState({
           stage: data.stage,
           profile: data.profile ?? null,
+          sections: data.plan ?? [],
           loading: false,
           error: null,
         });
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : "Failed to load state";
-        setState({ stage: null, profile: null, loading: false, error: message });
+        setState({ stage: null, profile: null, sections: [], loading: false, error: message });
       });
   }, []);
 
   useSSE((event: SSEEvent) => {
-    if (event.type === "stage.changed" || event.type === "profile.ready") {
+    if (
+      event.type === "stage.changed" ||
+      event.type === "profile.ready" ||
+      event.type === "plan.ready"
+    ) {
       api
         .getState()
         .then((data) => {
           setState({
             stage: data.stage,
             profile: data.profile ?? null,
+            sections: data.plan ?? [],
             loading: false,
             error: null,
           });
@@ -108,7 +121,7 @@ export default function App() {
         <span className="font-serif text-3xl font-light text-[#b8732a]">Data Buddy</span>
       </header>
       <div className="max-w-6xl mx-auto px-8 py-10 flex gap-6">
-        <div className="flex-1">{renderStageView(state.stage, state.profile)}</div>
+        <div className="flex-1">{renderStageView(state.stage, state.profile, state.sections)}</div>
         {state.stage !== "setup" && (
           <div className="w-72 shrink-0">
             <div className="bg-white border border-[#ddd5c5] rounded-lg p-4">
