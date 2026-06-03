@@ -58,16 +58,46 @@ at the integration boundary.
 2. Use the **test seams** rather than hoping the model misbehaves: the configurable watchdog
    timeout, the forced-failure hooks (`QA_FORCE_STALL`, `QA_FORCE_TURN_ERROR`), and the
    OpenCode-call spy for "zero agent calls" assertions (`04_QA_PLAN`).
-3. Run at least one end-to-end Playwright spec against the night's critical path through the
+3. **Run the live fixture tests.** These exercise the real backend+frontend stack without an
+   agent turn. For every relevant workspace scenario, run:
+   ```
+   QA_WORKSPACE=profiling           pnpm --prefix frontend playwright test --config playwright.live.config.ts
+   QA_WORKSPACE=profiling_deviation pnpm --prefix frontend playwright test --config playwright.live.config.ts
+   QA_WORKSPACE=planning            pnpm --prefix frontend playwright test --config playwright.live.config.ts
+   ```
+   These tests assert **actual rendered values** from the fixture (e.g. "100" visible in the
+   shape strip) — not just DOM presence. A failure here means the real HTTP→render path is broken
+   for a known state, even without an agent. This is the layer that catches contract mismatches
+   like field-name deviations (`total_rows` vs `rows`) that mocked specs cannot see.
+4. **Run the live OpenCode demo path.** Start `make dev` (real OpenCode, real churn CSV), upload
+   the dataset, let the agent profile and plan, and assert structurally against the resulting
+   artefacts (`profile.json`, `plan.json`, `state.json`). This is the only layer that exercises
+   real agent output. The churn CSV is the fixed fixture; OpenCode credentials live at
+   `~/.local/share/opencode/auth.json`. Run this once per night — it is slow and costs tokens;
+   do not repeat it for every regression check. After the run, validate the produced
+   `workspace/profile.json` against `PROFILE_SCHEMA` using jsonschema — any field-name deviation
+   the agent introduces is caught here before it reaches production.
+5. Run at least one end-to-end Playwright spec against the night's critical path through the
    browser UI (see principle 1). QA writes **wiring and behaviour** specs: user action → API call
    → DOM update, SSE event → state change, forced-failure hook → error UI appears. FE's tagged
    structural specs (`@<story-id>`) cover rendering — confirm those passed via CI rather than
    rewriting them. Write new specs in `qa/e2e/` if they do not already exist.
-4. Decide and report to TL:
+6. Decide and report to TL:
    - **Green** → report pass; the slice may merge.
    - **Red** → log the defect to `QA_LOG.md` (symptom, story/area, root cause or fix) **with a
      regression check added** so it cannot silently return, then report fail. **A failing check
      blocks merge.**
+
+## Testing layers — what each catches
+
+| Layer | Command | Catches | Does not catch |
+|---|---|---|---|
+| Unit + structural | `make test` + `uv run pytest qa/structural/` | Schema definitions, component rendering, zero-agent-call invariants, module boundaries | Real HTTP stack, field-name deviations from agent, UI rendering of real data |
+| Live fixture tests | `QA_WORKSPACE=X pnpm playwright test --config playwright.live.config.ts` | Contract mismatches between backend and frontend on real HTTP, rendered values from known state, agent field-name deviations | Agent output quality, SSE event flow, multi-turn flows |
+| Live OpenCode demo | `make dev` + manual/scripted churn CSV run | Real agent output, full stage flow, real SSE events, actual artefact production | Determinism (output varies), speed (45s+ per turn) |
+
+All three layers must pass. A gap in any layer is a QA process defect — log it as such in
+`QA_LOG.md` alongside the product defect it failed to catch.
 
 ## What you own / don't
 

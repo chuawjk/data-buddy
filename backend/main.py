@@ -16,6 +16,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -53,6 +54,10 @@ async def lifespan(app: FastAPI):
     # --- startup ---
     app.state.bus = EventBus()
 
+    # WORKSPACE_ROOT lets QA and tests point the backend at a fixture workspace
+    # without touching the real workspace/ directory. StateManager reads it
+    # internally; Orchestrator receives it explicitly for file I/O paths.
+    workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "workspace"))
     state_manager = StateManager()
     # Load persisted state from disk (no-op if workspace/state.json does not
     # exist yet -- returns the default shape and leaves _state at defaults).
@@ -101,6 +106,7 @@ async def lifespan(app: FastAPI):
         bus=app.state.bus,
         client=client,  # None when SKIP_OPENCODE=1; orchestrator guards internally.
         watchdog=watchdog,  # None when SKIP_OPENCODE=1; orchestrator guards internally.
+        workspace_root=workspace_root,
     )
     app.state.orchestrator = orchestrator
 

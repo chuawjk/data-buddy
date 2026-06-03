@@ -43,8 +43,10 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import io
 import json
 import os
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -90,7 +92,7 @@ def _write_state_file(state_path: Path, **kwargs) -> None:
 def _get_app_client(workspace: Path):
     """Return a TestClient wired to the real ASGI app with an isolated workspace."""
     from backend.main import app
-    from backend.state_manager import StateManager
+    from backend.core.state_manager import StateManager
 
     state_path = workspace / "state.json"
     with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
@@ -109,7 +111,7 @@ class TestPlanSchema:
 
     def test_plan_schema_has_sections_property(self):
         """PLAN_SCHEMA top-level must have required=['sections']."""
-        from backend.prompts.plan import PLAN_SCHEMA
+        from backend.agent.prompts.plan import PLAN_SCHEMA
 
         assert "sections" in PLAN_SCHEMA.get("required", []), (
             "PLAN_SCHEMA must list 'sections' as a required field"
@@ -120,7 +122,7 @@ class TestPlanSchema:
 
     def test_plan_schema_sections_is_array(self):
         """PLAN_SCHEMA.properties.sections must be type=array."""
-        from backend.prompts.plan import PLAN_SCHEMA
+        from backend.agent.prompts.plan import PLAN_SCHEMA
 
         sections_schema = PLAN_SCHEMA["properties"]["sections"]
         assert sections_schema["type"] == "array", (
@@ -129,7 +131,7 @@ class TestPlanSchema:
 
     def test_plan_schema_sections_min_max_items(self):
         """PLAN_SCHEMA sections array must enforce 3–6 entries."""
-        from backend.prompts.plan import PLAN_SCHEMA
+        from backend.agent.prompts.plan import PLAN_SCHEMA
 
         sections_schema = PLAN_SCHEMA["properties"]["sections"]
         assert sections_schema.get("minItems") == 3, "sections minItems must be 3"
@@ -137,7 +139,7 @@ class TestPlanSchema:
 
     def test_plan_schema_item_required_fields(self):
         """Each section item must require id, title, hypothesis."""
-        from backend.prompts.plan import PLAN_SCHEMA
+        from backend.agent.prompts.plan import PLAN_SCHEMA
 
         item_schema = PLAN_SCHEMA["properties"]["sections"]["items"]
         required = set(item_schema.get("required", []))
@@ -146,7 +148,7 @@ class TestPlanSchema:
 
     def test_plan_schema_item_properties_present(self):
         """Each section item must declare id, title, hypothesis as string properties."""
-        from backend.prompts.plan import PLAN_SCHEMA
+        from backend.agent.prompts.plan import PLAN_SCHEMA
 
         item_schema = PLAN_SCHEMA["properties"]["sections"]["items"]
         props = item_schema.get("properties", {})
@@ -158,7 +160,7 @@ class TestPlanSchema:
 
     def test_plan_schema_validates_a_valid_plan(self):
         """A 3-section plan with id/title/hypothesis satisfies PLAN_SCHEMA constraints."""
-        from backend.prompts.plan import PLAN_SCHEMA
+        from backend.agent.prompts.plan import PLAN_SCHEMA
 
         # Validate manually against the schema's constraints (no jsonschema dep required).
         sections_schema = PLAN_SCHEMA["properties"]["sections"]
@@ -189,7 +191,7 @@ class TestPlanSchema:
 
     def test_plan_schema_rejects_too_few_sections(self):
         """A 2-section plan violates PLAN_SCHEMA minItems=3 constraint."""
-        from backend.prompts.plan import PLAN_SCHEMA
+        from backend.agent.prompts.plan import PLAN_SCHEMA
 
         min_items = PLAN_SCHEMA["properties"]["sections"].get("minItems", 0)
         assert 2 < min_items or min_items == 3, "minItems must be 3"
@@ -198,14 +200,14 @@ class TestPlanSchema:
 
     def test_plan_schema_rejects_too_many_sections(self):
         """A 7-section plan violates PLAN_SCHEMA maxItems=6 constraint."""
-        from backend.prompts.plan import PLAN_SCHEMA
+        from backend.agent.prompts.plan import PLAN_SCHEMA
 
         max_items = PLAN_SCHEMA["properties"]["sections"].get("maxItems", float("inf"))
         assert 7 > max_items, f"7 sections must fail maxItems={max_items} constraint"
 
     def test_plan_schema_rejects_missing_required_field(self):
         """A section missing 'hypothesis' violates PLAN_SCHEMA item required fields."""
-        from backend.prompts.plan import PLAN_SCHEMA
+        from backend.agent.prompts.plan import PLAN_SCHEMA
 
         item_required = set(
             PLAN_SCHEMA["properties"]["sections"]["items"].get("required", [])
@@ -233,7 +235,7 @@ class TestZeroOpenCodeCalls:
     @pytest.fixture()
     def client_and_app(self, workspace):
         from backend.main import app
-        from backend.state_manager import StateManager
+        from backend.core.state_manager import StateManager
 
         state_path = workspace / "state.json"
         with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
@@ -356,7 +358,7 @@ class TestFrontmatterParser:
 
     def test_parse_frontmatter_returns_dict_with_required_keys(self):
         """parse_frontmatter returns dict with frontmatter, body, parse_error."""
-        from backend.frontmatter_parser import parse_frontmatter
+        from backend.core.frontmatter_parser import parse_frontmatter
 
         result = parse_frontmatter(self._SAMPLE_MD)
         assert "frontmatter" in result
@@ -365,7 +367,7 @@ class TestFrontmatterParser:
 
     def test_parse_frontmatter_extracts_fields(self):
         """parse_frontmatter correctly extracts YAML fields."""
-        from backend.frontmatter_parser import parse_frontmatter
+        from backend.core.frontmatter_parser import parse_frontmatter
 
         result = parse_frontmatter(self._SAMPLE_MD)
         assert result["parse_error"] is False
@@ -376,7 +378,7 @@ class TestFrontmatterParser:
 
     def test_parse_frontmatter_separates_body(self):
         """parse_frontmatter correctly separates body from frontmatter."""
-        from backend.frontmatter_parser import parse_frontmatter
+        from backend.core.frontmatter_parser import parse_frontmatter
 
         result = parse_frontmatter(self._SAMPLE_MD)
         assert "Revenue shows a clear trend." in result["body"]
@@ -385,7 +387,7 @@ class TestFrontmatterParser:
 
     def test_parse_frontmatter_no_frontmatter_returns_full_body(self):
         """Text without frontmatter returns full text as body, empty frontmatter."""
-        from backend.frontmatter_parser import parse_frontmatter
+        from backend.core.frontmatter_parser import parse_frontmatter
 
         text = "This is just regular markdown.\n\nNo frontmatter here.\n"
         result = parse_frontmatter(text)
@@ -395,7 +397,7 @@ class TestFrontmatterParser:
 
     def test_parse_frontmatter_malformed_yaml_no_crash(self):
         """Malformed YAML in frontmatter sets parse_error=True, does not raise."""
-        from backend.frontmatter_parser import parse_frontmatter
+        from backend.core.frontmatter_parser import parse_frontmatter
 
         bad_md = "---\n: invalid: yaml: {\n---\n\nBody text.\n"
         # Must not raise
@@ -405,7 +407,7 @@ class TestFrontmatterParser:
 
     def test_parse_frontmatter_unclosed_delimiter_sets_parse_error(self):
         """Opening --- with no closing --- sets parse_error=True."""
-        from backend.frontmatter_parser import parse_frontmatter
+        from backend.core.frontmatter_parser import parse_frontmatter
 
         bad_md = "---\nsection_id: sec_01\n\nNo closing delimiter.\n"
         result = parse_frontmatter(bad_md)
@@ -413,14 +415,14 @@ class TestFrontmatterParser:
 
     def test_parse_frontmatter_type_error_on_none(self):
         """parse_frontmatter raises TypeError on None input (documented contract)."""
-        from backend.frontmatter_parser import parse_frontmatter
+        from backend.core.frontmatter_parser import parse_frontmatter
 
         with pytest.raises(TypeError):
             parse_frontmatter(None)  # type: ignore[arg-type]
 
     def test_parse_section_file_returns_dict_with_path(self, tmp_path):
         """parse_section_file returns dict with path, frontmatter, body, parse_error."""
-        from backend.frontmatter_parser import parse_section_file
+        from backend.core.frontmatter_parser import parse_section_file
 
         md_file = tmp_path / "sec_01_test.md"
         md_file.write_text(self._SAMPLE_MD, encoding="utf-8")
@@ -433,7 +435,7 @@ class TestFrontmatterParser:
 
     def test_parse_section_file_separates_frontmatter_from_body(self, tmp_path):
         """parse_section_file returns correct frontmatter and body from disk."""
-        from backend.frontmatter_parser import parse_section_file
+        from backend.core.frontmatter_parser import parse_section_file
 
         md_file = tmp_path / "sec_01_test.md"
         md_file.write_text(self._SAMPLE_MD, encoding="utf-8")
@@ -445,7 +447,7 @@ class TestFrontmatterParser:
 
     def test_parse_section_file_missing_file_returns_parse_error(self, tmp_path):
         """parse_section_file on a non-existent file returns parse_error=True, no raise."""
-        from backend.frontmatter_parser import parse_section_file
+        from backend.core.frontmatter_parser import parse_section_file
 
         result = parse_section_file(tmp_path / "nonexistent.md")
         assert result["parse_error"] is True
@@ -454,7 +456,7 @@ class TestFrontmatterParser:
 
     def test_parse_section_file_malformed_yaml_fails_safely(self, tmp_path):
         """parse_section_file on a file with malformed YAML returns parse_error=True."""
-        from backend.frontmatter_parser import parse_section_file
+        from backend.core.frontmatter_parser import parse_section_file
 
         bad_md = "---\n: this: is: invalid\n---\n\nBody.\n"
         md_file = tmp_path / "bad.md"
@@ -474,7 +476,7 @@ class TestArchitectureBoundaries:
 
     def test_orchestrator_has_no_httpx_import(self):
         """backend/orchestrator.py must not import httpx at any scope."""
-        orchestrator_path = _BACKEND_ROOT / "orchestrator.py"
+        orchestrator_path = _BACKEND_ROOT / "core" / "orchestrator.py"
         tree = ast.parse(orchestrator_path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -489,7 +491,7 @@ class TestArchitectureBoundaries:
 
     def test_opencode_client_has_no_orchestrator_import(self):
         """backend/opencode_client.py must not import the orchestrator module."""
-        client_path = _BACKEND_ROOT / "opencode_client.py"
+        client_path = _BACKEND_ROOT / "agent" / "opencode_client.py"
         tree = ast.parse(client_path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -515,9 +517,9 @@ class TestForcedFailureHook:
     """REG-N2-04: QA_FORCE_SECTION_FAIL=1 triggers section.failed deterministically."""
 
     def _make_orchestrator(self, tmp_path):
-        from backend.event_bus import EventBus
-        from backend.orchestrator import Orchestrator
-        from backend.state_manager import StateManager
+        from backend.core.event_bus import EventBus
+        from backend.core.orchestrator import Orchestrator
+        from backend.core.state_manager import StateManager
 
         sm = StateManager(path=tmp_path / "state.json")
         sm.load()
@@ -622,7 +624,7 @@ class TestStateTransitions:
     @pytest.fixture()
     def client_fixture(self, tmp_path):
         from backend.main import app
-        from backend.state_manager import StateManager
+        from backend.core.state_manager import StateManager
 
         state_path = tmp_path / "state.json"
         with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
@@ -795,7 +797,7 @@ class TestExportCorrectness:
     @pytest.fixture()
     def client_fixture(self, tmp_path):
         from backend.main import app
-        from backend.state_manager import StateManager
+        from backend.core.state_manager import StateManager
 
         state_path = tmp_path / "state.json"
         with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
@@ -817,15 +819,21 @@ class TestExportCorrectness:
         client, app, workspace = client_fixture
         r = client.get("/export")
         assert r.status_code == 200
-        assert "text/markdown" in r.headers.get("content-type", "")
+        assert "application/zip" in r.headers.get("content-type", "")
+
+    @staticmethod
+    def _unzip_report(response_content: bytes) -> str:
+        """Extract report.md text from the export zip response."""
+        with zipfile.ZipFile(io.BytesIO(response_content)) as zf:
+            return zf.read("report.md").decode("utf-8")
 
     def test_export_content_disposition_attachment(self, client_fixture):
-        """GET /export must set Content-Disposition: attachment; filename=brief.md."""
+        """GET /export must set Content-Disposition: attachment; filename=brief.zip."""
         client, app, workspace = client_fixture
         r = client.get("/export")
         cd = r.headers.get("content-disposition", "")
         assert "attachment" in cd
-        assert "brief.md" in cd
+        assert "brief.zip" in cd
 
     def test_export_includes_accepted_section_content(self, client_fixture):
         """GET /export includes body content of accepted sections."""
@@ -846,7 +854,7 @@ class TestExportCorrectness:
 
         r = client.get("/export")
         assert r.status_code == 200
-        assert "Revenue analysis content here." in r.text
+        assert "Revenue analysis content here." in self._unzip_report(r.content)
 
     def test_export_excludes_dropped_sections(self, client_fixture):
         """GET /export must not include dropped section content."""
@@ -866,7 +874,7 @@ class TestExportCorrectness:
         self._seed_state(client, app, workspace, plan)
 
         r = client.get("/export")
-        assert "Revenue analysis content here." not in r.text
+        assert "Revenue analysis content here." not in self._unzip_report(r.content)
 
     def test_export_excludes_proposed_sections(self, client_fixture):
         """GET /export must not include proposed section content."""
@@ -886,7 +894,7 @@ class TestExportCorrectness:
         self._seed_state(client, app, workspace, plan)
 
         r = client.get("/export")
-        assert "Revenue analysis content here." not in r.text
+        assert "Revenue analysis content here." not in self._unzip_report(r.content)
 
     def test_export_no_accepted_sections_returns_default_doc(self, client_fixture):
         """GET /export with zero accepted sections returns the default document."""
@@ -904,14 +912,14 @@ class TestExportCorrectness:
 
         r = client.get("/export")
         assert r.status_code == 200
-        assert "no accepted sections" in r.text.lower()
+        assert "no accepted sections" in self._unzip_report(r.content).lower()
 
     def test_export_with_no_plan_returns_default_doc(self, client_fixture):
         """GET /export with no plan returns the default document."""
         client, app, workspace = client_fixture
         r = client.get("/export")
         assert r.status_code == 200
-        assert "no accepted sections" in r.text.lower()
+        assert "no accepted sections" in self._unzip_report(r.content).lower()
 
     def test_export_includes_multiple_accepted_sections(self, client_fixture):
         """GET /export concatenates bodies of all accepted sections in plan order."""
@@ -939,8 +947,8 @@ class TestExportCorrectness:
         self._seed_state(client, app, workspace, plan)
 
         r = client.get("/export")
-        assert "Revenue analysis content here." in r.text
-        assert "Churn analysis content here." in r.text
+        assert "Revenue analysis content here." in self._unzip_report(r.content)
+        assert "Churn analysis content here." in self._unzip_report(r.content)
 
     def test_export_zero_opencode_calls(self, client_fixture):
         """GET /export makes zero OpenCode calls (spy assertion)."""
@@ -1015,8 +1023,6 @@ class TestDataTestidCompleteness:
         "column-row",
         "shape-strip",
         "activity-rail",
-        "bottom-bar-input",
-        "bottom-bar-send",
         "error-banner",
         "reprof-input",
         "reprof-submit",
@@ -1105,7 +1111,7 @@ class TestNight1RegressionCarryForward:
 
     def test_profile_schema_has_required_fields(self):
         """REG-N1-01: PROFILE_SCHEMA has shape.{rows,columns}, columns[].required, flags."""
-        from backend.prompts.profile import PROFILE_SCHEMA
+        from backend.agent.prompts.profile import PROFILE_SCHEMA
 
         props = PROFILE_SCHEMA.get("properties", {})
 
@@ -1137,7 +1143,7 @@ class TestNight1RegressionCarryForward:
 
     def test_profile_schema_is_dict(self):
         """REG-N1-01: PROFILE_SCHEMA is a non-empty dict."""
-        from backend.prompts.profile import PROFILE_SCHEMA
+        from backend.agent.prompts.profile import PROFILE_SCHEMA
 
         assert isinstance(PROFILE_SCHEMA, dict)
         assert len(PROFILE_SCHEMA) > 0

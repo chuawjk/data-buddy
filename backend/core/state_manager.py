@@ -51,7 +51,10 @@ class StateManager:
               a ``tmp_path``-based path for isolation.
     """
 
-    def __init__(self, path: Path = Path("workspace/state.json")) -> None:
+    def __init__(self, path: Path | None = None) -> None:
+        if path is None:
+            workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "workspace"))
+            path = workspace_root / "state.json"
         self._path = Path(path)
         self._tmp_path = self._path.with_name("state.tmp.json")
         # Initialise in-memory state to defaults; load() will override if the

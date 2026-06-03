@@ -1,0 +1,44 @@
+{
+  "version": "1",
+  "stage": "profiling",
+  "aim": "understand drivers of customer churn",
+  "dataset_path": "data/customers_q3.csv",
+  "last_saved": "2026-06-03T12:00:00Z",
+  "opencode_session_id": null,
+  "profile": {
+    "shape": {
+      "total_rows": 100,
+      "total_columns": 9,
+      "target": "churned"
+    },
+    "columns": [
+      {
+        "name": "customer_id",
+        "type": "text",
+        "flags": ["high_cardinality", "id_like"],
+        "summary": "Unique customer identifier for each record."
+      },
+      {
+        "name": "plan_tier",
+        "type": "categorical",
+        "flags": ["low_cardinality"],
+        "summary": "Subscription tier with three categories: basic, pro, and enterprise."
+      },
+      {
+        "name": "monthly_spend",
+        "type": "numeric",
+        "flags": ["high_cardinality", "skewed"],
+        "summary": "Ranges from 9.78 to 4003.49 with median 44.16."
+      },
+      {
+        "name": "churned",
+        "type": "categorical",
+        "flags": ["low_cardinality"],
+        "summary": "Binary churn indicator that appears to be the outcome of interest."
+      }
+    ],
+    "flags": ["small_dataset", "binary_target_present"]
+  },
+  "plan": [],
+  "error": null
+}
