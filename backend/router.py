@@ -21,11 +21,18 @@ Route inventory (from API_CONTRACT.html):
 from __future__ import annotations
 
 import asyncio
+import mimetypes
 from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, File, Form, Query, Request, UploadFile
-from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+    StreamingResponse,
+)
 
 from backend.sse_proxy import event_stream
 
@@ -301,19 +308,77 @@ async def get_export() -> PlainTextResponse:
 # GET /file
 # ---------------------------------------------------------------------------
 
+# Explicit content-type overrides per the contract (TL note: N2-S14).
+_CONTENT_TYPE_OVERRIDES: dict[str, str] = {
+    ".png": "image/png",
+    ".py": "text/plain",
+    ".md": "text/plain",
+    ".csv": "text/csv",
+    ".json": "application/json",
+}
+
 
 @router.get("/file")
 async def get_file(
+    request: Request,
     path: Annotated[str, Query(description="Relative path within workspace")],
 ) -> Response:
     """Serve a workspace file (code / chart).
 
-    Real implementation: N2-S14.  Stub acknowledges the path parameter and
-    returns 404 with the contract error envelope (file not found is a valid
-    contract response, not a 5xx).
+    N2-S14 real implementation.
+
+    Path validation:
+    - Resolves the candidate path within ``workspace/`` and verifies it does not
+      escape the workspace root.  Any path that resolves outside returns HTTP 400
+      with ``{"error": "path_traversal"}``.
+
+    File serving:
+    - If the file does not exist, returns HTTP 400 with ``{"error": "missing_file"}``.
+    - Content-type is determined first from an explicit override table, then from
+      ``mimetypes.guess_type()``, falling back to ``application/octet-stream``.
+
+    Zero OpenCode calls: this endpoint reads from disk only.
     """
-    return Response(
-        content=b'{"error": "missing_file", "message": "File not found (stub handler)."}',
-        status_code=404,
-        media_type="application/json",
-    )
+    state_manager = request.app.state.state_manager
+    workspace_root: Path = state_manager._path.parent.resolve()
+
+    # Resolve the candidate path.  Using workspace_root / path handles both
+    # relative paths and absolute paths: if path is absolute (e.g. "/etc/passwd"),
+    # Path(workspace_root) / "/etc/passwd" == Path("/etc/passwd"), so the
+    # containment check below will catch it.
+    candidate = (workspace_root / path).resolve()
+
+    # Path traversal check: candidate must be equal to or inside workspace_root.
+    # Use str comparison after resolve() to handle symlinks correctly.
+    workspace_str = str(workspace_root)
+    candidate_str = str(candidate)
+    if not (candidate_str == workspace_str or candidate_str.startswith(workspace_str + "/")):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "path_traversal",
+                "message": (
+                    f"Path {path!r} resolves outside the workspace directory and is not allowed."
+                ),
+            },
+        )
+
+    # File existence check.
+    if not candidate.exists() or not candidate.is_file():
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "missing_file",
+                "message": f"File {path!r} not found in the workspace.",
+            },
+        )
+
+    # Determine content-type: explicit override → mimetypes → octet-stream.
+    suffix = candidate.suffix.lower()
+    if suffix in _CONTENT_TYPE_OVERRIDES:
+        content_type = _CONTENT_TYPE_OVERRIDES[suffix]
+    else:
+        guessed, _encoding = mimetypes.guess_type(str(candidate))
+        content_type = guessed or "application/octet-stream"
+
+    return FileResponse(path=str(candidate), media_type=content_type)
