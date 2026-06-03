@@ -347,6 +347,12 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
   - `backend/orchestrator.py`: `_SECTION_WATCHDOG_TIMEOUT = 180` constant; `accept_plan`, `start_build_section`, `redirect_section` all pass `timeout=_SECTION_WATCHDOG_TIMEOUT`; profiling and planning turns unchanged at 60s
   - 3 new watchdog tests + 1 orchestrator test; 311 BE tests total pass
 
+- **fix(be+fe): section artefact paths not rendering** — `fix/section-paths-in-state` → develop, merge commit `569deb4` (2026-06-03)
+  - Root cause: `py_path`/`png_path`/`md_path` only existed in the `section.proposed` SSE event payload — never persisted to `state.json`. `GET /state` returned sections without these fields (JS `undefined`), and `SectionPane`'s `!== null` guards passed for `undefined`, triggering file fetches with `path=undefined` (400 Bad Request) and broken chart images
+  - `backend/orchestrator.py`: `_handle_plan_ready` now initialises `py_path/png_path/md_path = None` on each section; `start_build_section` persists `status=building`; `_handle_section_idle` persists paths + `status=proposed` or `status=failed` to state.json after events fire
+  - `frontend/src/components/SectionPane.tsx`: guards changed from `!== null` to `!= null` to treat `undefined` same as `null` defensively
+  - 4 new orchestrator tests; 315 BE + 170 FE tests pass
+
 - **fix(fe): activity rail compact scrollable log** — `fix/activity-rail-log` → develop, merge commit `a3cbd9f` (2026-06-03)
   - `frontend/src/hooks/useActivityState.ts`: `log: string[]` field added to `ActivityRailState`; `tool.bash_done` appends `✓ <trimmed cmd>` (40-char cap); `tool.file_written` appends file path; log resets on next session start (consistent with counts); capped at 20 entries
   - `frontend/src/components/ActivityRail.tsx`: fixed-height (`max-h-48`) scrollable log pane below summary chip; auto-scrolls to bottom via `useRef`/`useEffect`; hidden when log is empty
