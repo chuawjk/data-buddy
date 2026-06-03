@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import App from "./App";
+import type { Section } from "./types/api";
 import type { SSEEvent } from "./types/events";
 
 // Collect all onEvent callbacks registered by any component using useSSE.
@@ -226,6 +227,78 @@ describe("App stage routing", () => {
     // api.getState() should have been called again.
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith("/api/state", { method: "GET" });
+    });
+  });
+
+  it("renders plan-view when stage is 'planning' with plan from GET /state", async () => {
+    const planSections: Section[] = [
+      {
+        id: "sec_01",
+        title: "Overview",
+        hypothesis: "Revenue correlates with age",
+        status: "queued",
+        py_path: null,
+        png_path: null,
+        md_path: null,
+      },
+    ];
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ stage: "planning", profile: null, plan: planSections }),
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("plan-view")).toBeInTheDocument();
+    });
+
+    // Section should be visible in the plan view
+    await waitFor(() => {
+      expect(screen.getByTestId("plan-section-sec_01")).toBeInTheDocument();
+    });
+  });
+
+  it("reacts to plan.ready SSE — updates plan state in App", async () => {
+    const newSections: Section[] = [
+      {
+        id: "sec_new_01",
+        title: "New Section",
+        hypothesis: "New hypothesis",
+        status: "queued",
+        py_path: null,
+        png_path: null,
+        md_path: null,
+      },
+    ];
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ stage: "planning", profile: null, plan: [] }),
+      })
+    );
+
+    render(<App />);
+
+    // Wait for plan-view to mount with empty plan
+    await waitFor(() => {
+      expect(screen.getByTestId("plan-view")).toBeInTheDocument();
+    });
+
+    // Simulate plan.ready SSE
+    await act(async () => {
+      capturedOnEvent!({ type: "plan.ready", sections: newSections, ts: Date.now() });
+    });
+
+    // Plan state updated — new section visible
+    await waitFor(() => {
+      expect(screen.getByTestId("plan-section-sec_new_01")).toBeInTheDocument();
     });
   });
 });
