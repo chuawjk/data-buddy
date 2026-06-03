@@ -1,8 +1,8 @@
-"""Stage orchestrator -- setup → profiling state machine.
+"""Stage orchestrator -- setup → profiling → planning state machine.
 
-This module implements the first two stages of the Data Buddy state machine:
-``setup`` and ``profiling``.  The planning and building stages (Night 2) will
-extend this module further.
+This module implements the first three stages of the Data Buddy state machine:
+``setup``, ``profiling``, and ``planning``.  The building stage (Night 2/3)
+will extend this module further.
 
 Architecture boundaries (from backlog):
 - The orchestrator calls the OpenCode client through the narrow interface only:
@@ -13,10 +13,7 @@ Architecture boundaries (from backlog):
 
 State transitions implemented here:
   setup → profiling   (via ``setup_complete``)
-
-Night 2 will add:
-  profiling → planning
-  planning → building
+  profiling → planning  (via ``_handle_planning_transition``, triggered on ``profile.ready``)
 """
 
 from __future__ import annotations
@@ -164,7 +161,7 @@ class Orchestrator:
         )
 
     # ------------------------------------------------------------------
-    # Bus listener — session.idle → stage output handling
+    # Bus listener — session.idle / profile.ready → stage output handling
     # ------------------------------------------------------------------
 
     async def start_bus_listener(self) -> None:
@@ -176,8 +173,7 @@ class Orchestrator:
 
         Currently handled:
           - ``session.idle`` in profiling stage → ``_handle_profile_idle``
-
-        Night 2 will add handlers for planning and building stages.
+          - ``profile.ready`` → ``_handle_planning_transition``  (N2-S01)
         """
         subscription = self._bus.subscribe()
         try:
@@ -185,6 +181,8 @@ class Orchestrator:
                 event_type: str = envelope.get("type", "")
                 if event_type == "session.idle":
                     await self._handle_profile_idle()
+                elif event_type == "profile.ready":
+                    await self._handle_planning_transition()
         except asyncio.CancelledError:
             logger.info("Orchestrator bus listener cancelled.")
             raise
@@ -237,6 +235,58 @@ class Orchestrator:
         await self._bus.publish("profile.ready", {"profile": profile, "ts": ts})
         logger.info("profile.ready emitted (ts=%d)", ts)
 
+    async def _handle_planning_transition(self) -> None:
+        """Called when ``profile.ready`` fires — transitions profiling → planning.
+
+        Steps:
+        1. Guard: if current stage is not ``profiling``, return early (idempotent).
+        2. Persist ``stage=planning`` via state manager.
+        3. Emit ``stage.changed`` with ``{"stage": "planning"}``.
+        4. If client and session ID are present, arm the watchdog and schedule
+           ``_run_plan_turn`` as a fire-and-forget task.
+
+        N2-S01.
+        """
+        state = self._state_manager.get_state()
+        current_stage: str = state.get("stage", "")
+        if current_stage != "profiling":
+            logger.debug(
+                "_handle_planning_transition: ignoring (stage=%r, expected profiling)",
+                current_stage,
+            )
+            return
+
+        # 1. Persist the transition.
+        self._state_manager.update(stage="planning")
+
+        # 2. Emit the domain event.
+        ts = int(time.time() * 1000)
+        await self._bus.publish("stage.changed", {"stage": "planning", "ts": ts})
+        logger.info("stage.changed: planning (ts=%d)", ts)
+
+        # 3. Fire the plan turn if we have a session.
+        session_id = self._state_manager.get_state().get("opencode_session_id")
+        if session_id and self._client is not None:
+            dataset: str = state.get("dataset") or ""
+            aim: str = state.get("aim") or ""
+            profile: dict[str, Any] = state.get("profile") or {}
+            prompt_text = self._build_plan_prompt(dataset, aim, profile)
+
+            # Arm the watchdog before firing the turn (same pattern as profiling).
+            if self._watchdog is not None:
+                self._watchdog.start_turn()
+
+            asyncio.create_task(
+                self._run_plan_turn(session_id, prompt_text),
+                name="plan-turn",
+            )
+        else:
+            logger.debug(
+                "_handle_planning_transition: skipping plan turn (session_id=%r, client=%r)",
+                session_id,
+                self._client,
+            )
+
     # ------------------------------------------------------------------
     # Prompt construction
     # ------------------------------------------------------------------
@@ -267,9 +317,80 @@ class Orchestrator:
             ws = self._workspace_root.resolve()
             return f"Profile the dataset at {ws / 'data' / dataset} with aim: {aim}"
 
+    def _build_plan_prompt(self, dataset: str, aim: str, profile: dict[str, Any]) -> str:
+        """Return the text to send to OpenCode for the planning turn.
+
+        Tries to import ``build_plan_prompt`` from ``backend.prompts.plan``
+        (added by N2-S02).  Falls back to a minimal placeholder so this story
+        (N2-S01) is independently deliverable.
+
+        Args:
+            dataset: Dataset filename (e.g. ``"data.csv"``).
+            aim: The user's stated aim of investigation.
+            profile: The parsed profile dict from state (may be empty).
+
+        Returns:
+            A non-empty prompt string.
+        """
+        try:
+            from backend.prompts.plan import build_plan_prompt  # noqa: PLC0415
+
+            return build_plan_prompt(dataset, aim, profile, self._workspace_root.resolve())
+        except ImportError:
+            logger.debug(
+                "_build_plan_prompt: backend.prompts.plan not yet available "
+                "(N2-S02 not merged); using placeholder."
+            )
+            ws = self._workspace_root.resolve()
+            return (
+                f"Draft an analysis plan for {ws / 'data' / dataset} with aim: {aim}. "
+                "Return as JSON with a 'sections' array."
+            )
+
+    @staticmethod
+    def _load_plan_schema() -> Any:
+        """Return the plan JSON schema for structured output, or ``None``.
+
+        Attempts to import ``PLAN_SCHEMA`` from ``backend.prompts.plan``
+        (N2-S02).  Returns ``None`` if the module is not yet available so that
+        N2-S01 remains independently deliverable.
+        """
+        try:
+            from backend.prompts.plan import PLAN_SCHEMA  # noqa: PLC0415
+
+            return PLAN_SCHEMA
+        except ImportError:
+            return None
+
     # ------------------------------------------------------------------
     # Fire-and-forget helpers
     # ------------------------------------------------------------------
+
+    async def _run_plan_turn(self, session_id: str, prompt: str) -> None:
+        """Send the planning prompt to OpenCode and handle errors.
+
+        This coroutine is scheduled as a fire-and-forget ``asyncio.Task``
+        by ``_handle_planning_transition``.  Any exception is caught here and
+        converted into a ``turn.error`` bus event.
+
+        The JSON schema for structured output is sourced from
+        ``backend.prompts.plan.PLAN_SCHEMA`` when available (N2-S02).
+        If that import fails, no schema is passed (``schema=None``).
+
+        Args:
+            session_id: The active OpenCode session ID.
+            prompt: The plan prompt text to send.
+
+        N2-S01.
+        """
+        schema: Any = self._load_plan_schema()
+
+        assert self._client is not None  # guarded by caller  # noqa: S101
+        try:
+            await self._client.prompt(session_id, prompt, schema=schema)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Plan turn failed: %s", exc)
+            await self._bus.publish("turn.error", {"message": str(exc)})
 
     async def _run_profile_turn(self, session_id: str, prompt: str) -> None:
         """Send the profiling prompt to OpenCode and handle errors.

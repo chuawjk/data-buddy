@@ -1,8 +1,8 @@
-"""Unit tests for orchestrator.py -- N1-S04.
+"""Unit tests for orchestrator.py -- N1-S04, N2-S01.
 
 TDD: tests written before the implementation is extended.
 
-Acceptance criteria covered:
+Acceptance criteria covered (N1-S04):
 - Given the machine, when it runs, then states ``setup`` and ``profiling`` exist with
   a single legal transition between them.
 - Given a state is entered, when the transition completes, then ``stage.changed`` is
@@ -10,6 +10,12 @@ Acceptance criteria covered:
 - Given setup completes, when the orchestrator advances, then it auto-triggers the
   profiling turn via the narrow ``client.prompt(...)`` interface (not ``httpx``
   directly).
+
+Acceptance criteria covered (N2-S01):
+- ``profile.ready`` → profiling → planning + ``stage.changed`` emitted.
+- Plan prompt auto-triggered via ``client.prompt()`` narrow interface.
+- ``watchdog.start_turn()`` called if wired.
+- No ``httpx`` import in orchestrator (AST check — shared with N1-S04).
 
 Architecture constraints verified:
 - ``httpx`` is NOT imported in ``orchestrator.py``.
@@ -400,3 +406,193 @@ async def test_setup_complete_skips_turn_without_client(tmp_path):
 
     # Stage transition still persisted.
     assert sm.get_state()["stage"] == "profiling"
+
+
+# ---------------------------------------------------------------------------
+# N2-S01: profile.ready → planning transition
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_profile_ready_transitions_to_planning(tmp_path):
+    """profile.ready on bus → stage persisted as planning."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+
+    await orch._handle_planning_transition()
+    await asyncio.sleep(0)
+
+    assert sm.get_state()["stage"] == "planning"
+
+
+@pytest.mark.asyncio
+async def test_profile_ready_emits_stage_changed(tmp_path):
+    """profile.ready → stage.changed published with stage='planning'."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+
+    sub = bus.subscribe()
+
+    await orch._handle_planning_transition()
+    await asyncio.sleep(0)
+
+    # Drain events to find stage.changed
+    received = []
+    try:
+        for _ in range(3):
+            event = await asyncio.wait_for(sub.__anext__(), timeout=0.5)
+            received.append(event)
+    except asyncio.TimeoutError:
+        pass
+
+    types = [e["type"] for e in received]
+    assert "stage.changed" in types, f"Expected stage.changed; got {types}"
+    stage_event = next(e for e in received if e["type"] == "stage.changed")
+    assert stage_event.get("stage") == "planning"
+
+
+@pytest.mark.asyncio
+async def test_profile_ready_fires_plan_prompt(tmp_path):
+    """profile.ready → client.prompt called (plan turn dispatched)."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+
+    await orch._handle_planning_transition()
+    # Allow fire-and-forget task to run.
+    await asyncio.sleep(0)
+
+    client.prompt.assert_awaited_once()
+    args, _ = client.prompt.call_args
+    assert args[0] == "sess-abc"
+    assert isinstance(args[1], str) and len(args[1]) > 0
+
+
+@pytest.mark.asyncio
+async def test_profile_ready_wrong_stage_returns_early(tmp_path):
+    """_handle_planning_transition is a no-op when stage is not profiling."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="planning")  # already planning
+
+    sub = bus.subscribe()
+
+    await orch._handle_planning_transition()
+    await asyncio.sleep(0)
+
+    # No events should have been emitted.
+    assert sub._queue.empty(), "No events should be emitted if already in planning stage"
+    client.prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_profile_ready_no_session_id_no_prompt(tmp_path):
+    """_handle_planning_transition runs without error when no session_id is stored.
+
+    Stage transition still persists; plan prompt is skipped.
+    """
+    sm = _make_state_manager(tmp_path, session_id=None)
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client)
+
+    await orch._handle_planning_transition()
+    await asyncio.sleep(0)
+
+    # Stage still transitions.
+    assert sm.get_state()["stage"] == "planning"
+    # But prompt is never called.
+    mock_client.prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_profile_ready_client_none_no_crash(tmp_path):
+    """_handle_planning_transition completes without error when client=None."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=None)
+
+    # Must not raise.
+    await orch._handle_planning_transition()
+    await asyncio.sleep(0)
+
+    assert sm.get_state()["stage"] == "planning"
+
+
+@pytest.mark.asyncio
+async def test_plan_turn_error_publishes_turn_error(tmp_path):
+    """When client.prompt raises in _run_plan_turn, turn.error is emitted on bus."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(side_effect=RuntimeError("OpenCode unavailable"))
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client)
+
+    sub = bus.subscribe()
+
+    await orch._run_plan_turn("sess-abc", "Draft a plan")
+    await asyncio.sleep(0)
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
+
+
+@pytest.mark.asyncio
+async def test_plan_turn_calls_watchdog_if_wired(tmp_path):
+    """_handle_planning_transition arms the watchdog before firing the plan turn."""
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    watchdog = MagicMock()
+    watchdog.start_turn = MagicMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, watchdog=watchdog)
+
+    await orch._handle_planning_transition()
+    await asyncio.sleep(0)
+
+    watchdog.start_turn.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_bus_listener_handles_profile_ready(tmp_path):
+    """start_bus_listener routes profile.ready → planning transition."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    sub = bus.subscribe()
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    await bus.publish("profile.ready", {"profile": {}, "ts": 12345})
+
+    # Wait for stage.changed to arrive.
+    received = []
+    try:
+        for _ in range(3):
+            event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+            received.append(event)
+            if event["type"] == "stage.changed":
+                break
+    except asyncio.TimeoutError:
+        pass
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    types = [e["type"] for e in received]
+    assert "stage.changed" in types, f"Expected stage.changed in {types}"
+    assert sm.get_state()["stage"] == "planning"
