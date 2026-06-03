@@ -302,6 +302,34 @@ describe("App stage routing", () => {
     });
   });
 
+  it("export-btn is absent while stage is 'planning'", async () => {
+    const acceptedSection: Section = {
+      id: "sec_01",
+      title: "Overview",
+      hypothesis: "Revenue correlates with age",
+      status: "accepted" as SectionStatus,
+      py_path: "sections/sec_01.py",
+      png_path: "sections/sec_01.png",
+      md_path: "sections/sec_01.md",
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ stage: "planning", profile: null, plan: [acceptedSection] }),
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("plan-view")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("export-btn")).not.toBeInTheDocument();
+  });
+
   it("export-btn is disabled when GET /state returns plan=[] at building stage", async () => {
     vi.stubGlobal(
       "fetch",

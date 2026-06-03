@@ -232,6 +232,8 @@ describe("ProfileView", () => {
   it("test_renders_null_profile — renders gracefully with null profile (loading state)", () => {
     render(<ProfileView profile={null} />);
 
+    expect(screen.getByTestId("profile-loading-spinner")).toBeInTheDocument();
+
     // Should not crash; shape-strip and column-row should not appear
     expect(screen.queryByTestId("shape-strip")).toBeNull();
     expect(screen.queryByTestId("column-row")).toBeNull();
@@ -239,6 +241,20 @@ describe("ProfileView", () => {
     // Bottom bar input and submit should still render
     expect(screen.getByTestId("reprof-input")).toBeInTheDocument();
     expect(screen.getByTestId("reprof-submit")).toBeInTheDocument();
+  });
+
+  it("test_loading_spinner_during_revision — shows a loading spinner while a turn is pending", async () => {
+    mockPostTurn.mockReturnValue(new Promise(() => {}));
+
+    render(<ProfileView profile={SAMPLE_PROFILE} />);
+
+    expect(screen.queryByTestId("profile-loading-spinner")).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByTestId("reprof-input"), "focus on account age");
+    await userEvent.click(screen.getByTestId("reprof-submit"));
+
+    expect(screen.getByTestId("profile-loading-spinner")).toBeInTheDocument();
+    expect(screen.getByTestId("profile-loading-spinner")).toHaveTextContent("Revising profile");
   });
 
   // -------------------------------------------------------------------------
@@ -272,6 +288,15 @@ describe("ProfileView", () => {
     const btn = screen.getByTestId("profile-accept-btn");
     expect(btn).toBeInTheDocument();
     expect(btn).not.toBeDisabled();
+  });
+
+  it("test_accept_button_below_bottom_bar — accept button renders after the re-profile controls", () => {
+    render(<ProfileView profile={SAMPLE_PROFILE} />);
+
+    const submit = screen.getByTestId("reprof-submit");
+    const accept = screen.getByTestId("profile-accept-btn");
+
+    expect(submit.compareDocumentPosition(accept)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   // -------------------------------------------------------------------------
