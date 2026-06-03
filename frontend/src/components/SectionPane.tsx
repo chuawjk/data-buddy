@@ -167,33 +167,6 @@ export default function SectionPane({
       {/* Artefacts (shown when proposed or hydrated from state) */}
       {isProposed && (
         <>
-          {/* Code block — collapsed by default */}
-          {codeExpanded && artefacts.pyContent != null && (
-            <div data-testid="section-code" className="mt-4">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-[#9b9489]">
-                  {section.py_path ?? "code"}
-                </span>
-                <button
-                  data-testid="section-code-copy-btn"
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(artefacts.pyContent ?? "");
-                    setCopied(true);
-                    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-                    copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
-                  }}
-                  className="text-xs text-[#9b9489] hover:text-[#1a1a17] px-2 py-0.5 rounded border border-[#ddd5c5] hover:border-[#b8b0a4] transition-colors"
-                >
-                  {copied ? "Copied!" : "Copy"}
-                </button>
-              </div>
-              <pre className="bg-[#f6f2e9] border border-[#ddd5c5] rounded p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap text-[#1a1a17]">
-                {artefacts.pyContent}
-              </pre>
-            </div>
-          )}
-
           {/* Chart image — browser handles binary GET, not api.getFile */}
           {section.png_path != null && (
             <div className="mt-4">
@@ -259,6 +232,33 @@ export default function SectionPane({
                 </svg>
                 {codeExpanded ? "Hide code" : "Show code"}
               </button>
+
+              {/* Code block renders beneath the toggle when expanded */}
+              {codeExpanded && (
+                <div data-testid="section-code" className="mt-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-[#9b9489]">
+                      {section.py_path ?? "code"}
+                    </span>
+                    <button
+                      data-testid="section-code-copy-btn"
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(artefacts.pyContent ?? "");
+                        setCopied(true);
+                        if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+                        copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
+                      }}
+                      className="text-xs text-[#9b9489] hover:text-[#1a1a17] px-2 py-0.5 rounded border border-[#ddd5c5] hover:border-[#b8b0a4] transition-colors"
+                    >
+                      {copied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                  <pre className="bg-[#f6f2e9] border border-[#ddd5c5] rounded p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap text-[#1a1a17]">
+                    {artefacts.pyContent}
+                  </pre>
+                </div>
+              )}
             </div>
           )}
         </>

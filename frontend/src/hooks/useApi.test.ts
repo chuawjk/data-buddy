@@ -249,19 +249,20 @@ describe("api.getExport", () => {
     vi.restoreAllMocks();
   });
 
-  it("sends GET /api/export and returns text", async () => {
+  it("sends GET /api/export and returns a Blob", async () => {
+    const zipBlob = new Blob(["PK\x03\x04"], { type: "application/zip" });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        text: () => Promise.resolve("# Brief\n\nContent here."),
+        blob: () => Promise.resolve(zipBlob),
       })
     );
 
     const result = await api.getExport();
 
     expect(fetch).toHaveBeenCalledWith("/api/export", expect.objectContaining({ method: "GET" }));
-    expect(result).toBe("# Brief\n\nContent here.");
+    expect(result).toBe(zipBlob);
   });
 });
 

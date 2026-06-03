@@ -21,9 +21,11 @@ Route inventory (from API_CONTRACT.html):
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import mimetypes
 import os
+import zipfile
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -31,7 +33,6 @@ from fastapi import APIRouter, Body, File, Form, Query, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     JSONResponse,
-    PlainTextResponse,
     Response,
     StreamingResponse,
 )
@@ -556,65 +557,79 @@ def _find_section_file(workspace_root: Path, section: dict[str, Any]) -> Path | 
 
 
 @router.get("/export")
-async def get_export(request: Request) -> PlainTextResponse:
-    """Export the brief as a Markdown file.
+async def get_export(request: Request) -> Response:
+    """Export the brief as a ZIP archive.
 
-    N2-S13 real implementation.
+    Builds a zip containing:
+    - ``report.md``: combined markdown of all accepted sections in plan order,
+      with each section's chart referenced as ``![title](charts/<file>.png)``.
+    - ``charts/``: PNG chart files for each accepted section (if available).
+    - ``code/``: Python analysis files for each accepted section (if available).
 
-    Concatenates the body of every section whose status is ``"accepted"`` in
-    plan order into a single Markdown document.  Sections with status
-    ``"dropped"``, ``"proposed"``, ``"building"``, or ``"failed"`` are excluded.
-
-    The body of each section is extracted from its ``.md`` file in
-    ``workspace/sections/`` using ``parse_section_file()`` (N2-S09).  If the
-    ``.md`` file cannot be found for a section, that section is silently skipped
-    so the export always succeeds.
-
+    Dropped, proposed, building, and failed sections are excluded.
+    If a file referenced by a section is missing from disk it is silently skipped.
     Zero OpenCode calls: this endpoint reads from disk only.
 
     Returns:
-        A ``text/markdown`` response with
-        ``Content-Disposition: attachment; filename="brief.md"``.
-        If no sections are accepted, returns a default "no accepted sections"
-        document with the same headers.
+        An ``application/zip`` response with
+        ``Content-Disposition: attachment; filename="brief.zip"``.
     """
-    _DEFAULT_EXPORT = "# Brief\n\n*(no accepted sections yet)*\n"
-    _EXPORT_HEADERS = {"Content-Disposition": 'attachment; filename="brief.md"'}
-
     state_manager = request.app.state.state_manager
     state = state_manager.get_state()
     workspace_root: Path = state_manager._path.parent.resolve()
 
     plan_sections: list[dict[str, Any]] = state.get("plan", [])
+    accepted = [s for s in plan_sections if s.get("status") == "accepted"]
 
-    # Collect bodies for accepted sections in plan order.
-    bodies: list[str] = []
-    for section in plan_sections:
-        if section.get("status") != "accepted":
-            continue
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        report_parts: list[str] = []
 
-        md_file = _find_section_file(workspace_root, section)
-        if md_file is None:
-            # Section file not found — skip gracefully.
-            continue
+        for section in accepted:
+            title: str = section.get("title") or section.get("id", "Section")
 
-        parsed = parse_section_file(md_file)
-        body = parsed.get("body", "")
-        if body:
-            bodies.append(body)
+            # Get markdown body (strip frontmatter).
+            md_file = _find_section_file(workspace_root, section)
+            body = ""
+            if md_file is not None:
+                parsed = parse_section_file(md_file)
+                body = (parsed.get("body") or "").strip()
 
-    if not bodies:
-        return PlainTextResponse(
-            content=_DEFAULT_EXPORT,
-            media_type="text/markdown",
-            headers=_EXPORT_HEADERS,
-        )
+            # Add PNG chart to zip; record relative path for the report.
+            png_rel: str | None = section.get("png_path")
+            chart_ref: str | None = None
+            if png_rel:
+                png_abs = workspace_root / png_rel
+                if png_abs.is_file():
+                    chart_ref = f"charts/{png_abs.name}"
+                    zf.write(png_abs, chart_ref)
 
-    combined = "\n\n---\n\n".join(bodies)
-    return PlainTextResponse(
-        content=combined,
-        media_type="text/markdown",
-        headers=_EXPORT_HEADERS,
+            # Add Python file to zip.
+            py_rel: str | None = section.get("py_path")
+            if py_rel:
+                py_abs = workspace_root / py_rel
+                if py_abs.is_file():
+                    zf.write(py_abs, f"code/{py_abs.name}")
+
+            # Build this section's markdown fragment.
+            fragment = f"## {title}\n\n"
+            if chart_ref:
+                fragment += f"![{title}]({chart_ref})\n\n"
+            if body:
+                fragment += body + "\n"
+            report_parts.append(fragment)
+
+        if report_parts:
+            report_md = "# Brief\n\n" + "\n\n---\n\n".join(report_parts)
+        else:
+            report_md = "# Brief\n\n*(no accepted sections yet)*\n"
+
+        zf.writestr("report.md", report_md)
+
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="brief.zip"'},
     )
 
 
