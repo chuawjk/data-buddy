@@ -231,7 +231,10 @@ async def post_turn(request: Request, body: dict = Body(...)) -> Response:
         return Response(status_code=204)
 
     if stage == "building":
-        asyncio.create_task(request.app.state.orchestrator.redirect_section(text))
+        section_id = body.get("section_id")
+        if section_id is not None:
+            section_id = str(section_id).strip() or None
+        asyncio.create_task(request.app.state.orchestrator.redirect_section(text, section_id))
         return Response(status_code=204)
 
     return JSONResponse(

@@ -62,11 +62,11 @@ export const api = {
    * API_CONTRACT.html §1 · POST /turn
    * Returns 204 No Content; resolves void on success.
    */
-  async postTurn(text: string): Promise<void> {
+  async postTurn(text: string, sectionId?: string): Promise<void> {
     const res = await fetch("/api/turn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(sectionId ? { text, section_id: sectionId } : { text }),
     });
     await throwIfError(res);
   },

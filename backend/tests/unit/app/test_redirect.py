@@ -86,6 +86,29 @@ def _set_building_section(
     sm.update(plan=plan, dataset="customers_q3.csv", aim="Analyse churn")
 
 
+def _set_proposed_section(
+    sm: StateManager,
+    section_id: str = "sec_01",
+    nn: str = "01",
+    slug: str = "churn_by_tier",
+) -> None:
+    """Add a generated section with status 'proposed' to state.json plan."""
+    plan = [
+        {
+            "id": section_id,
+            "title": "Churn by Tier",
+            "hypothesis": "Higher tiers churn less",
+            "status": "proposed",
+            "index": int(nn),
+            "slug": slug,
+            "py_path": f"analyses/sec_{nn}_{slug}.py",
+            "png_path": f"charts/sec_{nn}_{slug}.png",
+            "md_path": f"sections/sec_{nn}_{slug}.md",
+        }
+    ]
+    sm.update(plan=plan, dataset="customers_q3.csv", aim="Analyse churn")
+
+
 def _write_draft_files(
     tmp_path: Path,
     nn: str = "01",
@@ -290,6 +313,128 @@ async def test_redirect_section_partial_drafts_deleted(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_redirect_section_rebuilds_proposed_section(tmp_path: Path) -> None:
+    """redirect_section() rebuilds a generated section awaiting review."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    _set_proposed_section(sm)
+    paths = _write_draft_files(tmp_path)
+
+    subscription = bus.subscribe()
+
+    await orch.redirect_section("make the chart grouped")
+    await asyncio.sleep(0)
+
+    client.prompt.assert_awaited_once()
+    assert not paths["py"].exists()
+    assert not paths["png"].exists()
+    assert not paths["md"].exists()
+
+    state = sm.get_state()
+    section = state["plan"][0]
+    assert section["status"] == "building"
+    assert section["py_path"] is None
+    assert section["png_path"] is None
+    assert section["md_path"] is None
+
+    event = await asyncio.wait_for(subscription.__anext__(), timeout=1)
+    assert event["type"] == "section.building"
+    assert event["section_id"] == "sec_01"
+
+
+@pytest.mark.asyncio
+async def test_redirect_section_targets_explicit_section_id(tmp_path: Path) -> None:
+    """section_id targets that section directly; natural-language text passes through."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Cohort Overview",
+                "hypothesis": "H1",
+                "status": "proposed",
+                "index": 1,
+                "slug": "cohort_overview",
+                "py_path": "analyses/sec_01_cohort_overview.py",
+                "png_path": "charts/sec_01_cohort_overview.png",
+                "md_path": "sections/sec_01_cohort_overview.md",
+            },
+            {
+                "id": "sec_02",
+                "title": "Churn by Tier",
+                "hypothesis": "H2",
+                "status": "proposed",
+                "index": 2,
+                "slug": "churn_by_tier",
+                "py_path": "analyses/sec_02_churn_by_tier.py",
+                "png_path": "charts/sec_02_churn_by_tier.png",
+                "md_path": "sections/sec_02_churn_by_tier.md",
+            },
+        ],
+        dataset="customers_q3.csv",
+        aim="Analyse churn",
+    )
+    _write_draft_files(tmp_path, nn="01", slug="cohort_overview")
+    sec2_paths = _write_draft_files(tmp_path, nn="02", slug="churn_by_tier")
+
+    subscription = bus.subscribe()
+
+    await orch.redirect_section("use a grouped chart", section_id="sec_02")
+    await asyncio.sleep(0)
+
+    client.prompt.assert_awaited_once()
+    prompt = client.prompt.call_args.args[1]
+    assert "section sec_02" in prompt
+    assert not sec2_paths["py"].exists()
+    assert not sec2_paths["png"].exists()
+    assert not sec2_paths["md"].exists()
+
+    state = sm.get_state()
+    sec1, sec2 = state["plan"]
+    assert sec1["status"] == "proposed"
+    assert sec2["status"] == "building"
+
+    event = await asyncio.wait_for(subscription.__anext__(), timeout=1)
+    assert event["type"] == "section.building"
+    assert event["section_id"] == "sec_02"
+
+
+@pytest.mark.asyncio
+async def test_redirect_section_unknown_section_id_returns_early(tmp_path: Path) -> None:
+    """Unknown section_id is a no-op instead of falling back to the first section."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Cohort Overview",
+                "hypothesis": "H1",
+                "status": "proposed",
+                "index": 1,
+                "slug": "cohort_overview",
+            },
+            {
+                "id": "sec_02",
+                "title": "Churn by Tier",
+                "hypothesis": "H2",
+                "status": "proposed",
+                "index": 2,
+                "slug": "churn_by_tier",
+            },
+        ],
+        dataset="customers_q3.csv",
+        aim="Analyse churn",
+    )
+
+    await orch.redirect_section("use confidence intervals", section_id="sec_99")
+    await asyncio.sleep(0)
+
+    client.prompt.assert_not_awaited()
+    state = sm.get_state()
+    assert state["plan"][0]["status"] == "proposed"
+    assert state["plan"][1]["status"] == "proposed"
+
+
+@pytest.mark.asyncio
 async def test_redirect_section_arms_watchdog(tmp_path: Path) -> None:
     """redirect_section() calls watchdog.start_turn() when watchdog is wired."""
     sm = _make_state_manager(tmp_path, session_id="sess-abc", stage="building")
@@ -338,8 +483,8 @@ async def test_redirect_section_raises_wrong_stage(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_redirect_section_no_building_section_returns_early(tmp_path: Path) -> None:
-    """redirect_section() is a no-op (no crash) when no section has status=building."""
+async def test_redirect_section_no_redirectable_section_returns_early(tmp_path: Path) -> None:
+    """redirect_section() is a no-op when no section has status=proposed/building."""
     orch, sm, bus, client = _make_orchestrator(tmp_path)
     # Plan has no building section
     sm.update(
@@ -406,15 +551,15 @@ def test_post_turn_building_returns_204(tmp_path: Path) -> None:
 
 
 def test_post_turn_building_calls_redirect_section(tmp_path: Path) -> None:
-    """POST /turn in building stage calls orchestrator.redirect_section with text."""
+    """POST /turn in building stage passes text and optional section_id."""
     test_client, mock_orch = _make_app(tmp_path, stage="building")
 
-    test_client.post("/turn", json={"text": "use a bar chart instead"})
+    test_client.post("/turn", json={"text": "use a bar chart instead", "section_id": "sec_02"})
 
     # Allow any scheduled coroutines to run (TestClient is sync but asyncio tasks
     # created by create_task in the router handler don't run in sync context).
     # We verify the orchestrator method was called, not the task result.
-    mock_orch.redirect_section.assert_called()
+    mock_orch.redirect_section.assert_called_once_with("use a bar chart instead", "sec_02")
 
 
 def test_post_turn_wrong_stage_returns_422(tmp_path: Path) -> None:

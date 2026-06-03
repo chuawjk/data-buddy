@@ -6,6 +6,14 @@
 
 ## Night 2 COMPLETE. All lane stories merged, integration merged, QA passed (63 assertions, 0 defects). Awaiting morning human review for develop → main promotion.
 
+### Post-N2 UX fix — building-stage targeted section revision
+
+- Branch `fix/accept-plan-delegates-start-build`: building-stage global bottom bar removed; each proposed section now owns its own revision input/button.
+- `POST /turn` accepts optional `section_id` in building stage and passes it through to `orchestrator.redirect_section(text, section_id)`, so the backend deterministically rebuilds the selected section while preserving natural-language instructions for OpenCode.
+- Rebuild path clears stale artefact paths, marks only the targeted section back to `building`, emits `section.building`, deletes prior draft files, and dispatches the redirect prompt.
+- Regression coverage added for targeted section revision, removed building bottom-bar UI, `section_id` API payload, and router/orchestrator targeting.
+- Verification: `make test` passed (327 backend + 175 frontend tests); `make lint` passed.
+
 ---
 
 ## Current branch: `develop`

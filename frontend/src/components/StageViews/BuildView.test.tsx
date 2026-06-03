@@ -314,96 +314,59 @@ describe("BuildView", () => {
     expect(mockPostSectionDrop).toHaveBeenCalledWith(PROPOSED_SECTION.id);
   });
 
-  // ── test_bottom_bar_present ───────────────────────────────────────────────
+  // ── test_build_bottom_bar_removed ────────────────────────────────────────
 
-  it("test_bottom_bar_present — build-bottom-bar, bottom-bar-input, bottom-bar-send present", async () => {
+  it("test_build_bottom_bar_removed — building stage has no global bottom bar", () => {
     render(<BuildView />);
 
-    expect(screen.getByTestId("build-bottom-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("bottom-bar-input")).toBeInTheDocument();
-    expect(screen.getByTestId("bottom-bar-send")).toBeInTheDocument();
+    expect(screen.queryByTestId("build-bottom-bar")).toBeNull();
+    expect(screen.queryByTestId("bottom-bar-input")).toBeNull();
+    expect(screen.queryByTestId("bottom-bar-send")).toBeNull();
   });
 
-  // ── test_bottom_bar_send_disabled_when_empty ─────────────────────────────
+  // ── test_section_revise_calls_postTurn_with_section_id ──────────────────
 
-  it("test_bottom_bar_send_disabled_when_empty — send button disabled with empty input", () => {
-    render(<BuildView />);
-    expect(screen.getByTestId("bottom-bar-send")).toBeDisabled();
-  });
-
-  // ── test_bottom_bar_send_calls_postTurn ──────────────────────────────────
-
-  it("test_bottom_bar_send_calls_postTurn — typing + clicking send calls api.postTurn", async () => {
+  it("test_section_revise_calls_postTurn_with_section_id — proposed section revise targets section", async () => {
     const user = userEvent.setup();
-    render(<BuildView />);
+    const sections = [PROPOSED_SECTION];
+    mockGetState.mockResolvedValue(makeStateResponse(sections));
+    mockGetFile.mockResolvedValue("section text");
 
-    const input = screen.getByTestId("bottom-bar-input");
-    await user.type(input, "use a grouped bar chart");
-    await user.click(screen.getByTestId("bottom-bar-send"));
+    render(<BuildView sections={sections} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("section-revise-input")).not.toBeDisabled();
+    });
+
+    await user.type(screen.getByTestId("section-revise-input"), "use a grouped bar chart");
+    await user.click(screen.getByTestId("section-revise-btn"));
 
     expect(mockPostTurn).toHaveBeenCalledOnce();
-    expect(mockPostTurn).toHaveBeenCalledWith("use a grouped bar chart");
+    expect(mockPostTurn).toHaveBeenCalledWith("use a grouped bar chart", PROPOSED_SECTION.id);
   });
 
-  // ── test_bottom_bar_clears_on_success ────────────────────────────────────
+  // ── test_section_revise_marks_section_building ──────────────────────────
 
-  it("test_bottom_bar_clears_on_success — input cleared after successful postTurn", async () => {
+  it("test_section_revise_marks_section_building — section status updates after targeted revise", async () => {
     const user = userEvent.setup();
-    render(<BuildView />);
+    const sections = [PROPOSED_SECTION];
+    mockGetState.mockResolvedValue(makeStateResponse(sections));
+    mockGetFile.mockResolvedValue("section text");
 
-    const input = screen.getByTestId("bottom-bar-input");
-    await user.type(input, "revise the chart");
-    await user.click(screen.getByTestId("bottom-bar-send"));
+    render(<BuildView sections={sections} />);
 
     await waitFor(() => {
-      expect((input as HTMLInputElement).value).toBe("");
-    });
-  });
-
-  // ── test_turn_busy_error_shown_on_400 ────────────────────────────────────
-
-  it("test_turn_busy_error_shown_on_400 — turn-busy-error shown when postTurn returns turn_busy", async () => {
-    const user = userEvent.setup();
-    mockPostTurn.mockRejectedValue({
-      error: "turn_busy",
-      message: "Agent is processing. Please wait.",
+      expect(screen.getByTestId("section-revise-input")).not.toBeDisabled();
     });
 
-    render(<BuildView />);
-
-    const input = screen.getByTestId("bottom-bar-input");
-    await user.type(input, "change the chart");
-    await user.click(screen.getByTestId("bottom-bar-send"));
+    await user.type(screen.getByTestId("section-revise-input"), "revise the chart");
+    await user.click(screen.getByTestId("section-revise-btn"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("turn-busy-error")).toBeInTheDocument();
+      expect(screen.getByTestId(`section-status-${PROPOSED_SECTION.id}`)).toHaveTextContent(
+        "building"
+      );
     });
-
-    expect(screen.getByTestId("turn-busy-error")).toHaveTextContent(
-      "Agent is processing. Please wait."
-    );
-  });
-
-  // ── test_no_turn_busy_error_on_other_errors ───────────────────────────────
-
-  it("test_no_turn_busy_error_on_other_errors — turn-busy-error absent for non-turn_busy errors", async () => {
-    const user = userEvent.setup();
-    mockPostTurn.mockRejectedValue({
-      error: "invalid_stage",
-      message: "Not in building stage.",
-    });
-
-    render(<BuildView />);
-
-    const input = screen.getByTestId("bottom-bar-input");
-    await user.type(input, "change the chart");
-    await user.click(screen.getByTestId("bottom-bar-send"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("bottom-bar-send")).not.toBeDisabled();
-    });
-
-    expect(screen.queryByTestId("turn-busy-error")).toBeNull();
   });
 
   // ── test_section_failed_event_updates_status ─────────────────────────────
