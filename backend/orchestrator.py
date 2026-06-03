@@ -198,7 +198,7 @@ class Orchestrator:
             logger.warning("accept_plan: no queued sections in plan — no section turn fired")
             return
 
-        # 5. Get session ID.
+        # 5. Guard: need an active session to fire a turn.
         session_id: str | None = self._state_manager.get_state().get("opencode_session_id")
         if not session_id or self._client is None:
             logger.debug(
@@ -208,30 +208,18 @@ class Orchestrator:
             )
             return
 
-        # 6. Build the section prompt.
+        # 6. Delegate to start_build_section — it emits section.building, persists
+        #    status="building" to state.json, arms the watchdog, and fires the task.
+        #    Doing it inline here would bypass that state write, causing _handle_section_idle
+        #    to find no "building" section and silently skip proposal + sequencing.
         section_index = plan.index(first_section) + 1  # 1-based index
-        dataset: str = state.get("dataset") or ""
-        aim: str = state.get("aim") or ""
         profile: dict[str, Any] = state.get("profile") or {}
-        prompt_text = self._build_section_prompt(
+        await self.start_build_section(
             section_id=first_section["id"],
             section_index=section_index,
             title=first_section["title"],
-            hypothesis=first_section["hypothesis"],
-            aim=aim,
-            dataset=dataset,
+            hypothesis=first_section.get("hypothesis", ""),
             profile=profile,
-            plan=plan,
-        )
-
-        # 6. Arm the watchdog with extended timeout for section builds.
-        if self._watchdog is not None:
-            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
-
-        # 7. Fire section turn.
-        asyncio.create_task(
-            self._run_section_turn(session_id, prompt_text),
-            name=f"section-turn-{first_section['id']}",
         )
 
     async def re_profile(self, text: str) -> None:
