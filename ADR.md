@@ -18,10 +18,10 @@
 | ADR-007 | Frontend state ownership | Accepted |
 | ADR-008 | Frontend serving strategy | Accepted |
 | ADR-009 | Local development and deployment tooling | Accepted |
-| ADR-010 | N1-S06 opencode_client.py committed directly to develop outside a PR | Proposed — pending review |
-| ADR-011 | N1-S18: profile prompt must write workspace/profile.json explicitly | Proposed — pending review |
-| ADR-012 | N1-S18: OpenCode lifecycle owned by backend; make dev does not start opencode | Proposed — pending review |
-| ADR-013 | QA-02: prompt_async payload format changed in OpenCode v1.15.13 | Proposed — pending review |
+| ADR-010 | N1-S06 opencode_client.py committed directly to develop outside a PR | Accepted |
+| ADR-011 | N1-S18: profile prompt must write workspace/profile.json explicitly | Accepted |
+| ADR-012 | N1-S18: OpenCode lifecycle owned by backend; make dev does not start opencode | Accepted |
+| ADR-013 | QA-02: prompt_async payload format changed in OpenCode v1.15.13 | Accepted |
 
 ---
 
@@ -266,7 +266,7 @@ Docker was considered for submission cleanliness and to signal production-awaren
 
 ## ADR-010 · N1-S06 opencode_client.py committed directly to develop outside a PR
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-02
 
 ### Decision
@@ -288,7 +288,7 @@ TL must run `git diff --cached` and `git status` before every living-doc commit 
 
 ## ADR-011 · N1-S18: profile prompt must write workspace/profile.json explicitly
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-02
 
 ### Decision
@@ -309,7 +309,7 @@ OpenCode's structured output (`format: { type: "json_schema", ... }`) causes the
 
 ## ADR-012 · N1-S18: OpenCode lifecycle owned by backend; make dev does not start opencode
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-02
 
 ### Decision
@@ -331,7 +331,7 @@ Having two components own the same process lifecycle is a violation of single-ow
 
 ## ADR-013 · QA-02: prompt_async payload format changed in OpenCode v1.15.13
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-02
 
 ### Decision
