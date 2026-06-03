@@ -285,3 +285,100 @@ async def test_reprof_starts_watchdog(tmp_path):
     await asyncio.sleep(0)
 
     mock_watchdog.start_turn.assert_called_once()  # sync call, not awaited
+
+
+# ---------------------------------------------------------------------------
+# re_plan tests
+# ---------------------------------------------------------------------------
+
+
+def test_turn_dispatches_replan_in_planning_stage(tmp_path):
+    """POST /turn in planning stage calls orchestrator.re_plan(text) and returns 204."""
+    app = _make_app(tmp_path, stage="planning")
+
+    with TestClient(app) as client:
+        orchestrator = app.state.orchestrator
+        orchestrator.re_plan = AsyncMock(return_value=None)
+
+        r = client.post("/turn", json={"text": "add a section on seasonality"})
+
+    assert r.status_code == 204, f"Expected 204, got {r.status_code}: {r.text}"
+    orchestrator.re_plan.assert_awaited_once_with("add a section on seasonality")
+
+
+@pytest.mark.asyncio
+async def test_replan_calls_client_prompt(tmp_path):
+    """Orchestrator.re_plan(text) calls client.prompt with session_id and a plan schema."""
+    sm = StateManager(path=tmp_path / "state.json")
+    sm.load()
+    sm.update(opencode_session_id="sess-plan-001", stage="planning", dataset="data.csv")
+
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    await orch.re_plan("add a seasonality section")
+    await asyncio.sleep(0)
+
+    mock_client.prompt.assert_awaited_once()
+    args = mock_client.prompt.call_args.args
+    assert args[0] == "sess-plan-001"
+    assert isinstance(args[1], str) and "seasonality" in args[1]
+
+
+@pytest.mark.asyncio
+async def test_replan_raises_without_session(tmp_path):
+    """Orchestrator.re_plan() raises ValueError when no session_id is in state."""
+    sm = StateManager(path=tmp_path / "state.json")
+    sm.load()
+    sm.update(stage="planning")
+
+    orch = Orchestrator(
+        state_manager=sm, bus=EventBus(), client=AsyncMock(), workspace_root=tmp_path
+    )
+
+    with pytest.raises(ValueError, match="No active session"):
+        await orch.re_plan("some text")
+
+
+@pytest.mark.asyncio
+async def test_replan_raises_in_wrong_stage(tmp_path):
+    """Orchestrator.re_plan() raises ValueError when called outside planning stage."""
+    sm = StateManager(path=tmp_path / "state.json")
+    sm.load()
+    sm.update(opencode_session_id="sess-abc", stage="profiling")
+
+    orch = Orchestrator(
+        state_manager=sm, bus=EventBus(), client=AsyncMock(), workspace_root=tmp_path
+    )
+
+    with pytest.raises(ValueError, match="re_plan only valid in planning stage"):
+        await orch.re_plan("some text")
+
+
+@pytest.mark.asyncio
+async def test_replan_starts_watchdog(tmp_path):
+    """Orchestrator.re_plan() calls watchdog.start_turn() when a watchdog is wired in."""
+    sm = StateManager(path=tmp_path / "state.json")
+    sm.load()
+    sm.update(opencode_session_id="sess-wd-plan", stage="planning", dataset="data.csv")
+
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    mock_watchdog = MagicMock()
+    mock_watchdog.start_turn = MagicMock(return_value=None)
+
+    orch = Orchestrator(
+        state_manager=sm,
+        bus=EventBus(),
+        client=mock_client,
+        workspace_root=tmp_path,
+        watchdog=mock_watchdog,
+    )
+
+    await orch.re_plan("remove the last section")
+    await asyncio.sleep(0)
+
+    mock_watchdog.start_turn.assert_called_once()
