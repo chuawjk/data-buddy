@@ -102,6 +102,7 @@ Frontend:
 - App state uses `plan: Section[]`; `plan.ready` updates directly from `event.sections` to avoid a stale `GET /state` race.
 - Activity Rail now has a compact scrollable log of commands/files.
 - Activity Rail QoL (`feat/qol-stage-controls`): log entries wrap up to 3 lines (no more hard truncation); log box height raised to 27 rem; completed commands prefixed `$`, file writes prefixed `✎`.
+- `make dev` clean shutdown: dropped the subshell, tracks BE/FE PIDs explicitly, traps INT/TERM/EXIT, and waits for both processes to exit — prevents hanging PIDs on port 8000/5173 after Ctrl+C.
 
 ### Night 2 Merge Ledger
 
