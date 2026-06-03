@@ -25,6 +25,7 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
   const [profile, setProfile] = useState<Profile | null>(initialProfile);
   const [inputText, setInputText] = useState("");
   const [isTurnInFlight, setIsTurnInFlight] = useState(false);
+  const [isAccepting, setIsAccepting] = useState(false);
 
   const handleEvent = useCallback((event: SSEEvent) => {
     if (event.type === "profile.ready") {
@@ -68,6 +69,17 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
   );
 
   const isSubmitDisabled = inputText.trim() === "" || isTurnInFlight;
+
+  const handleAccept = useCallback(async () => {
+    if (isAccepting) return;
+    setIsAccepting(true);
+    try {
+      await api.postProfileAccept();
+    } catch {
+      setIsAccepting(false);
+    }
+    // On success, App.tsx will receive stage.changed and unmount this view.
+  }, [isAccepting]);
 
   return (
     <div data-testid="profile-view" className="flex flex-col gap-4">
@@ -135,7 +147,21 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
         </div>
       )}
 
-      <div className="mt-6 flex gap-3">
+      {profile !== null && (
+        <div className="mt-4 flex justify-end">
+          <button
+            data-testid="profile-accept-btn"
+            type="button"
+            onClick={() => void handleAccept()}
+            disabled={isAccepting}
+            className="bg-[#4a7a76] text-white rounded-lg px-6 py-2.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isAccepting ? "Accepting…" : "Accept profile →"}
+          </button>
+        </div>
+      )}
+
+      <div className="mt-4 flex gap-3">
         <input
           data-testid="reprof-input"
           type="text"
