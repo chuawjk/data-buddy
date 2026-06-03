@@ -174,6 +174,108 @@ class Orchestrator:
             name="re-profile-turn",
         )
 
+    async def redirect_section(self, text: str) -> None:
+        """Called by POST /turn during the building stage (Stage 4b).
+
+        Fires a redirect turn for the currently-building section.  The user's
+        bottom-bar text is incorporated into a redirect prompt that instructs
+        OpenCode to discard any draft artefacts and rebuild from scratch.
+
+        Steps:
+        1. Validate: session ID must be set and stage must be ``"building"``.
+        2. Find the active section (first with ``status="building"`` in plan).
+        3. Delete any draft files for that section from disk.
+        4. Build the redirect prompt via ``build_redirect_prompt()``.
+        5. Arm the watchdog.
+        6. Fire-and-forget ``_run_section_turn()``.
+
+        Args:
+            text: The user's bottom-bar redirect instruction (already stripped
+                by the router).
+
+        Raises:
+            ValueError: If no session ID is stored in state.
+            ValueError: If the current stage is not ``"building"``.
+
+        N2-S12.
+        """
+        state = self._state_manager.get_state()
+        session_id: str | None = state.get("opencode_session_id")
+        if not session_id:
+            raise ValueError("No active session")
+
+        current_stage: str = state.get("stage", "")
+        if current_stage != "building":
+            raise ValueError(
+                f"redirect_section only valid in building stage; current stage: {current_stage!r}"
+            )
+
+        # Find the active (building) section.
+        plan: list[dict[str, Any]] = state.get("plan") or []
+        building_section: dict[str, Any] | None = next(
+            (s for s in plan if s.get("status") == "building"),
+            None,
+        )
+        if building_section is None:
+            logger.debug("redirect_section: no section with status=building in plan; no-op")
+            return
+
+        section_id: str = building_section.get("id", "")
+        title: str = building_section.get("title", "")
+        hypothesis: str = building_section.get("hypothesis", "")
+        section_index: int = building_section.get("index", 1)
+        slug: str = building_section.get("slug", "")
+
+        if not slug:
+            from backend.prompts.section import _make_slug  # noqa: PLC0415
+
+            slug = _make_slug(title)
+
+        dataset: str = state.get("dataset") or ""
+        aim: str = state.get("aim") or ""
+        profile: dict[str, Any] = state.get("profile") or {}
+
+        # Delete prior draft files before dispatching the redirect prompt.
+        # This guarantees clean state even if OpenCode partially wrote them.
+        nn = str(section_index).zfill(2)
+        base_name = f"sec_{nn}_{slug}"
+        for sub_dir, ext in [("analyses", ".py"), ("charts", ".png"), ("sections", ".md")]:
+            draft_path = self._workspace_root / sub_dir / f"{base_name}{ext}"
+            if draft_path.exists():
+                try:
+                    draft_path.unlink()
+                    logger.debug("redirect_section: deleted draft %s", draft_path)
+                except OSError as exc:
+                    logger.warning(
+                        "redirect_section: could not delete %s: %s",
+                        draft_path,
+                        exc,
+                    )
+
+        # Build the redirect prompt.
+        prompt_text = self._build_redirect_prompt(
+            section_id=section_id,
+            section_index=section_index,
+            title=title,
+            hypothesis=hypothesis,
+            aim=aim,
+            dataset=dataset,
+            profile=profile,
+            plan=plan,
+            redirect_text=text,
+        )
+
+        # Arm the watchdog.
+        if self._watchdog is not None:
+            self._watchdog.start_turn()
+
+        # Fire-and-forget.
+        assert self._client is not None  # noqa: S101  # guarded by session check above
+        asyncio.create_task(
+            self._run_section_turn(session_id, prompt_text),
+            name=f"redirect-turn-{section_id}",
+        )
+
     # ------------------------------------------------------------------
     # Bus listener — session.idle / profile.ready → stage output handling
     # ------------------------------------------------------------------
@@ -629,6 +731,54 @@ class Orchestrator:
                 f"Aim: {aim}. Dataset: {ws / 'data' / dataset}. "
                 f"Write analyses/sec_{nn}_*.py, charts/sec_{nn}_*.png, "
                 f"sections/sec_{nn}_*.md with YAML frontmatter."
+            )
+
+    def _build_redirect_prompt(
+        self,
+        section_id: str,
+        section_index: int,
+        title: str,
+        hypothesis: str,
+        aim: str,
+        dataset: str,
+        profile: dict[str, Any],
+        plan: list[Any],
+        redirect_text: str,
+    ) -> str:
+        """Return the text to send to OpenCode for the section redirect turn.
+
+        Tries to import ``build_redirect_prompt`` from ``backend.prompts.redirect``
+        (added by N2-S12).  Falls back to a minimal placeholder.
+
+        N2-S12.
+        """
+        try:
+            from backend.prompts.redirect import build_redirect_prompt  # noqa: PLC0415
+
+            return build_redirect_prompt(
+                section_id=section_id,
+                section_index=section_index,
+                title=title,
+                hypothesis=hypothesis,
+                aim=aim,
+                dataset=dataset,
+                profile=profile,
+                plan=plan,
+                redirect_text=redirect_text,
+                workspace_root=self._workspace_root.resolve(),
+            )
+        except ImportError:
+            logger.debug(
+                "_build_redirect_prompt: backend.prompts.redirect not yet available; "
+                "using placeholder."
+            )
+            ws = self._workspace_root.resolve()
+            nn = str(section_index).zfill(2)
+            return (
+                f"Redirect section {section_id} ({title}): {redirect_text}. "
+                f"Aim: {aim}. Dataset: {ws / 'data' / dataset}. "
+                f"Rebuild analyses/sec_{nn}_*.py, charts/sec_{nn}_*.png, "
+                f"sections/sec_{nn}_*.md."
             )
 
     def _build_profile_prompt(self, dataset: str, aim: str) -> str:
