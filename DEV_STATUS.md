@@ -220,49 +220,68 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 
 ## Night 2 — Plan proposal + one interactive Section + Export
 
-### Merged to `develop`
+### Merged to `develop` — Wave 1 (2026-06-03)
 
-*(none yet — Night 2 not started)*
+**All 8 Night 2 lane stories merged. 187 BE + 154 FE = 341 total tests pass.**
+
+| Story | PR | Squash SHA | Notes |
+|---|---|---|---|
+| N2-S14 · Serve workspace files (GET /file) | #32 | `2a77cdc` | Real handler; 400 + path_traversal / missing_file per contract |
+| N2-S09 · Frontmatter parser | #33 | `3943d39` | New `backend/frontmatter_parser.py`; pyyaml>=6.0 dep added |
+| N2-S06 · Section build turn (file triplet) | #31 | `df20dc0` | New `backend/prompts/section.py`; no structured output (ADR-005) |
+| N2-S01 · Orchestrator: planning stage | #34 | `7d59001` | `_handle_planning_transition`; profile.ready → profiling→planning |
+| N2-S01 + N2-S02 · Planning turn → plan.json | conflict merge | `f85c042` | `_handle_plan_idle`; stage-aware session.idle; `prompts/plan.py` + PLAN_SCHEMA; 35 orchestrator tests |
+| N2-S15 · Plan screen | #36 | `78bb3f4` | Full PlanView.tsx; plan state in App; plan.ready SSE handler |
+| N2-S16 · Section build screen | conflict merge | `731e702` | BuildView.tsx + SectionPane.tsx; sections prop from App plan state |
+| N2-S17 · Export control | conflict merge | `ececc79` | ExportButton.tsx; acceptedSectionCount from plan state; 154 FE tests |
+
+**Integration notes for N2-S18:**
+- App.tsx `plan.ready` handler: direct setState from event.sections (no API refresh — event carries full payload; refresh caused state race resolved in ececc79)
+- App.tsx `plan: Section[]` state field unified (N2-S16 used `sections`; renamed to `plan` to match N2-S15/N2-S17)
+- BuildView receives `sections={plan}` via renderStageView — consistent prop name
+
+### Second-wave stories — NOW STARTABLE
+
+**Unlocked now (all dependencies on develop):**
+- **N2-S03** · Persist plan & section statuses — depends on N1-S03 + N2-S02
+- **N2-S13** · Export brief (GET /export) — depends on N2-S09
+- **N2-S07** · Section build events — depends on N2-S06 + N1-S08
+- **N2-S12** · Redirect a section (Stage 4b) — depends on N2-S06 + N1-S11
+
+**Unlocks after N2-S03 merges:**
+- **N2-S04** · Edit plan (POST /plan/update)
+- **N2-S10** · Accept section
+- **N2-S11** · Drop section
+
+**Unlocks after N2-S03 + N2-S06 both merged (already true):**
+- **N2-S05** · Accept plan & start first section
+
+**Unlocks after N2-S07 merges:**
+- **N2-S08** · Detect failed section
+
+**Unlocks after N2-S08 merges:**
+- **N2-S20** · Forced section-failure hook
+
+**Integration and QA after all second-wave stories:**
+- **N2-S18** (TL integration)
+- **N2-S19** (QA)
 
 ### In Dev / In Review / In QA
 
-*(none — awaiting Night 2 kick-off)*
-
-### Night 2 t0 startable set
-
-The following stories are startable immediately at Night 2 kick-off. All dependencies are confirmed on `develop`. Source: `03_OPERATING_MODEL.md` §5 Night 2, cross-checked against `02_STORY_BACKLOG.md` dependency fields.
-
-**BE lane:**
-- **N2-S01** · Orchestrator: planning stage — depends on N1-S04 (on develop)
-- **N2-S02** · Planning turn → `plan.json` — depends on N1-S09 (on develop)
-- **N2-S06** · Section build turn (the file triplet) — depends on N1-S09 (on develop)
-- **N2-S09** · Frontmatter parser — no dependencies
-- **N2-S14** · Serve workspace files (`GET /file`) — depends on N1-S02 (on develop)
-
-**FE lane:**
-- **N2-S15** · Plan screen — depends on N1-S14 (on develop)
-- **N2-S16** · Section build screen — depends on N1-S14, N1-S17 (both on develop)
-- **N2-S17** · Export control — depends on N1-S14 (on develop)
-
-Stories not in the t0 set unlock as their within-night dependencies merge:
-- N2-S03 unlocks after N2-S02
-- N2-S04, N2-S10, N2-S11 unlock after N2-S03
-- N2-S05 unlocks after N2-S03 and N2-S06
-- N2-S07 unlocks after N2-S06 and N1-S08 (already on develop)
-- N2-S08 unlocks after N2-S07
-- N2-S12 unlocks after N2-S06 and N1-S11 (already on develop)
-- N2-S13 unlocks after N2-S09
-- N2-S18 (TL integration) unlocks after all N2 lane stories and N2-S20
-- N2-S19 (QA) unlocks after N2-S18 and N2-S20
-- N2-S20 (forced section-failure hook) unlocks after N2-S08
+*(second-wave stories — see startable set above)*
 
 ### Blockers
 
-*(none)*
+**RESOLVED — Add-section ID acceptance in POST /plan/update (N2-S15 Risk 4)**
+FE1 flagged: the API contract does not specify whether `POST /plan/update` accepts new section IDs. Resolution: full replacement — backend writes whatever array it receives; N2-S04 must not validate IDs against existing plan. Recorded as ADR-014.
+
+**RESOLVED — App.tsx plan.ready SSE handler race (integration fix, 2026-06-03)**
+N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race where the API refresh (returning `plan: []`) overwrote the event's sections. Fixed in merge commit `ececc79`: `plan.ready` now updates state only from `event.sections`. Recorded as ADR-015.
 
 ### Overnight ADR decisions (Night 2)
 
-*(none yet)*
+- ADR-014 (Proposed — pending review): POST /plan/update accepts new section IDs (add-section feature). Full replacement semantics; N2-S04 must not gate on existing IDs.
+- ADR-015 (Proposed — pending review): plan.ready SSE handler updates App state directly from event.sections without API refresh. stage.changed and profile.ready still trigger getState() (they don't carry full state). plan.ready is self-contained. Fix in ececc79.
 
 ### Post-Night-1 fixes (QA-01, QA-02)
 
