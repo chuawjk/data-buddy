@@ -20,9 +20,12 @@ export interface ColumnProfile {
 }
 
 export interface ProfileShape {
-  rows: number;
-  columns: number;
-  nulls_pct: number;
+  /** Schema uses rows/columns; agent sometimes emits total_rows/total_columns */
+  rows?: number;
+  total_rows?: number;
+  columns?: number;
+  total_columns?: number;
+  nulls_pct?: number;
   /** null if not inferred */
   target: string | null;
 }

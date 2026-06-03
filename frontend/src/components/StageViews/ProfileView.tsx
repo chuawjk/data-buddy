@@ -122,11 +122,11 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
           className="flex gap-6 bg-[#faf7f0] border border-[#ddd5c5] rounded px-5 py-3 text-sm font-medium text-[#5d5a52] mb-6"
         >
           <div className="flex flex-col items-center">
-            <span className="text-lg font-semibold text-[#1a1a17]">{profile.shape.rows}</span>
+            <span className="text-lg font-semibold text-[#1a1a17]">{profile.shape.rows ?? profile.shape.total_rows}</span>
             <span className="text-xs">rows</span>
           </div>
           <div className="flex flex-col items-center">
-            <span className="text-lg font-semibold text-[#1a1a17]">{profile.shape.columns}</span>
+            <span className="text-lg font-semibold text-[#1a1a17]">{profile.shape.columns ?? profile.shape.total_columns}</span>
             <span className="text-xs">columns</span>
           </div>
           {profile.shape.nulls_pct !== undefined && (
