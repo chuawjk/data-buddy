@@ -86,6 +86,15 @@ export const api = {
   },
 
   /**
+   * POST /api/profile/accept — accept profile, advance to planning.
+   * Returns 204 No Content; resolves void on success.
+   */
+  async postProfileAccept(): Promise<void> {
+    const res = await fetch("/api/profile/accept", { method: "POST" });
+    await throwIfError(res);
+  },
+
+  /**
    * POST /api/plan/accept — accept plan, begin section build.
    * API_CONTRACT.html §1 · POST /plan/accept
    * Returns 204 No Content; resolves void on success.
