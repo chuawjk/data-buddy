@@ -24,6 +24,7 @@
 | ADR-013 | QA-02: prompt_async payload format changed in OpenCode v1.15.13 | Accepted |
 | ADR-014 | N2-S15: POST /plan/update accepts new section IDs (full replacement) | Proposed — pending review |
 | ADR-015 | N2-S17: plan.ready SSE handler updates state directly from event, no API refresh | Proposed — pending review |
+| ADR-016 | N2-S18: build_section_prompt() plan parameter corrected to list\|dict | Proposed — pending review |
 
 ---
 
@@ -378,6 +379,27 @@ Full replacement semantics are simpler and consistent with how the plan is treat
 - N2-S04 must not reject sections whose IDs differ from the existing plan.
 - FE (N2-S15) may use `sec_new_<timestamp>` for locally-added sections.
 - No new endpoint needed for ID assignment.
+
+---
+
+## ADR-016 · N2-S18: build_section_prompt() plan parameter corrected to list|dict
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-03
+
+### Decision
+`build_section_prompt()` in `backend/prompts/section.py` accepts `plan` as `list | dict`. Previously declared as `dict`, which was wrong — the orchestrator always passes a list.
+
+### Context
+`orchestrator._build_section_prompt()` declares `plan: list[Any]` and passes the list from `state.get("plan", [])` to `build_section_prompt(plan=plan)`. The downstream function only calls `json.dumps(plan, indent=2)` which handles both lists and dicts — so no runtime error occurred. The annotation mismatch was found during N2-S18 integration review.
+
+### Rationale
+The prompt template serialises `plan` as JSON context for the agent. `json.dumps` works correctly with a list (producing a JSON array), which is the correct shape — the plan is an array of section objects. Changing the annotation to `list | dict` documents the real accepted types and removes a misleading IDE warning.
+
+### Consequences
+- No behaviour change; annotation-only fix.
+- `build_section_prompt(plan=some_list)` is now type-correct without suppression.
+- If a caller passes a plain dict in future, it would still work (json.dumps handles it).
 
 ---
 

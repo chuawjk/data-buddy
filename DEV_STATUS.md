@@ -274,18 +274,29 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 
 **Conflict resolution note — N2-S05:** PR #47 contained duplicate `_build_section_prompt` and `_run_section_turn` vs N2-S07 (already on develop). Resolution: kept N2-S07's implementations (functionally equivalent, already tested); applied only S05's `accept_plan()` method and router handler. `accept_plan()` calls `_build_section_prompt(plan=plan)` with a list (consistent with `start_build_section()` pattern). Merged directly as TL-authored commit `056997e`, PR #47 closed with explanation.
 
-### NOW STARTABLE (as of Wave 4)
+### Merged to `develop` — Wave 5 / S20 + Integration (2026-06-03)
 
-**All Night 2 lane stories implemented. Only N2-S20 remains before N2-S18 integration:**
-- **N2-S20** · Forced section-failure hook — depends on N2-S08 ✓ (startable, in progress)
+**N2-S20 merged + N2-S18 integration complete. 332 BE + 154 FE = 486 total tests pass.**
 
-**Unlocks after N2-S20 merges:**
-- **N2-S18** (TL integration — all lane stories + N2-S20 must be merged first)
-- **N2-S19** (QA — after N2-S18 integration lands)
+| Story | PR | Squash SHA | Notes |
+|---|---|---|---|
+| N2-S20 · Forced section-failure hook | #48 | `691240e` | `QA_FORCE_SECTION_FAIL=1` seam in `_handle_section_idle()`. Removes .md before triplet check; normal missing-artefact path fires. 6 new tests in `test_section_fail_hook.py`. CI green. |
+| N2-S18 · Integrate Night 2 slice (TL) | #49 | `9636cb0` | 30 integration tests in `test_n2_integration.py`; section.py `plan` type annotation fixed (list|dict). All cross-lane endpoints verified: plan/update, plan/accept, section/accept, section/drop, export, file, turn/redirect. Zero-OpenCode-call assertions via MagicMock spy. CI green. |
+
+**Integration findings (N2-S18):**
+
+1. **Type annotation mismatch** — `build_section_prompt()` in `prompts/section.py` declared `plan: dict` but orchestrator always passes a list. No runtime error (json.dumps handles both); fixed annotation to `list | dict` in integration commit.
+2. **Frontend wiring confirmed correct:** App.tsx `plan.ready` handler updates directly from `event.sections` (ADR-015 ✓); `BuildView` receives `sections={plan}` (correct ✓); `ExportButton` disabled when no accepted sections (correct ✓).
+3. **Zero-OpenCode-call check passed:** `POST /plan/update`, `POST /section/:id/accept`, `POST /section/:id/drop`, `GET /export`, `GET /file` all confirmed to make zero OpenCode calls via implementation review and MagicMock assertions.
+4. **Concurrent-save race identified in integration test harness:** fire-and-forget `setup_complete()` tasks race with direct `state_manager.update()` calls in tests. Integration tests fixed to use direct state.json file writes instead of `update()` to avoid ENOENT races. No production code impact.
+
+### NOW STARTABLE
+
+- **N2-S19** · Night 2 QA — all lane stories and integration are on `develop`. QA can begin.
 
 ### In Dev / In Review / In QA
 
-*(S04, S05, S10, S11 merged in Wave 4. N2-S20 in dev.)*
+*N2-S19 (QA): ready to start. All Night 2 stories merged and integrated.*
 
 ### Blockers
 
@@ -295,10 +306,14 @@ FE1 flagged: the API contract does not specify whether `POST /plan/update` accep
 **RESOLVED — App.tsx plan.ready SSE handler race (integration fix, 2026-06-03)**
 N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race where the API refresh (returning `plan: []`) overwrote the event's sections. Fixed in merge commit `ececc79`: `plan.ready` now updates state only from `event.sections`. Recorded as ADR-015.
 
+**RESOLVED — section.py plan type annotation (integration, 2026-06-03)**
+`build_section_prompt()` declared `plan: dict` but orchestrator passes a list. No runtime error (json.dumps handles both), fixed as annotation-only change in N2-S18 integration commit. See ADR-016.
+
 ### Overnight ADR decisions (Night 2)
 
 - ADR-014 (Proposed — pending review): POST /plan/update accepts new section IDs (add-section feature). Full replacement semantics; N2-S04 must not gate on existing IDs.
 - ADR-015 (Proposed — pending review): plan.ready SSE handler updates App state directly from event.sections without API refresh. stage.changed and profile.ready still trigger getState() (they don't carry full state). plan.ready is self-contained. Fix in ececc79.
+- ADR-016 (Proposed — pending review): build_section_prompt() plan parameter type corrected to list|dict. Orchestrator always passes list; dict annotation was wrong but caused no runtime error. Fixed in N2-S18 integration commit.
 
 ### Post-Night-1 fixes (QA-01, QA-02)
 
