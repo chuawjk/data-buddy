@@ -342,6 +342,11 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
   - `backend/router.py`: `planning` case added to `POST /turn` dispatch; removes the stale "Night 2: planning stage re-plan will be added here" comment
   - `backend/tests/unit/app/test_turn.py`: 5 new tests; `test_redirect.py` wrong-stage test updated to use `setup` (planning is now valid); 308 BE tests total pass
 
+- **fix(be): extend watchdog timeout to 180s for section builds** — `fix/watchdog-section-timeout` → develop, merge commit `a3ccd58` (2026-06-03)
+  - `backend/watchdog.py`: `start_turn(timeout=None)` — optional per-call override; `_watch(timeout)` receives the value; default stays `WATCHDOG_TIMEOUT` (60s)
+  - `backend/orchestrator.py`: `_SECTION_WATCHDOG_TIMEOUT = 180` constant; `accept_plan`, `start_build_section`, `redirect_section` all pass `timeout=_SECTION_WATCHDOG_TIMEOUT`; profiling and planning turns unchanged at 60s
+  - 3 new watchdog tests + 1 orchestrator test; 311 BE tests total pass
+
 ### Post-Night-1 fixes (QA-01, QA-02)
 
 - ADR-013 (Proposed — pending review): `prompt_async` payload shape changed in v1.15.13 relative to v1.15.10 (spike). `text` → `parts[{type,text}]`; `format.json_schema.schema` → `format.schema`. Confirmed from live OpenAPI spec at `/doc`. See ADR.md.
