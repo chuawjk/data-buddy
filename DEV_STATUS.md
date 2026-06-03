@@ -337,6 +337,11 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
   - `frontend/src/components/StageViews/ProfileView.tsx`: "Accept profile →" button; renders only when profile is loaded; disabled while in flight; on success App.tsx routes to PlanView via `stage.changed`
   - `frontend/src/components/StageViews/ProfileView.test.tsx`: 4 new tests; 158 FE tests total pass
 
+- **fix(be): POST /turn planning stage — add `re_plan()` to orchestrator** — `fix/planning-turn-handler` → develop, merge commit `247a5f0` (2026-06-03)
+  - `backend/orchestrator.py`: `re_plan(text)` added — validates session + stage=planning, builds revision prompt (base plan prompt + user instruction), arms watchdog, fires `_run_plan_turn` fire-and-forget
+  - `backend/router.py`: `planning` case added to `POST /turn` dispatch; removes the stale "Night 2: planning stage re-plan will be added here" comment
+  - `backend/tests/unit/app/test_turn.py`: 5 new tests; `test_redirect.py` wrong-stage test updated to use `setup` (planning is now valid); 308 BE tests total pass
+
 ### Post-Night-1 fixes (QA-01, QA-02)
 
 - ADR-013 (Proposed — pending review): `prompt_async` payload shape changed in v1.15.13 relative to v1.15.10 (spike). `text` → `parts[{type,text}]`; `format.json_schema.schema` → `format.schema`. Confirmed from live OpenAPI spec at `/doc`. See ADR.md.
