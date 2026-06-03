@@ -201,7 +201,7 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
       </div>
 
       {profile !== null && (
-        <div className="flex justify-end">
+        <div className="flex">
           <button
             data-testid="profile-accept-btn"
             type="button"
