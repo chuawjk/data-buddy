@@ -347,6 +347,11 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
   - `backend/orchestrator.py`: `_SECTION_WATCHDOG_TIMEOUT = 180` constant; `accept_plan`, `start_build_section`, `redirect_section` all pass `timeout=_SECTION_WATCHDOG_TIMEOUT`; profiling and planning turns unchanged at 60s
   - 3 new watchdog tests + 1 orchestrator test; 311 BE tests total pass
 
+- **fix(fe): activity rail compact scrollable log** — `fix/activity-rail-log` → develop, merge commit `a3cbd9f` (2026-06-03)
+  - `frontend/src/hooks/useActivityState.ts`: `log: string[]` field added to `ActivityRailState`; `tool.bash_done` appends `✓ <trimmed cmd>` (40-char cap); `tool.file_written` appends file path; log resets on next session start (consistent with counts); capped at 20 entries
+  - `frontend/src/components/ActivityRail.tsx`: fixed-height (`max-h-48`) scrollable log pane below summary chip; auto-scrolls to bottom via `useRef`/`useEffect`; hidden when log is empty
+  - 8 new hook tests + 4 new component tests; 170 FE tests total pass
+
 ### Post-Night-1 fixes (QA-01, QA-02)
 
 - ADR-013 (Proposed — pending review): `prompt_async` payload shape changed in v1.15.13 relative to v1.15.10 (spike). `text` → `parts[{type,text}]`; `format.json_schema.schema` → `format.schema`. Confirmed from live OpenAPI spec at `/doc`. See ADR.md.
