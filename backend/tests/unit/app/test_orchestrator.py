@@ -1249,7 +1249,9 @@ async def test_accept_plan_transitions_sections_to_queued(tmp_path):
     await asyncio.sleep(0)
 
     state = sm.get_state()
-    # sec_01 is now building (first queued section was picked up)
-    # sec_02 should be queued.
+    # sec_01 must be "building" — start_build_section persists that status.
+    sec1 = next(s for s in state["plan"] if s["id"] == "sec_01")
+    assert sec1["status"] == "building"
+    # sec_02 remains queued until sec_01 completes.
     sec2 = next(s for s in state["plan"] if s["id"] == "sec_02")
     assert sec2["status"] == "queued"
