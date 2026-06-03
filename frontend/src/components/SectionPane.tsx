@@ -38,6 +38,7 @@ export default function SectionPane({
     mdBody: null,
     fileError: null,
   });
+  const [artefactsLoaded, setArtefactsLoaded] = useState(false);
 
   const isBuilding = section.status === "building";
   const isProposed =
@@ -50,6 +51,7 @@ export default function SectionPane({
   useEffect(() => {
     if (!hasArtefacts) return;
 
+    setArtefactsLoaded(false);
     let cancelled = false;
 
     async function fetchArtefacts() {
@@ -93,6 +95,7 @@ export default function SectionPane({
           mdBody: results.mdBody ?? prev.mdBody,
           fileError: null,
         }));
+        setArtefactsLoaded(true);
       }
     }
 
@@ -190,14 +193,15 @@ export default function SectionPane({
             </div>
           )}
 
-          {/* Accept / Drop actions (proposed status only) */}
+          {/* Accept / Drop actions (proposed status only, enabled once artefacts load) */}
           {section.status === "proposed" && (
             <div className="mt-6 flex gap-3">
               <button
                 data-testid="section-accept-btn"
                 type="button"
                 onClick={() => onAccept(section.id)}
-                className="bg-[#b8732a] text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#a06120]"
+                disabled={!artefactsLoaded}
+                className="bg-[#b8732a] text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#a06120] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Accept &amp; continue
               </button>
@@ -205,7 +209,8 @@ export default function SectionPane({
                 data-testid="section-drop-btn"
                 type="button"
                 onClick={() => onDrop(section.id)}
-                className="border border-[#c8563d] text-[#c8563d] rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#c8563d]/5"
+                disabled={!artefactsLoaded}
+                className="border border-[#c8563d] text-[#c8563d] rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#c8563d]/5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Drop section
               </button>

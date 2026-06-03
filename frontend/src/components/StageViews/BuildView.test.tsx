@@ -173,7 +173,25 @@ describe("BuildView", () => {
     render(<BuildView sections={sections} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("section-pane")).toBeInTheDocument();
+      expect(screen.getAllByTestId("section-pane").length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ── test_shows_pane_for_each_non_queued_section ──────────────────────────
+
+  it("test_shows_pane_for_each_non_queued_section — one pane per non-queued section", async () => {
+    const sections = [
+      QUEUED_SECTION,
+      BUILDING_SECTION,
+      PROPOSED_SECTION,
+    ];
+    mockGetState.mockResolvedValue(makeStateResponse(sections));
+
+    render(<BuildView sections={sections} />);
+
+    // QUEUED_SECTION should have no pane; BUILDING + PROPOSED should each have one.
+    await waitFor(() => {
+      expect(screen.getAllByTestId("section-pane")).toHaveLength(2);
     });
   });
 
@@ -244,7 +262,7 @@ describe("BuildView", () => {
     render(<BuildView sections={sections} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("section-accept-btn")).toBeInTheDocument();
+      expect(screen.getByTestId("section-accept-btn")).not.toBeDisabled();
     });
 
     await user.click(screen.getByTestId("section-accept-btn"));
@@ -264,7 +282,7 @@ describe("BuildView", () => {
     render(<BuildView sections={sections} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("section-accept-btn")).toBeInTheDocument();
+      expect(screen.getByTestId("section-accept-btn")).not.toBeDisabled();
     });
 
     await user.click(screen.getByTestId("section-accept-btn"));
@@ -287,7 +305,7 @@ describe("BuildView", () => {
     render(<BuildView sections={sections} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("section-drop-btn")).toBeInTheDocument();
+      expect(screen.getByTestId("section-drop-btn")).not.toBeDisabled();
     });
 
     await user.click(screen.getByTestId("section-drop-btn"));
