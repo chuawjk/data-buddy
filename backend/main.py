@@ -19,12 +19,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from backend.event_bus import EventBus
-from backend.opencode_client import OpenCodeClient
-from backend.orchestrator import Orchestrator
-from backend.router import router
-from backend.state_manager import StateManager
-from backend.watchdog import Watchdog
+from backend.agent.opencode_client import OpenCodeClient
+from backend.api.router import router
+from backend.core.event_bus import EventBus
+from backend.core.orchestrator import Orchestrator
+from backend.core.state_manager import StateManager
+from backend.core.watchdog import Watchdog
 
 logger = logging.getLogger(__name__)
 

@@ -16,8 +16,8 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.core.state_manager import StateManager
 from backend.main import app
-from backend.state_manager import StateManager
 
 # ---------------------------------------------------------------------------
 # Shared fixture data
