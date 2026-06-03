@@ -128,6 +128,93 @@ class Orchestrator:
                 self._client,
             )
 
+    async def accept_plan(self) -> None:
+        """Transition from planning → building and trigger the first section turn.
+
+        Called by ``POST /plan/accept``.  Returns immediately; section build
+        runs as a fire-and-forget asyncio Task.
+
+        Steps:
+        1. Guard: if stage is already ``"building"`` return silently (idempotent).
+        2. Guard: if stage is not ``"planning"`` log and return.
+        3. Persist ``stage=building`` via state manager.
+        4. Emit ``stage.changed`` with ``{"stage": "building"}``.
+        5. Find the first section in the plan with ``status="proposed"``.
+        6. If none, log and return (degenerate empty/all-accepted plan).
+        7. Build the section prompt via ``_build_section_prompt()``.
+        8. Arm the watchdog if wired.
+        9. Schedule ``_run_section_turn`` as a fire-and-forget task.
+
+        N2-S05.
+        """
+        state = self._state_manager.get_state()
+        current_stage: str = state.get("stage", "")
+
+        # Idempotent: already in building stage.
+        if current_stage == "building":
+            logger.debug("accept_plan: already in building stage — no-op (idempotent)")
+            return
+
+        if current_stage != "planning":
+            logger.warning(
+                "accept_plan: called in unexpected stage %r (expected planning)", current_stage
+            )
+            return
+
+        # 1. Persist the transition.
+        self._state_manager.update(stage="building")
+
+        # 2. Emit the domain event.
+        ts = int(time.time() * 1000)
+        await self._bus.publish("stage.changed", {"stage": "building", "ts": ts})
+        logger.info("accept_plan: stage.changed → building (ts=%d)", ts)
+
+        # 3. Find the first proposed section.
+        plan: list[dict[str, Any]] = state.get("plan", [])
+        first_section: dict[str, Any] | None = next(
+            (s for s in plan if s.get("status") == "proposed"),
+            None,
+        )
+        if first_section is None:
+            logger.warning("accept_plan: no proposed sections in plan — no section turn fired")
+            return
+
+        # 4. Get session ID.
+        session_id: str | None = self._state_manager.get_state().get("opencode_session_id")
+        if not session_id or self._client is None:
+            logger.debug(
+                "accept_plan: skipping section turn (session_id=%r, client=%r)",
+                session_id,
+                self._client,
+            )
+            return
+
+        # 5. Build the section prompt.
+        section_index = plan.index(first_section) + 1  # 1-based index
+        dataset: str = state.get("dataset") or ""
+        aim: str = state.get("aim") or ""
+        profile: dict[str, Any] = state.get("profile") or {}
+        prompt_text = self._build_section_prompt(
+            section_id=first_section["id"],
+            section_index=section_index,
+            title=first_section["title"],
+            hypothesis=first_section["hypothesis"],
+            aim=aim,
+            dataset=dataset,
+            profile=profile,
+            plan=plan,
+        )
+
+        # 6. Arm the watchdog.
+        if self._watchdog is not None:
+            self._watchdog.start_turn()
+
+        # 7. Fire section turn.
+        asyncio.create_task(
+            self._run_section_turn(session_id, prompt_text),
+            name=f"section-turn-{first_section['id']}",
+        )
+
     async def re_profile(self, text: str) -> None:
         """Called by POST /turn during the profiling stage.
 

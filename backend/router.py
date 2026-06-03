@@ -356,11 +356,18 @@ async def post_plan_update(request: Request, body: dict = Body(...)) -> Any:
 
 
 @router.post("/plan/accept", status_code=204)
-async def post_plan_accept() -> Response:
+async def post_plan_accept(request: Request) -> Response:
     """Accept plan and begin section build.
 
-    Real implementation: N2-S05.  Stub returns 204 No Content.
+    N2-S05 real implementation.
+
+    Delegates to ``orchestrator.accept_plan()`` as a fire-and-forget task.
+    Returns 204 immediately; stage transition and section build progress
+    arrive via SSE.
+
+    Idempotent: calling when already in ``building`` stage is a no-op.
     """
+    asyncio.create_task(request.app.state.orchestrator.accept_plan())
     return Response(status_code=204)
 
 
