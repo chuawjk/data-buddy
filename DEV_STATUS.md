@@ -103,6 +103,9 @@ Frontend:
 - Activity Rail now has a compact scrollable log of commands/files.
 - Activity Rail QoL (`feat/qol-stage-controls`): log entries wrap up to 3 lines (no more hard truncation); log box height raised to 27 rem; completed commands prefixed `$`, file writes prefixed `✎`.
 - `make dev` clean shutdown: dropped the subshell, tracks BE/FE PIDs explicitly, traps INT/TERM/EXIT, and waits for both processes to exit — prevents hanging PIDs on port 8000/5173 after Ctrl+C.
+- Backend reorganised into `api/` (router, sse_proxy), `agent/` (opencode_client, prompts), and `core/` (orchestrator, state_manager, event_bus, watchdog, frontmatter_parser). Test tree mirrors source under `tests/unit/{api,agent,core}/`. All 327 backend tests pass.
+- Frontend `e2e/section-build.spec.ts` moved into `tests/e2e/` — it was outside Playwright's `testDir` and never running.
+- Frontend `useActivityState` tests updated to match current log symbols (`$` for commands, `✎` for file writes, no CMD_MAX truncation). All 180 frontend tests pass.
 
 ### Night 2 Merge Ledger
 
