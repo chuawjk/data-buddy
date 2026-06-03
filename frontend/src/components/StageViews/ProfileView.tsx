@@ -69,6 +69,7 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
   );
 
   const isSubmitDisabled = inputText.trim() === "" || isTurnInFlight;
+  const showLoading = profile === null || isTurnInFlight;
 
   const handleAccept = useCallback(async () => {
     if (isAccepting) return;
@@ -83,6 +84,38 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
 
   return (
     <div data-testid="profile-view" className="flex flex-col gap-4">
+      {showLoading && (
+        <div
+          data-testid="profile-loading-spinner"
+          className="flex items-center gap-3 py-6 text-[#9b9489]"
+        >
+          <svg
+            className="animate-spin h-5 w-5 text-[#b8732a]"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          <span className="text-sm">
+            {profile === null ? "Profiling dataset..." : "Revising profile..."}
+          </span>
+        </div>
+      )}
+
       {profile !== null && (
         <div
           data-testid="shape-strip"
@@ -106,9 +139,7 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
           )}
           {profile.shape.target !== null && (
             <div className="flex flex-col items-center">
-              <span className="text-base font-semibold text-[#1a1a17]">
-                {profile.shape.target}
-              </span>
+              <span className="text-base font-semibold text-[#1a1a17]">{profile.shape.target}</span>
               <span className="text-xs">target (inferred)</span>
             </div>
           )}
@@ -147,20 +178,6 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
         </div>
       )}
 
-      {profile !== null && (
-        <div className="mt-4 flex justify-end">
-          <button
-            data-testid="profile-accept-btn"
-            type="button"
-            onClick={() => void handleAccept()}
-            disabled={isAccepting}
-            className="bg-[#4a7a76] text-white rounded-lg px-6 py-2.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {isAccepting ? "Accepting…" : "Accept profile →"}
-          </button>
-        </div>
-      )}
-
       <div className="mt-4 flex gap-3">
         <input
           data-testid="reprof-input"
@@ -182,6 +199,20 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
           Send
         </button>
       </div>
+
+      {profile !== null && (
+        <div className="flex justify-end">
+          <button
+            data-testid="profile-accept-btn"
+            type="button"
+            onClick={() => void handleAccept()}
+            disabled={isAccepting}
+            className="bg-[#4a7a76] text-white rounded-lg px-6 py-2.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isAccepting ? "Accepting..." : "Accept profile"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

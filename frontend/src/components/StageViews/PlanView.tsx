@@ -29,7 +29,9 @@ export interface PlanViewProps {
 
 function getErrorMessage(err: unknown): string {
   const apiErr = err as ApiError;
-  return typeof apiErr?.message === "string" ? apiErr.message : "An error occurred. Please try again.";
+  return typeof apiErr?.message === "string"
+    ? apiErr.message
+    : "An error occurred. Please try again.";
 }
 
 export default function PlanView({ initialSections }: PlanViewProps) {
@@ -87,14 +89,11 @@ export default function PlanView({ initialSections }: PlanViewProps) {
   // Edit handlers
   // ---------------------------------------------------------------------------
 
-  const handleEditClick = useCallback(
-    (section: Section) => {
-      setEditingId(section.id);
-      setEditingTitle(section.title);
-      setEditingHypothesis(section.hypothesis);
-    },
-    []
-  );
+  const handleEditClick = useCallback((section: Section) => {
+    setEditingId(section.id);
+    setEditingTitle(section.title);
+    setEditingHypothesis(section.hypothesis);
+  }, []);
 
   const handleSaveEdit = useCallback(
     async (id: string) => {
@@ -229,6 +228,7 @@ export default function PlanView({ initialSections }: PlanViewProps) {
   // ---------------------------------------------------------------------------
 
   const isTurnSubmitDisabled = turnText.trim() === "" || isTurnInFlight;
+  const showLoading = sections.length === 0 || isTurnInFlight;
 
   return (
     <div data-testid="plan-view" className="flex flex-col gap-6">
@@ -237,11 +237,10 @@ export default function PlanView({ initialSections }: PlanViewProps) {
         <p className="text-xs font-medium uppercase tracking-wider text-[#9b9489] mb-1">
           Analysis Plan
         </p>
-        <h2 className="text-2xl font-serif font-light text-[#1a1a17]">
-          Review your plan
-        </h2>
+        <h2 className="text-2xl font-serif font-light text-[#1a1a17]">Review your plan</h2>
         <p className="text-sm text-[#5d5a52] mt-1">
-          Edit sections inline, reorder, or ask the agent to revise. Accept when ready to build.
+          Edit sections and hypotheses inline, reorder, or ask the agent to revise. Accept when
+          ready to build.
         </p>
       </div>
 
@@ -257,161 +256,180 @@ export default function PlanView({ initialSections }: PlanViewProps) {
 
       {/* Saving indicator */}
       {isSaving && (
-        <div
-          data-testid="plan-saving-indicator"
-          className="text-xs text-[#9b9489]"
-        >
+        <div data-testid="plan-saving-indicator" className="text-xs text-[#9b9489]">
           Saving…
         </div>
       )}
 
+      {showLoading && (
+        <div
+          data-testid="plan-loading-spinner"
+          className="flex items-center gap-3 py-6 text-[#9b9489]"
+        >
+          <svg
+            className="animate-spin h-5 w-5 text-[#b8732a]"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          <span className="text-sm">
+            {sections.length === 0 ? "Drafting analysis plan..." : "Revising plan..."}
+          </span>
+        </div>
+      )}
+
       {/* Section list */}
-      <div
-        data-testid="plan-section-list"
-        className="flex flex-col gap-2"
-      >
-        {sections.map((section, idx) => {
-          const isEditing = editingId === section.id;
-          const isFirst = idx === 0;
-          const isLast = idx === sections.length - 1;
-          const isOnlyOne = sections.length <= 1;
+      {sections.length > 0 && (
+        <div data-testid="plan-section-list" className="flex flex-col gap-2">
+          {sections.map((section, idx) => {
+            const isEditing = editingId === section.id;
+            const isFirst = idx === 0;
+            const isLast = idx === sections.length - 1;
+            const isOnlyOne = sections.length <= 1;
 
-          return (
-            <div
-              key={section.id}
-              data-testid={`plan-section-${section.id}`}
-              className="bg-white border border-[#ddd5c5] rounded-lg px-4 py-3"
-            >
-              {isEditing ? (
-                /* Edit mode */
-                <div className="flex flex-col gap-2">
-                  <input
-                    data-testid={`plan-section-title-${section.id}`}
-                    type="text"
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
-                    placeholder="Section title"
-                    className="border border-[#ddd5c5] rounded px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
-                  />
-                  <input
-                    data-testid={`plan-section-hyp-${section.id}`}
-                    type="text"
-                    value={editingHypothesis}
-                    onChange={(e) => setEditingHypothesis(e.target.value)}
-                    placeholder="Hypothesis"
-                    className="border border-[#ddd5c5] rounded px-3 py-1.5 text-sm text-[#5d5a52] focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
-                  />
-                  <div className="flex gap-2 mt-1">
-                    <button
-                      data-testid={`plan-save-edit-${section.id}`}
-                      type="button"
-                      onClick={() => void handleSaveEdit(section.id)}
-                      className="bg-[#1a1a17] text-white rounded px-3 py-1 text-xs font-medium hover:bg-[#333330]"
-                    >
-                      Save
-                    </button>
-                    <button
-                      data-testid={`plan-cancel-edit-${section.id}`}
-                      type="button"
-                      onClick={handleCancelEdit}
-                      className="border border-[#ddd5c5] rounded px-3 py-1 text-xs text-[#5d5a52] hover:bg-[#f6f2e9]"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* Display mode */
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <span
+            return (
+              <div
+                key={section.id}
+                data-testid={`plan-section-${section.id}`}
+                className="bg-white border border-[#ddd5c5] rounded-lg px-4 py-3"
+              >
+                {isEditing ? (
+                  /* Edit mode */
+                  <div className="flex flex-col gap-2">
+                    <input
                       data-testid={`plan-section-title-${section.id}`}
-                      className="block font-medium text-[#1a1a17] text-sm"
-                    >
-                      {section.title || <span className="text-[#9b9489] italic">Untitled</span>}
-                    </span>
-                    <span
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      placeholder="Section title"
+                      className="border border-[#ddd5c5] rounded px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
+                    />
+                    <input
                       data-testid={`plan-section-hyp-${section.id}`}
-                      className="block text-xs text-[#5d5a52] mt-0.5"
-                    >
-                      {section.hypothesis}
-                    </span>
+                      type="text"
+                      value={editingHypothesis}
+                      onChange={(e) => setEditingHypothesis(e.target.value)}
+                      placeholder="Hypothesis"
+                      className="border border-[#ddd5c5] rounded px-3 py-1.5 text-sm text-[#5d5a52] focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
+                    />
+                    <div className="flex gap-2 mt-1">
+                      <button
+                        data-testid={`plan-save-edit-${section.id}`}
+                        type="button"
+                        onClick={() => void handleSaveEdit(section.id)}
+                        className="bg-[#1a1a17] text-white rounded px-3 py-1 text-xs font-medium hover:bg-[#333330]"
+                      >
+                        Save
+                      </button>
+                      <button
+                        data-testid={`plan-cancel-edit-${section.id}`}
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="border border-[#ddd5c5] rounded px-3 py-1 text-xs text-[#5d5a52] hover:bg-[#f6f2e9]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  /* Display mode */
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <span
+                        data-testid={`plan-section-title-${section.id}`}
+                        className="block font-medium text-[#1a1a17] text-sm"
+                      >
+                        {section.title || <span className="text-[#9b9489] italic">Untitled</span>}
+                      </span>
+                      <span
+                        data-testid={`plan-section-hyp-${section.id}`}
+                        className="block text-xs text-[#5d5a52] mt-0.5"
+                      >
+                        {section.hypothesis}
+                      </span>
+                    </div>
 
-                  {/* Row controls */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      data-testid={`plan-move-up-${section.id}`}
-                      type="button"
-                      disabled={isFirst}
-                      onClick={() => void handleMoveUp(section.id)}
-                      className="p-1 rounded text-[#9b9489] hover:bg-[#f6f2e9] disabled:opacity-30 disabled:cursor-not-allowed"
-                      aria-label="Move up"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      data-testid={`plan-move-down-${section.id}`}
-                      type="button"
-                      disabled={isLast}
-                      onClick={() => void handleMoveDown(section.id)}
-                      className="p-1 rounded text-[#9b9489] hover:bg-[#f6f2e9] disabled:opacity-30 disabled:cursor-not-allowed"
-                      aria-label="Move down"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      data-testid={`plan-edit-${section.id}`}
-                      type="button"
-                      onClick={() => handleEditClick(section)}
-                      className="p-1 rounded text-[#9b9489] hover:bg-[#f6f2e9] text-xs"
-                      aria-label="Edit"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      data-testid={`plan-drop-${section.id}`}
-                      type="button"
-                      disabled={isOnlyOne}
-                      onClick={() => void handleDrop(section.id)}
-                      className="p-1 rounded text-[#9b9489] hover:bg-[#fdf0ed] hover:text-[#a85c4a] text-xs disabled:opacity-30 disabled:cursor-not-allowed"
-                      aria-label="Drop section"
-                    >
-                      ×
-                    </button>
+                    {/* Row controls */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        data-testid={`plan-move-up-${section.id}`}
+                        type="button"
+                        disabled={isFirst}
+                        onClick={() => void handleMoveUp(section.id)}
+                        className="p-1 rounded text-[#9b9489] hover:bg-[#f6f2e9] disabled:opacity-30 disabled:cursor-not-allowed"
+                        aria-label="Move up"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        data-testid={`plan-move-down-${section.id}`}
+                        type="button"
+                        disabled={isLast}
+                        onClick={() => void handleMoveDown(section.id)}
+                        className="p-1 rounded text-[#9b9489] hover:bg-[#f6f2e9] disabled:opacity-30 disabled:cursor-not-allowed"
+                        aria-label="Move down"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        data-testid={`plan-edit-${section.id}`}
+                        type="button"
+                        onClick={() => handleEditClick(section)}
+                        className="p-1 rounded text-[#9b9489] hover:bg-[#f6f2e9] text-xs"
+                        aria-label="Edit"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        data-testid={`plan-drop-${section.id}`}
+                        type="button"
+                        disabled={isOnlyOne}
+                        onClick={() => void handleDrop(section.id)}
+                        className="p-1 rounded text-[#9b9489] hover:bg-[#fdf0ed] hover:text-[#a85c4a] text-xs disabled:opacity-30 disabled:cursor-not-allowed"
+                        aria-label="Drop section"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Add section */}
-      <div>
-        <button
-          data-testid="plan-add-section"
-          type="button"
-          onClick={handleAddSection}
-          className="text-sm text-[#b8732a] border border-dashed border-[#ddd5c5] rounded-lg px-4 py-2 w-full hover:bg-[#f4e5d0]/50 transition-colors"
-        >
-          + Add section
-        </button>
-      </div>
+      {sections.length > 0 && (
+        <div>
+          <button
+            data-testid="plan-add-section"
+            type="button"
+            onClick={handleAddSection}
+            className="text-sm text-[#b8732a] border border-dashed border-[#ddd5c5] rounded-lg px-4 py-2 w-full hover:bg-[#f4e5d0]/50 transition-colors"
+          >
+            + Add section
+          </button>
+        </div>
+      )}
 
-      {/* Accept button — visually distinct as a primary commit action */}
+      {/* Bottom bar — agent revision */}
       <div className="border-t border-[#ddd5c5] pt-4 flex flex-col gap-3">
-        <button
-          data-testid="plan-accept-btn"
-          type="button"
-          disabled={isAccepting || sections.length === 0}
-          onClick={() => void handleAccept()}
-          className="bg-[#1a1a17] text-white rounded-lg px-6 py-3 text-sm font-medium self-start disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#333330] transition-colors"
-        >
-          {isAccepting ? "Accepting…" : "Accept plan & start building"}
-        </button>
-
-        {/* Bottom bar — agent revision */}
         <div className="flex gap-3">
           <input
             data-testid="plan-turn-input"
@@ -433,6 +451,16 @@ export default function PlanView({ initialSections }: PlanViewProps) {
             Revise
           </button>
         </div>
+
+        <button
+          data-testid="plan-accept-btn"
+          type="button"
+          disabled={isAccepting || sections.length === 0}
+          onClick={() => void handleAccept()}
+          className="bg-[#4a7a76] text-white rounded-lg px-6 py-3 text-sm font-medium self-start disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#3f6965] transition-colors"
+        >
+          {isAccepting ? "Accepting..." : "Accept plan & start building"}
+        </button>
       </div>
     </div>
   );

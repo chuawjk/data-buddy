@@ -134,7 +134,8 @@ describe("PlanView", () => {
   it("renders with empty sections array — no section rows, no crash", () => {
     render(<PlanView initialSections={[]} />);
     expect(screen.getByTestId("plan-view")).toBeInTheDocument();
-    expect(screen.getByTestId("plan-section-list")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-loading-spinner")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-section-list")).not.toBeInTheDocument();
     expect(screen.queryByTestId("plan-section-sec_01")).not.toBeInTheDocument();
   });
 
@@ -300,6 +301,21 @@ describe("PlanView", () => {
     expect(mockPostTurn).toHaveBeenCalledWith("Add a section on geographic trends");
   });
 
+  it("shows loading spinner while a plan revision turn is pending", async () => {
+    const user = userEvent.setup();
+    mockPostTurn.mockReturnValue(new Promise(() => {}));
+
+    render(<PlanView initialSections={SAMPLE_SECTIONS} />);
+
+    expect(screen.queryByTestId("plan-loading-spinner")).not.toBeInTheDocument();
+
+    await user.type(screen.getByTestId("plan-turn-input"), "Revise the plan");
+    await user.click(screen.getByTestId("plan-turn-submit"));
+
+    expect(screen.getByTestId("plan-loading-spinner")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-loading-spinner")).toHaveTextContent("Revising plan");
+  });
+
   it("bottom-bar input clears after successful turn submission", async () => {
     const user = userEvent.setup();
     render(<PlanView initialSections={SAMPLE_SECTIONS} />);
@@ -324,6 +340,15 @@ describe("PlanView", () => {
     await waitFor(() => {
       expect(mockPostPlanAccept).toHaveBeenCalledOnce();
     });
+  });
+
+  it("accept button renders below the bottom-bar submit controls", () => {
+    render(<PlanView initialSections={SAMPLE_SECTIONS} />);
+
+    const submit = screen.getByTestId("plan-turn-submit");
+    const accept = screen.getByTestId("plan-accept-btn");
+
+    expect(submit.compareDocumentPosition(accept)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   // ── SSE: plan.ready ───────────────────────────────────────────────────────
@@ -366,6 +391,7 @@ describe("PlanView", () => {
     await waitFor(() => {
       expect(screen.getByTestId("plan-turn-input")).toBeDisabled();
     });
+    expect(screen.getByTestId("plan-loading-spinner")).toBeInTheDocument();
 
     // plan.ready SSE arrives with updated sections
     const updatedSections: Section[] = [makeSection("sec_01", "Updated Overview", "New hyp")];

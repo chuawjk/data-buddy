@@ -14,6 +14,15 @@
 - Regression coverage added for targeted section revision, removed building bottom-bar UI, `section_id` API payload, and router/orchestrator targeting.
 - Verification: `make test` passed (327 backend + 175 frontend tests); `make lint` passed.
 
+### Post-N2 UX fix — stage loading and action controls
+
+- Branch `feat/qol-stage-controls`: profiling and planning stages now show the same style of loading spinner used by section building while initial work or revision turns are in flight.
+- `Accept profile` and `Accept plan & start building` now render below their respective bottom-bar revision controls; both use the teal primary action colour.
+- Header `Export` control is hidden until `building` / `done`, avoiding premature export affordances during setup, profiling, and planning.
+- Regression coverage added for profile/plan loading states, accept-button DOM order below the bottom bar, and export-button absence during planning.
+- Frontend build hygiene fixed: `session.idle` added to the frontend SSE union and Vite config now uses Vitest's typed `defineConfig`.
+- Verification: `pnpm --prefix frontend run lint`, `pnpm --prefix frontend run test` (180 tests), and `pnpm --prefix frontend run build` passed.
+
 ---
 
 ## Current branch: `develop`
