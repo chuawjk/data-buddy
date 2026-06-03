@@ -106,6 +106,10 @@ Frontend:
 - Backend reorganised into `api/` (router, sse_proxy), `agent/` (opencode_client, prompts), and `core/` (orchestrator, state_manager, event_bus, watchdog, frontmatter_parser). Test tree mirrors source under `tests/unit/{api,agent,core}/`. All 327 backend tests pass.
 - Frontend `e2e/section-build.spec.ts` moved into `tests/e2e/` — it was outside Playwright's `testDir` and never running.
 - Frontend `useActivityState` tests updated to match current log symbols (`$` for commands, `✎` for file writes, no CMD_MAX truncation). All 180 frontend tests pass.
+- Styling aligned with mockup: Hanken Grotesk/Fraunces/JetBrains Mono fonts loaded; border-radius flattened (rounded-lg/xl → rounded/rounded-sm); header warm `#faf7f0` bg; profile type badges warm-muted; ActivityRail header "Agent Activity".
+- SetupView aim field converted from textarea to single-line input — Enter now submits the form natively.
+- Teal accept buttons left-aligned across ProfileView and PlanView.
+- ProfileShape type extended to accept `total_rows`/`total_columns` fallback — agent occasionally writes these instead of schema-specified `rows`/`columns`; shape strip now displays correctly either way.
 
 ### Night 2 Merge Ledger
 
