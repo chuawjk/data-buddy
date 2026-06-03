@@ -973,7 +973,7 @@ async def test_start_build_section_persists_status_building(tmp_path):
                 "id": "sec_01",
                 "title": "Churn",
                 "hypothesis": "Age predicts",
-                "status": "proposed",
+                "status": "queued",
                 "py_path": None,
                 "png_path": None,
                 "md_path": None,
@@ -1077,3 +1077,179 @@ async def test_handle_section_idle_persists_failed_status(tmp_path):
     state = sm.get_state()
     section = next(s for s in state["plan"] if s["id"] == "sec_01")
     assert section["status"] == "failed"
+
+
+# ---------------------------------------------------------------------------
+# Watchdog cancel + auto-sequencing tests
+# ---------------------------------------------------------------------------
+
+
+def _make_two_section_plan(building_slug: str) -> list[dict]:
+    """Return a plan where sec_01 is building and sec_02 is queued."""
+    return [
+        {
+            "id": "sec_01",
+            "title": "First",
+            "hypothesis": "H1",
+            "status": "building",
+            "slug": building_slug,
+            "index": 1,
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+        {
+            "id": "sec_02",
+            "title": "Second",
+            "hypothesis": "H2",
+            "status": "queued",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_section_idle_cancels_watchdog_on_completion(tmp_path):
+    """_handle_section_idle() cancels the watchdog when a section completes."""
+    from unittest.mock import MagicMock
+
+    slug = "first"
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building", dataset="d.csv", aim="a", plan=_make_two_section_plan(slug))
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    watchdog = MagicMock()
+    watchdog.cancel = MagicMock()
+    watchdog.start_turn = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm, bus=bus, client=mock_client, watchdog=watchdog, workspace_root=tmp_path
+    )
+
+    # Write artefacts for sec_01 so section.proposed fires.
+    base = f"sec_01_{slug}"
+    for d in ("analyses", "charts", "sections"):
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+    (tmp_path / "analyses" / f"{base}.py").write_text("x", encoding="utf-8")
+    (tmp_path / "charts" / f"{base}.png").write_bytes(b"\x89PNG")
+    (tmp_path / "sections" / f"{base}.md").write_text("# R", encoding="utf-8")
+
+    await orch._handle_section_idle()
+    await asyncio.sleep(0)
+
+    watchdog.cancel.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_section_idle_auto_starts_next_queued_section(tmp_path):
+    """_handle_section_idle() starts the next queued section after section.proposed."""
+    slug = "first"
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building", dataset="d.csv", aim="a", plan=_make_two_section_plan(slug))
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    base = f"sec_01_{slug}"
+    for d in ("analyses", "charts", "sections"):
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+    (tmp_path / "analyses" / f"{base}.py").write_text("x", encoding="utf-8")
+    (tmp_path / "charts" / f"{base}.png").write_bytes(b"\x89PNG")
+    (tmp_path / "sections" / f"{base}.md").write_text("# R", encoding="utf-8")
+
+    await orch._handle_section_idle()
+    await asyncio.sleep(0)
+
+    state = sm.get_state()
+    sec2 = next(s for s in state["plan"] if s["id"] == "sec_02")
+    assert sec2["status"] == "building"
+    # client.prompt must have been called for the new section turn.
+    mock_client.prompt.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_section_idle_no_more_sections_does_not_start_turn(tmp_path):
+    """_handle_section_idle() with no queued sections left does not call client.prompt."""
+    slug = "only"
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(
+        stage="building",
+        dataset="d.csv",
+        aim="a",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Only",
+                "hypothesis": "H",
+                "status": "building",
+                "slug": slug,
+                "index": 1,
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            }
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    base = f"sec_01_{slug}"
+    for d in ("analyses", "charts", "sections"):
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+    (tmp_path / "analyses" / f"{base}.py").write_text("x", encoding="utf-8")
+    (tmp_path / "charts" / f"{base}.png").write_bytes(b"\x89PNG")
+    (tmp_path / "sections" / f"{base}.md").write_text("# R", encoding="utf-8")
+
+    await orch._handle_section_idle()
+    await asyncio.sleep(0)
+
+    mock_client.prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_accept_plan_transitions_sections_to_queued(tmp_path):
+    """accept_plan() changes all 'proposed' sections to 'queued' status."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(
+        stage="planning",
+        dataset="d.csv",
+        aim="a",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "S1",
+                "hypothesis": "H1",
+                "status": "proposed",
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            },
+            {
+                "id": "sec_02",
+                "title": "S2",
+                "hypothesis": "H2",
+                "status": "proposed",
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            },
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    await orch.accept_plan()
+    await asyncio.sleep(0)
+
+    state = sm.get_state()
+    # sec_01 is now building (first queued section was picked up)
+    # sec_02 should be queued.
+    sec2 = next(s for s in state["plan"] if s["id"] == "sec_02")
+    assert sec2["status"] == "queued"

@@ -179,17 +179,26 @@ class Orchestrator:
         await self._bus.publish("stage.changed", {"stage": "building", "ts": ts})
         logger.info("accept_plan: stage.changed → building (ts=%d)", ts)
 
-        # 3. Find the first proposed section.
+        # 3. Transition all "proposed" plan sections → "queued" (accepted into
+        #    the build queue but not yet built; "proposed" will be reused to
+        #    mean "artefacts ready for user review" after each section completes).
         plan: list[dict[str, Any]] = state.get("plan", [])
+        queued_plan = [
+            {**s, "status": "queued"} if s.get("status") == "proposed" else s for s in plan
+        ]
+        self._state_manager.update(plan=queued_plan)
+        plan = queued_plan
+
+        # 4. Find the first queued section to build.
         first_section: dict[str, Any] | None = next(
-            (s for s in plan if s.get("status") == "proposed"),
+            (s for s in plan if s.get("status") == "queued"),
             None,
         )
         if first_section is None:
-            logger.warning("accept_plan: no proposed sections in plan — no section turn fired")
+            logger.warning("accept_plan: no queued sections in plan — no section turn fired")
             return
 
-        # 4. Get session ID.
+        # 5. Get session ID.
         session_id: str | None = self._state_manager.get_state().get("opencode_session_id")
         if not session_id or self._client is None:
             logger.debug(
@@ -199,7 +208,7 @@ class Orchestrator:
             )
             return
 
-        # 5. Build the section prompt.
+        # 6. Build the section prompt.
         section_index = plan.index(first_section) + 1  # 1-based index
         dataset: str = state.get("dataset") or ""
         aim: str = state.get("aim") or ""
@@ -709,9 +718,11 @@ class Orchestrator:
         )
         logger.info("section.building emitted: %s (ts=%d)", section_id, ts)
 
-        # Persist status=building to state.json so GET /state reflects live build state.
+        # Persist status=building (and index) so GET /state reflects live build state
+        # and _handle_section_idle can derive the artefact filename reliably.
         updated_plan = [
-            {**s, "status": "building"} if s.get("id") == section_id else s for s in plan
+            {**s, "status": "building", "index": section_index} if s.get("id") == section_id else s
+            for s in plan
         ]
         self._state_manager.update(plan=updated_plan)
 
@@ -820,6 +831,12 @@ class Orchestrator:
 
         ts = int(time.time() * 1000)
 
+        # Section is done (one way or another) — cancel the watchdog immediately
+        # so it doesn't fire during the gap between sections.  start_build_section
+        # will re-arm it for the next section if there is one.
+        if self._watchdog is not None:
+            self._watchdog.cancel()
+
         # Check all three artefacts.
         missing = []
         if not py_path_abs.exists():
@@ -848,6 +865,7 @@ class Orchestrator:
                 {**s, "status": "failed"} if s.get("id") == section_id else s for s in plan
             ]
             self._state_manager.update(plan=updated_plan)
+            await self._start_next_queued_section()
             return
 
         # All three present — emit section.proposed.
@@ -882,6 +900,45 @@ class Orchestrator:
         ]
         self._state_manager.update(plan=updated_plan)
         logger.info("section.proposed emitted: %s (ts=%d)", section_id, ts)
+        await self._start_next_queued_section()
+
+    async def _start_next_queued_section(self) -> None:
+        """Find the next queued section and start its build turn.
+
+        Called by ``_handle_section_idle`` after each section completes (success
+        or failure).  Reads the current plan, finds the first section with
+        ``status="queued"``, and delegates to ``start_build_section``.  If no
+        queued sections remain, logs and returns — the watchdog is already
+        cancelled by the caller.
+        """
+        state = self._state_manager.get_state()
+        plan: list[dict[str, Any]] = state.get("plan") or []
+        next_section: dict[str, Any] | None = next(
+            (s for s in plan if s.get("status") == "queued"),
+            None,
+        )
+        if next_section is None:
+            logger.info("_start_next_queued_section: all sections complete.")
+            return
+
+        session_id: str | None = state.get("opencode_session_id")
+        if not session_id or self._client is None:
+            logger.debug(
+                "_start_next_queued_section: no session/client — cannot start next section"
+            )
+            return
+
+        section_index = next(
+            (i + 1 for i, s in enumerate(plan) if s.get("id") == next_section["id"]),
+            1,
+        )
+        await self.start_build_section(
+            section_id=next_section["id"],
+            section_index=section_index,
+            title=next_section["title"],
+            hypothesis=next_section.get("hypothesis", ""),
+            profile=state.get("profile") or {},
+        )
 
     # ------------------------------------------------------------------
     # Prompt construction

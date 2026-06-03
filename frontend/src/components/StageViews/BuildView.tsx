@@ -44,13 +44,9 @@ const STATUS_CLASS: Record<Section["status"], string> = {
   failed: "bg-[#f8d7da] text-[#721c24]",
 };
 
-function deriveActiveSection(sections: Section[]): Section | null {
-  // The active section is the one currently building, or the most recently proposed.
-  const building = sections.find((s) => s.status === "building");
-  if (building) return building;
-  // Show the last proposed section if none is building
-  const proposed = [...sections].reverse().find((s) => s.status === "proposed");
-  return proposed ?? null;
+/** Sections that deserve a detail pane: anything that has started building or finished. */
+function getSectionPanes(sections: Section[]): Section[] {
+  return sections.filter((s) => s.status !== "queued");
 }
 
 export default function BuildView({ sections: initialSections = [] }: BuildViewProps) {
@@ -184,7 +180,7 @@ export default function BuildView({ sections: initialSections = [] }: BuildViewP
     [handleSend]
   );
 
-  const activeSection = deriveActiveSection(sections);
+  const sectionPanes = getSectionPanes(sections);
 
   return (
     <div data-testid="build-view" className="flex flex-col gap-6">
@@ -215,15 +211,16 @@ export default function BuildView({ sections: initialSections = [] }: BuildViewP
         </div>
       )}
 
-      {/* Active section pane */}
-      {activeSection !== null && (
+      {/* One pane per section that has started building or finished, top-to-bottom */}
+      {sectionPanes.map((section) => (
         <SectionPane
-          section={activeSection}
+          key={section.id}
+          section={section}
           onAccept={(id) => void handleAccept(id)}
           onDrop={(id) => void handleDrop(id)}
           fileReadyPath={fileReadyPath}
         />
-      )}
+      ))}
 
       {/* Bottom bar */}
       <div

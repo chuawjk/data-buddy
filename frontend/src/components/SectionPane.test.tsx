@@ -325,4 +325,41 @@ describe("SectionPane", () => {
 
     expect(screen.queryByTestId("section-chart")).toBeNull();
   });
+
+  // ── test_accept_drop_disabled_until_artefacts_loaded ─────────────────────
+
+  it("test_accept_drop_disabled_until_artefacts_loaded — buttons disabled before fetch, enabled after", async () => {
+    const resolvers: Array<(v: string) => void> = [];
+    mockGetFile.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          resolvers.push(resolve);
+        })
+    );
+
+    render(
+      <SectionPane section={PROPOSED_SECTION} onAccept={mockOnAccept} onDrop={mockOnDrop} />
+    );
+
+    // Buttons present but disabled while fetches are in flight.
+    await waitFor(() => {
+      expect(screen.getByTestId("section-accept-btn")).toBeDisabled();
+      expect(screen.getByTestId("section-drop-btn")).toBeDisabled();
+    });
+
+    // Resolve all pending fetches (py_path and md_path are fetched sequentially).
+    act(() => {
+      resolvers.forEach((r) => r("content"));
+    });
+    // Second fetch starts after first resolves — drain any newly added resolver.
+    await waitFor(() => resolvers.length >= 2);
+    act(() => {
+      resolvers.forEach((r) => r("content"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("section-accept-btn")).not.toBeDisabled();
+      expect(screen.getByTestId("section-drop-btn")).not.toBeDisabled();
+    });
+  });
 });
