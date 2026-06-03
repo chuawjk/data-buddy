@@ -52,6 +52,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Section builds write three files and run arbitrary analysis code — they take
+# significantly longer than profiling or planning turns.  Give them 3× the
+# default 60 s watchdog budget.
+_SECTION_WATCHDOG_TIMEOUT: int = 180
+
 
 class Orchestrator:
     """Stage orchestrator for the Data Buddy pipeline.
@@ -210,9 +215,9 @@ class Orchestrator:
             plan=plan,
         )
 
-        # 6. Arm the watchdog.
+        # 6. Arm the watchdog with extended timeout for section builds.
         if self._watchdog is not None:
-            self._watchdog.start_turn()
+            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
 
         # 7. Fire section turn.
         asyncio.create_task(
@@ -407,9 +412,9 @@ class Orchestrator:
             redirect_text=text,
         )
 
-        # Arm the watchdog.
+        # Arm the watchdog with extended timeout for section builds.
         if self._watchdog is not None:
-            self._watchdog.start_turn()
+            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
 
         # Fire-and-forget.
         assert self._client is not None  # noqa: S101  # guarded by session check above
@@ -713,9 +718,9 @@ class Orchestrator:
             plan=plan,
         )
 
-        # 3. Arm the watchdog.
+        # 3. Arm the watchdog with extended timeout for section builds.
         if self._watchdog is not None:
-            self._watchdog.start_turn()
+            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
 
         # 4. Fire-and-forget the turn.
         assert self._client is not None  # noqa: S101  # guarded by session check above

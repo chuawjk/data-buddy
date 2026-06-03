@@ -251,3 +251,56 @@ async def test_no_session_id_skips_abort() -> None:
     client.create_fresh_session.assert_not_awaited()
     bus.publish.assert_awaited_once()
     assert bus.publish.call_args[0][0] == "turn.error"
+
+
+# ---------------------------------------------------------------------------
+# test_start_turn_custom_timeout
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_start_turn_custom_timeout_fires_after_given_seconds() -> None:
+    """start_turn(timeout=N) uses N seconds, not WATCHDOG_TIMEOUT."""
+    wmod = _load_watchdog()
+    client = _make_client()
+    sm = _make_state_manager()
+    bus = _make_bus()
+    watchdog = wmod.Watchdog(client=client, state_manager=sm, bus=bus)
+
+    seen_timeouts: list[float] = []
+    original_sleep = asyncio.sleep
+
+    async def recording_sleep(seconds: float) -> None:
+        seen_timeouts.append(seconds)
+        await original_sleep(0)
+
+    with unittest.mock.patch("backend.watchdog.asyncio.sleep", side_effect=recording_sleep):
+        watchdog.start_turn(timeout=180)
+        await original_sleep(0.1)
+
+    # The first sleep call is the _watch timeout; it must be 180, not WATCHDOG_TIMEOUT.
+    assert seen_timeouts[0] == 180, f"Expected 180s timeout, got {seen_timeouts[0]}"
+    client.abort.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_start_turn_default_timeout_uses_watchdog_timeout() -> None:
+    """start_turn() with no argument uses WATCHDOG_TIMEOUT (60 by default, 1 in tests)."""
+    wmod = _load_watchdog()
+    client = _make_client()
+    sm = _make_state_manager()
+    bus = _make_bus()
+    watchdog = wmod.Watchdog(client=client, state_manager=sm, bus=bus)
+
+    seen_timeouts: list[float] = []
+    original_sleep = asyncio.sleep
+
+    async def recording_sleep(seconds: float) -> None:
+        seen_timeouts.append(seconds)
+        await original_sleep(0)
+
+    with unittest.mock.patch("backend.watchdog.asyncio.sleep", side_effect=recording_sleep):
+        watchdog.start_turn()
+        await original_sleep(0.1)
+
+    assert seen_timeouts[0] == wmod.WATCHDOG_TIMEOUT
