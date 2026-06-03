@@ -938,3 +938,142 @@ async def test_section_build_uses_extended_watchdog_timeout(tmp_path):
 
     watchdog.start_turn.assert_called_once_with(timeout=_SECTION_WATCHDOG_TIMEOUT)
     assert _SECTION_WATCHDOG_TIMEOUT == 180
+
+
+# ---------------------------------------------------------------------------
+# Section path persistence tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_plan_ready_initialises_section_paths_to_null(tmp_path):
+    """Sections stored in state after plan.ready have py/png/md_path = None."""
+    orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
+    _write_valid_plan_json(tmp_path, num_sections=3)
+
+    await orch._handle_plan_idle()
+
+    state = sm.get_state()
+    for section in state["plan"]:
+        assert section.get("py_path") is None, f"Expected py_path=None: {section}"
+        assert section.get("png_path") is None, f"Expected png_path=None: {section}"
+        assert section.get("md_path") is None, f"Expected md_path=None: {section}"
+
+
+@pytest.mark.asyncio
+async def test_start_build_section_persists_status_building(tmp_path):
+    """start_build_section() updates state.json section status to 'building'."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(
+        stage="building",
+        dataset="data.csv",
+        aim="find patterns",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Churn",
+                "hypothesis": "Age predicts",
+                "status": "proposed",
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            },
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    await orch.start_build_section(
+        section_id="sec_01",
+        section_index=1,
+        title="Churn",
+        hypothesis="Age predicts",
+        profile={},
+    )
+    await asyncio.sleep(0)
+
+    state = sm.get_state()
+    section = next(s for s in state["plan"] if s["id"] == "sec_01")
+    assert section["status"] == "building"
+
+
+@pytest.mark.asyncio
+async def test_handle_section_idle_persists_paths_to_state(tmp_path):
+    """_handle_section_idle() stores py/png/md paths in state.json on section.proposed."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    slug = "churn_drivers"
+    sm.update(
+        stage="building",
+        dataset="data.csv",
+        aim="find churn",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Churn Drivers",
+                "hypothesis": "H",
+                "status": "building",
+                "slug": slug,
+                "index": 1,
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            }
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    # Write the expected artefact files.
+    base = f"sec_01_{slug}"
+    (tmp_path / "analyses").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "charts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "sections").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "analyses" / f"{base}.py").write_text("print('hi')", encoding="utf-8")
+    (tmp_path / "charts" / f"{base}.png").write_bytes(b"\x89PNG")
+    (tmp_path / "sections" / f"{base}.md").write_text("# Result", encoding="utf-8")
+
+    await orch._handle_section_idle()
+
+    state = sm.get_state()
+    section = next(s for s in state["plan"] if s["id"] == "sec_01")
+    assert section["status"] == "proposed"
+    assert section["py_path"] == f"analyses/{base}.py"
+    assert section["png_path"] == f"charts/{base}.png"
+    assert section["md_path"] == f"sections/{base}.md"
+
+
+@pytest.mark.asyncio
+async def test_handle_section_idle_persists_failed_status(tmp_path):
+    """_handle_section_idle() stores status=failed in state.json when artefacts are missing."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(
+        stage="building",
+        dataset="data.csv",
+        aim="find churn",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Churn Drivers",
+                "hypothesis": "H",
+                "status": "building",
+                "slug": "churn_drivers",
+                "index": 1,
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            }
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    # Do NOT create artefact files — forces section.failed path.
+
+    await orch._handle_section_idle()
+
+    state = sm.get_state()
+    section = next(s for s in state["plan"] if s["id"] == "sec_01")
+    assert section["status"] == "failed"

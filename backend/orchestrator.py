@@ -638,7 +638,10 @@ class Orchestrator:
         # proposed to the user and is awaiting their review / acceptance).
         # Status lives in state.json only; the canonical plan.json on disk stores
         # raw sections without status.
-        sections_with_status = [{**s, "status": "proposed"} for s in sections]
+        sections_with_status = [
+            {**s, "status": "proposed", "py_path": None, "png_path": None, "md_path": None}
+            for s in sections
+        ]
 
         # Persist to state.json (sections carry the status).
         self._state_manager.update(plan=sections_with_status)
@@ -705,6 +708,12 @@ class Orchestrator:
             {"section_id": section_id, "title": title, "ts": ts},
         )
         logger.info("section.building emitted: %s (ts=%d)", section_id, ts)
+
+        # Persist status=building to state.json so GET /state reflects live build state.
+        updated_plan = [
+            {**s, "status": "building"} if s.get("id") == section_id else s for s in plan
+        ]
+        self._state_manager.update(plan=updated_plan)
 
         # 2. Build the section prompt.
         prompt_text = self._build_section_prompt(
@@ -834,6 +843,11 @@ class Orchestrator:
                     "ts": ts,
                 },
             )
+            # Persist status=failed so GET /state reflects the failure.
+            updated_plan = [
+                {**s, "status": "failed"} if s.get("id") == section_id else s for s in plan
+            ]
+            self._state_manager.update(plan=updated_plan)
             return
 
         # All three present — emit section.proposed.
@@ -852,6 +866,21 @@ class Orchestrator:
                 "ts": ts,
             },
         )
+        # Persist paths + status=proposed to state.json so GET /state is the
+        # source of truth for section artefact paths (not just the SSE event).
+        updated_plan = [
+            {
+                **s,
+                "status": "proposed",
+                "py_path": py_path_rel,
+                "png_path": png_path_rel,
+                "md_path": md_path_rel,
+            }
+            if s.get("id") == section_id
+            else s
+            for s in plan
+        ]
+        self._state_manager.update(plan=updated_plan)
         logger.info("section.proposed emitted: %s (ts=%d)", section_id, ts)
 
     # ------------------------------------------------------------------
