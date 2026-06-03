@@ -225,12 +225,14 @@ async def post_turn(request: Request, body: dict = Body(...)) -> Response:
         asyncio.create_task(request.app.state.orchestrator.re_profile(text))
         return Response(status_code=204)
 
+    if stage == "planning":
+        asyncio.create_task(request.app.state.orchestrator.re_plan(text))
+        return Response(status_code=204)
+
     if stage == "building":
-        # N2-S12: redirect the current section with the user's bottom-bar text.
         asyncio.create_task(request.app.state.orchestrator.redirect_section(text))
         return Response(status_code=204)
 
-    # Night 2: planning stage re-plan will be added here.
     return JSONResponse(
         status_code=422,
         content={"error": "invalid_stage", "message": f"POST /turn not valid in stage {stage!r}"},

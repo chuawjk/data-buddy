@@ -418,8 +418,8 @@ def test_post_turn_building_calls_redirect_section(tmp_path: Path) -> None:
 
 
 def test_post_turn_wrong_stage_returns_422(tmp_path: Path) -> None:
-    """POST /turn with stage != profiling/building → 422 invalid_stage."""
-    test_client, _ = _make_app(tmp_path, stage="planning")
+    """POST /turn with stage=setup (no handler) → 422 invalid_stage."""
+    test_client, _ = _make_app(tmp_path, stage="setup")
 
     resp = test_client.post("/turn", json={"text": "some text"})
     assert resp.status_code == 422, f"Expected 422; got {resp.status_code}"

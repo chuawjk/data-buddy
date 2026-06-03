@@ -266,6 +266,56 @@ class Orchestrator:
             name="re-profile-turn",
         )
 
+    async def re_plan(self, text: str) -> None:
+        """Called by POST /turn during the planning stage.
+
+        Fires a new planning turn with a revision prompt that incorporates the
+        user's bottom-bar text.  Returns immediately; the turn runs as a
+        fire-and-forget asyncio task so ``POST /turn`` can respond with 204
+        without waiting for OpenCode.
+
+        The watchdog (if wired in via ``__init__``) is armed before the turn
+        fires so recovery can trigger if the turn stalls.
+
+        Args:
+            text: The user's bottom-bar revision instruction (already stripped
+                by the router).
+
+        Raises:
+            ValueError: If no session ID is stored in state (OpenCode not started).
+            ValueError: If the current stage is not ``"planning"`` (wrong stage).
+        """
+        state = self._state_manager.get_state()
+        session_id: str | None = state.get("opencode_session_id")
+        if not session_id:
+            raise ValueError("No active session")
+
+        current_stage: str = state.get("stage", "")
+        if current_stage != "planning":
+            raise ValueError(
+                f"re_plan only valid in planning stage; current stage: {current_stage!r}"
+            )
+
+        dataset: str = state.get("dataset") or ""
+        aim: str = state.get("aim") or ""
+        profile: dict[str, Any] = state.get("profile") or {}
+        base_prompt = self._build_plan_prompt(dataset, aim, profile)
+        prompt = (
+            f"{base_prompt}\n\n"
+            f"The user has reviewed the current draft plan and requests the following revision: "
+            f"{text}\n\n"
+            "Revise the plan accordingly and overwrite plan.json with the updated sections."
+        )
+
+        if self._watchdog is not None:
+            self._watchdog.start_turn()
+
+        assert self._client is not None  # noqa: S101  # guarded by session check above
+        asyncio.create_task(
+            self._run_plan_turn(session_id, prompt),
+            name="re-plan-turn",
+        )
+
     async def redirect_section(self, text: str) -> None:
         """Called by POST /turn during the building stage (Stage 4b).
 
