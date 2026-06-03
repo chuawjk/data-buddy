@@ -1,8 +1,8 @@
 # SETUP.md
 
-Human-facing. The one-time setup you do **before** running a night. The agents assume this
-environment already exists — none of it is in their context (only `CLAUDE.md` is auto-loaded), so
-it lives here.
+Human-facing instructions for agentic development. The one-time setup you do **before** running overnight dev.
+The agents assume this environment already exists — none of it is in their context (only `CLAUDE.md` is auto-loaded),
+so it lives here.
 
 ## 1. Prerequisites — the dev container
 
