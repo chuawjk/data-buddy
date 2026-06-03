@@ -1,8 +1,7 @@
-"""Stage orchestrator -- setup → profiling → planning state machine.
+"""Stage orchestrator -- setup → profiling → planning → building state machine.
 
-This module implements the first three stages of the Data Buddy state machine:
-``setup``, ``profiling``, and ``planning``.  The building stage (Night 2/3)
-will extend this module further.
+This module implements all four stages of the Data Buddy state machine:
+``setup``, ``profiling``, ``planning``, and ``building``.
 
 Architecture boundaries (from backlog):
 - The orchestrator calls the OpenCode client through the narrow interface only:
@@ -22,6 +21,12 @@ state, and emits ``plan.ready``.  ``session.idle`` dispatch is now stage-aware.
 N2-S03: ``_handle_plan_idle`` now also writes the canonical ``plan.json`` to
 the workspace using atomic tmp+rename semantics, and uses status ``"proposed"``
 (sections are proposed to the user, awaiting plan acceptance).
+
+N2-S07: ``session.idle`` during building stage checks for the section file
+triplet (``analyses/*.py``, ``charts/*.png``, ``sections/*.md``) and emits
+either ``section.proposed`` (triplet present) or ``section.failed`` (files
+missing).  ``start_build_section`` emits ``section.building`` immediately
+after dispatching the section prompt and arms the watchdog.
 """
 
 from __future__ import annotations
@@ -183,6 +188,7 @@ class Orchestrator:
         Currently handled:
           - ``session.idle`` in profiling stage → ``_handle_profile_idle``
           - ``session.idle`` in planning stage → ``_handle_plan_idle``  (N2-S02)
+          - ``session.idle`` in building stage → ``_handle_section_idle``  (N2-S07)
           - ``profile.ready`` → ``_handle_planning_transition``  (N2-S01)
         """
         subscription = self._bus.subscribe()
@@ -195,6 +201,8 @@ class Orchestrator:
                         await self._handle_profile_idle()
                     elif stage == "planning":
                         await self._handle_plan_idle()
+                    elif stage == "building":
+                        await self._handle_section_idle()
                     else:
                         logger.debug("session.idle: no handler for stage=%r", stage)
                 elif event_type == "profile.ready":
@@ -387,9 +395,241 @@ class Orchestrator:
         )
         logger.info("plan.ready emitted (%d sections, ts=%d)", len(sections_with_status), ts)
 
+    async def start_build_section(
+        self,
+        section_id: str,
+        section_index: int,
+        title: str,
+        hypothesis: str,
+        profile: dict[str, Any],
+    ) -> None:
+        """Dispatch the section build prompt and emit ``section.building``.
+
+        Called by the accept-plan flow (N2-S05) or the sequential section loop
+        (N3-S01) when the next section should be built.  Returns immediately;
+        the turn runs as a fire-and-forget ``asyncio.Task``.
+
+        Steps:
+        1. Validate: session ID must be set.
+        2. Emit ``section.building`` domain event (before the OpenCode round-trip).
+        3. Arm the watchdog (if wired).
+        4. Fire-and-forget ``_run_section_turn``.
+
+        Args:
+            section_id: Section identifier (e.g. ``"sec_01"``).
+            section_index: 1-based ordinal position in the plan array.
+            title: Section title from plan.
+            hypothesis: Section hypothesis from plan.
+            profile: Full parsed profile dict.
+
+        Raises:
+            ValueError: If no session ID is stored (OpenCode not started).
+
+        N2-S07.
+        """
+        state = self._state_manager.get_state()
+        session_id: str | None = state.get("opencode_session_id")
+        if not session_id:
+            raise ValueError("No active session")
+
+        dataset: str = state.get("dataset") or ""
+        aim: str = state.get("aim") or ""
+        plan: list[Any] = state.get("plan") or []
+
+        # 1. Emit section.building BEFORE the OpenCode round-trip so the SPA
+        #    gets the signal immediately (SSE_CONTRACT.md §2.1).
+        ts = int(time.time() * 1000)
+        await self._bus.publish(
+            "section.building",
+            {"section_id": section_id, "title": title, "ts": ts},
+        )
+        logger.info("section.building emitted: %s (ts=%d)", section_id, ts)
+
+        # 2. Build the section prompt.
+        prompt_text = self._build_section_prompt(
+            section_id=section_id,
+            section_index=section_index,
+            title=title,
+            hypothesis=hypothesis,
+            aim=aim,
+            dataset=dataset,
+            profile=profile,
+            plan=plan,
+        )
+
+        # 3. Arm the watchdog.
+        if self._watchdog is not None:
+            self._watchdog.start_turn()
+
+        # 4. Fire-and-forget the turn.
+        assert self._client is not None  # noqa: S101  # guarded by session check above
+        asyncio.create_task(
+            self._run_section_turn(session_id, prompt_text),
+            name=f"section-turn-{section_id}",
+        )
+
+    async def _handle_section_idle(self) -> None:
+        """Called when ``session.idle`` fires during the building stage.
+
+        Looks for the active section (first section with ``status="building"``
+        in ``state.json``'s plan array).  Then checks for all three artefact
+        files on disk:
+          - ``analyses/sec_NN_<slug>.py``
+          - ``charts/sec_NN_<slug>.png``
+          - ``sections/sec_NN_<slug>.md``
+
+        If all three exist: emits ``section.proposed`` with the section ID and
+        relative paths.
+
+        If any file is missing: emits ``section.failed`` with
+        ``reason="missing_files"``.
+
+        If there is no section with ``status="building"``: logs and returns
+        without emitting.  If the current stage is not ``building``: returns
+        immediately (idempotent guard).
+
+        N2-S07.
+        """
+        state = self._state_manager.get_state()
+        current_stage: str = state.get("stage", "")
+        if current_stage != "building":
+            logger.debug("_handle_section_idle: ignoring (stage=%r)", current_stage)
+            return
+
+        # Find the active section (first with status="building").
+        plan: list[dict[str, Any]] = state.get("plan") or []
+        building_section: dict[str, Any] | None = next(
+            (s for s in plan if s.get("status") == "building"),
+            None,
+        )
+        if building_section is None:
+            logger.debug("_handle_section_idle: no section with status=building in plan")
+            return
+
+        section_id: str = building_section.get("id", "")
+        title: str = building_section.get("title", "")
+        section_index: int = building_section.get("index", 1)
+        slug: str = building_section.get("slug", "")
+
+        # Derive file base name from section_index and slug.
+        # If slug is missing from state (older state format), derive from title.
+        if not slug:
+            from backend.prompts.section import _make_slug  # noqa: PLC0415
+
+            slug = _make_slug(title)
+
+        nn = str(section_index).zfill(2)
+        base_name = f"sec_{nn}_{slug}"
+
+        py_path_abs = self._workspace_root / "analyses" / f"{base_name}.py"
+        png_path_abs = self._workspace_root / "charts" / f"{base_name}.png"
+        md_path_abs = self._workspace_root / "sections" / f"{base_name}.md"
+
+        ts = int(time.time() * 1000)
+
+        # Check all three artefacts.
+        missing = []
+        if not py_path_abs.exists():
+            missing.append("py")
+        if not png_path_abs.exists():
+            missing.append("png")
+        if not md_path_abs.exists():
+            missing.append("md")
+
+        if missing:
+            logger.warning(
+                "_handle_section_idle: section %r missing files: %s",
+                section_id,
+                missing,
+            )
+            await self._bus.publish(
+                "section.failed",
+                {
+                    "section_id": section_id,
+                    "reason": "missing_files",
+                    "ts": ts,
+                },
+            )
+            return
+
+        # All three present — emit section.proposed.
+        py_path_rel = f"analyses/{base_name}.py"
+        png_path_rel = f"charts/{base_name}.png"
+        md_path_rel = f"sections/{base_name}.md"
+
+        await self._bus.publish(
+            "section.proposed",
+            {
+                "section_id": section_id,
+                "title": title,
+                "py_path": py_path_rel,
+                "png_path": png_path_rel,
+                "md_path": md_path_rel,
+                "ts": ts,
+            },
+        )
+        logger.info("section.proposed emitted: %s (ts=%d)", section_id, ts)
+
     # ------------------------------------------------------------------
     # Prompt construction
     # ------------------------------------------------------------------
+
+    def _build_section_prompt(
+        self,
+        section_id: str,
+        section_index: int,
+        title: str,
+        hypothesis: str,
+        aim: str,
+        dataset: str,
+        profile: dict[str, Any],
+        plan: list[Any],
+    ) -> str:
+        """Return the text to send to OpenCode for the section build turn.
+
+        Tries to import ``build_section_prompt`` from ``backend.prompts.section``
+        (added by N2-S06).  Falls back to a minimal placeholder.
+
+        Args:
+            section_id: Section identifier (e.g. ``"sec_01"``).
+            section_index: 1-based ordinal in the plan.
+            title: Section title.
+            hypothesis: Section hypothesis.
+            aim: The user's stated aim.
+            dataset: Dataset filename.
+            profile: Full parsed profile dict.
+            plan: Full plan list.
+
+        Returns:
+            A non-empty prompt string.
+        """
+        try:
+            from backend.prompts.section import build_section_prompt  # noqa: PLC0415
+
+            return build_section_prompt(
+                section_id=section_id,
+                section_index=section_index,
+                title=title,
+                hypothesis=hypothesis,
+                aim=aim,
+                dataset=dataset,
+                profile=profile,
+                plan=plan,
+                workspace_root=self._workspace_root.resolve(),
+            )
+        except ImportError:
+            logger.debug(
+                "_build_section_prompt: backend.prompts.section not yet available; "
+                "using placeholder."
+            )
+            ws = self._workspace_root.resolve()
+            nn = str(section_index).zfill(2)
+            return (
+                f"Build section {section_id} ({title}) of the brief. "
+                f"Aim: {aim}. Dataset: {ws / 'data' / dataset}. "
+                f"Write analyses/sec_{nn}_*.py, charts/sec_{nn}_*.png, "
+                f"sections/sec_{nn}_*.md with YAML frontmatter."
+            )
 
     def _build_profile_prompt(self, dataset: str, aim: str) -> str:
         """Return the text to send to OpenCode for the profiling turn.
@@ -523,6 +763,30 @@ class Orchestrator:
             await self._client.prompt(session_id, prompt, schema=schema)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Plan turn failed: %s", exc)
+            await self._bus.publish("turn.error", {"message": str(exc)})
+
+    async def _run_section_turn(self, session_id: str, prompt: str) -> None:
+        """Send the section build prompt to OpenCode and handle errors.
+
+        Scheduled as a fire-and-forget ``asyncio.Task`` by ``start_build_section``.
+        Any exception is caught here and converted into a ``turn.error`` bus event.
+
+        No ``schema`` is passed (``schema=None``) — section build uses the file
+        triplet as structured output, not OpenCode's native JSON schema mechanism
+        (ADR-005).
+
+        Args:
+            session_id: The active OpenCode session ID.
+            prompt: The section build prompt text.
+
+        N2-S07.
+        """
+        assert self._client is not None  # noqa: S101  # guarded by caller
+        try:
+            # schema=None — no structured output for section build (ADR-005).
+            await self._client.prompt(session_id, prompt)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Section turn failed: %s", exc)
             await self._bus.publish("turn.error", {"message": str(exc)})
 
     async def _run_profile_turn(self, session_id: str, prompt: str) -> None:
