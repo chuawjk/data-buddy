@@ -21,7 +21,9 @@ Route inventory (from API_CONTRACT.html):
 from __future__ import annotations
 
 import asyncio
+import json
 import mimetypes
+import os
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -240,12 +242,111 @@ async def post_turn(request: Request, body: dict = Body(...)) -> Response:
 # ---------------------------------------------------------------------------
 
 
-@router.post("/plan/update")
-async def post_plan_update() -> dict[str, Any]:
+@router.post("/plan/update", response_model=None)
+async def post_plan_update(request: Request, body: dict = Body(...)) -> Any:
     """Inline plan edit (backend-only).
 
-    Real implementation: N2-S04.  Stub returns the contract success shape.
+    N2-S04 real implementation.
+
+    Accepts a full replacement plan array from the SPA (used for inline edits,
+    reorder, drop section, add section).  Writes atomically to both
+    ``plan.json`` in the workspace and ``state.json``.  No OpenCode call.
+
+    Per ADR-014: full replacement semantics.  Incoming sections replace the
+    entire plan array.  Existing section IDs have their current status
+    preserved; new IDs get ``status="proposed"``.
+
+    Request body:
+        { "sections": [ { "id": "...", "title": "...", "hypothesis": "..." }, ... ] }
+
+    Success: 200 { "ok": true }
+
+    Error envelopes (API contract §4):
+    - 422 invalid_request -- sections key missing, null, not a list, or empty.
+    - 422 invalid_section -- a section is missing required fields (id/title/hypothesis).
     """
+    sections = body.get("sections")
+
+    # Validate sections field.
+    if sections is None or not isinstance(sections, list):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "invalid_request",
+                "message": "'sections' must be a non-empty list of section objects.",
+            },
+        )
+    if len(sections) == 0:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "invalid_request",
+                "message": "'sections' must not be empty.",
+            },
+        )
+
+    # Validate each section has required fields.
+    required_fields = {"id", "title", "hypothesis"}
+    for i, section in enumerate(sections):
+        if not isinstance(section, dict):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": "invalid_section",
+                    "message": f"Section at index {i} must be an object.",
+                },
+            )
+        missing = required_fields - section.keys()
+        if missing:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": "invalid_section",
+                    "message": (
+                        f"Section at index {i} is missing required fields: "
+                        f"{', '.join(sorted(missing))}."
+                    ),
+                },
+            )
+
+    state_manager = request.app.state.state_manager
+    state = state_manager.get_state()
+
+    # Build a status-map from the current plan so we can preserve existing statuses.
+    current_plan: list[dict[str, Any]] = state.get("plan", [])
+    existing_status: dict[str, str] = {
+        s["id"]: s.get("status", "proposed")
+        for s in current_plan
+        if isinstance(s, dict) and s.get("id")
+    }
+
+    # Merge: preserve status for existing IDs; new IDs get "proposed".
+    sections_with_status = [
+        {
+            "id": s["id"],
+            "title": s["title"],
+            "hypothesis": s["hypothesis"],
+            "status": existing_status.get(s["id"], "proposed"),
+        }
+        for s in sections
+    ]
+
+    # Persist to state.json.
+    state_manager.update(plan=sections_with_status)
+
+    # Write canonical plan.json to workspace (raw sections, no status field).
+    # Atomic tmp+rename so a mid-write kill never corrupts the file.
+    workspace_root: Path = state_manager._path.parent.resolve()
+    plan_path = workspace_root / "plan.json"
+    raw_sections = [
+        {"id": s["id"], "title": s["title"], "hypothesis": s["hypothesis"]} for s in sections
+    ]
+    payload = json.dumps({"sections": raw_sections}, indent=2, ensure_ascii=False)
+    tmp_plan = plan_path.with_name("plan.tmp.json")
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_plan.write_text(payload, encoding="utf-8")
+    os.replace(tmp_plan, plan_path)
+
     return {"ok": True}
 
 
