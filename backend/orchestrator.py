@@ -16,8 +16,12 @@ State transitions implemented here:
   profiling → planning  (via ``_handle_planning_transition``, triggered on ``profile.ready``)
 
 N2-S02: ``session.idle`` during planning stage reads ``plan.json`` from disk,
-validates it, injects ``status: "queued"`` on each section, persists to state,
-and emits ``plan.ready``.  ``session.idle`` dispatch is now stage-aware.
+validates it, injects ``status: "proposed"`` on each section, persists to
+state, and emits ``plan.ready``.  ``session.idle`` dispatch is now stage-aware.
+
+N2-S03: ``_handle_plan_idle`` now also writes the canonical ``plan.json`` to
+the workspace using atomic tmp+rename semantics, and uses status ``"proposed"``
+(sections are proposed to the user, awaiting plan acceptance).
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -360,12 +365,19 @@ class Orchestrator:
                 await _emit_error("structured_output_failed")
                 return
 
-        # Inject status: "queued" on each section (schema does not include status;
-        # orchestrator injects it per TL note N2-S02).
-        sections_with_status = [{**s, "status": "queued"} for s in sections]
+        # Inject status: "proposed" on each section (N2-S03: the plan has been
+        # proposed to the user and is awaiting their review / acceptance).
+        # Status lives in state.json only; the canonical plan.json on disk stores
+        # raw sections without status.
+        sections_with_status = [{**s, "status": "proposed"} for s in sections]
 
-        # Persist to state.json.
+        # Persist to state.json (sections carry the status).
         self._state_manager.update(plan=sections_with_status)
+
+        # Write canonical plan.json to workspace (raw sections, no status).
+        # Uses atomic tmp+rename so a mid-write kill never corrupts the file.
+        # N2-S03.
+        self._write_plan_json(plan_path, sections)
 
         # Emit plan.ready.
         ts = int(time.time() * 1000)
@@ -449,6 +461,39 @@ class Orchestrator:
             return PLAN_SCHEMA
         except ImportError:
             return None
+
+    # ------------------------------------------------------------------
+    # Workspace file helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _write_plan_json(plan_path: Path, sections: list[dict[str, Any]]) -> None:
+        """Atomically write canonical plan.json to workspace.
+
+        Writes the raw sections (id, title, hypothesis — no status field) to
+        disk using the same tmp+rename pattern as StateManager.save() so that
+        a mid-write process kill never leaves a partial file.
+
+        Status is the responsibility of state.json; plan.json stores only the
+        schema-conformant section data.
+
+        Args:
+            plan_path: Absolute path to ``workspace/plan.json``.
+            sections: List of section dicts with ``id``, ``title``,
+                ``hypothesis``.  Any ``status`` field is stripped before
+                writing.
+
+        N2-S03.
+        """
+        # Strip status from sections — plan.json stores raw schema only.
+        raw_sections = [{k: v for k, v in s.items() if k != "status"} for s in sections]
+        payload = json.dumps({"sections": raw_sections}, indent=2, ensure_ascii=False)
+
+        tmp_path = plan_path.with_name("plan.tmp.json")
+        plan_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path.write_text(payload, encoding="utf-8")
+        os.replace(tmp_path, plan_path)
+        logger.debug("plan.json written atomically (%d sections)", len(raw_sections))
 
     # ------------------------------------------------------------------
     # Fire-and-forget helpers
