@@ -123,6 +123,99 @@ class Orchestrator:
                 self._client,
             )
 
+    async def accept_plan(self) -> None:
+        """Transition from planning → building and trigger the first section turn.
+
+        Called by ``POST /plan/accept``.  Returns immediately; section build
+        runs as a fire-and-forget asyncio Task.
+
+        Steps:
+        1. Guard: if stage is already ``"building"`` return silently (idempotent).
+        2. Guard: if stage is not ``"planning"`` log and return.
+        3. Persist ``stage=building`` via state manager.
+        4. Emit ``stage.changed`` with ``{"stage": "building"}``.
+        5. Find the first section in the plan with ``status="proposed"``.
+        6. If none, log and return (degenerate empty/all-accepted plan).
+        7. Build the section prompt via ``build_section_prompt()``.
+        8. Arm the watchdog if wired.
+        9. Schedule ``_run_section_turn`` as a fire-and-forget task.
+
+        N2-S05.
+        """
+        state = self._state_manager.get_state()
+        current_stage: str = state.get("stage", "")
+
+        # Idempotent: already in building stage.
+        if current_stage == "building":
+            logger.debug("accept_plan: already in building stage — no-op (idempotent)")
+            return
+
+        if current_stage != "planning":
+            logger.warning(
+                "accept_plan: called in unexpected stage %r (expected planning)", current_stage
+            )
+            return
+
+        # 1. Persist the transition.
+        self._state_manager.update(stage="building")
+
+        # 2. Emit the domain event.
+        ts = int(time.time() * 1000)
+        await self._bus.publish("stage.changed", {"stage": "building", "ts": ts})
+        logger.info("accept_plan: stage.changed → building (ts=%d)", ts)
+
+        # 3. Find the first proposed section.
+        plan: list[dict[str, Any]] = state.get("plan", [])
+        first_section: dict[str, Any] | None = next(
+            (s for s in plan if s.get("status") == "proposed"),
+            None,
+        )
+        if first_section is None:
+            logger.warning("accept_plan: no proposed sections in plan — no section turn fired")
+            return
+
+        # 4. Get session ID.
+        session_id: str | None = self._state_manager.get_state().get("opencode_session_id")
+        if not session_id or self._client is None:
+            logger.debug(
+                "accept_plan: skipping section turn (session_id=%r, client=%r)",
+                session_id,
+                self._client,
+            )
+            return
+
+        # 5. Build the section prompt.
+        section_index = plan.index(first_section) + 1  # 1-based index
+        dataset: str = state.get("dataset") or ""
+        aim: str = state.get("aim") or ""
+        profile: dict[str, Any] = state.get("profile") or {}
+        # Build plan dict in the format expected by build_section_prompt
+        plan_dict = {
+            "sections": [
+                {"id": s["id"], "title": s["title"], "hypothesis": s["hypothesis"]} for s in plan
+            ]
+        }
+        prompt_text = self._build_section_prompt(
+            section_id=first_section["id"],
+            section_index=section_index,
+            title=first_section["title"],
+            hypothesis=first_section["hypothesis"],
+            aim=aim,
+            dataset=dataset,
+            profile=profile,
+            plan=plan_dict,
+        )
+
+        # 6. Arm the watchdog.
+        if self._watchdog is not None:
+            self._watchdog.start_turn()
+
+        # 7. Fire section turn.
+        asyncio.create_task(
+            self._run_section_turn(session_id, prompt_text),
+            name=f"section-turn-{first_section['id']}",
+        )
+
     async def re_profile(self, text: str) -> None:
         """Called by POST /turn during the profiling stage.
 
@@ -447,6 +540,52 @@ class Orchestrator:
                 "Return as JSON with a 'sections' array."
             )
 
+    def _build_section_prompt(
+        self,
+        section_id: str,
+        section_index: int,
+        title: str,
+        hypothesis: str,
+        aim: str,
+        dataset: str,
+        profile: dict[str, Any],
+        plan: dict[str, Any],
+    ) -> str:
+        """Return the text to send to OpenCode for a section build turn.
+
+        Delegates to ``backend.prompts.section.build_section_prompt`` (N2-S06).
+        Falls back to a minimal placeholder if the module is unavailable.
+
+        No ``schema=`` argument is passed to ``client.prompt()`` — sections use
+        free-form output and the file triplet on disk is the structured result
+        (ADR-005).
+
+        N2-S05.
+        """
+        try:
+            from backend.prompts.section import build_section_prompt  # noqa: PLC0415
+
+            return build_section_prompt(
+                section_id=section_id,
+                section_index=section_index,
+                title=title,
+                hypothesis=hypothesis,
+                aim=aim,
+                dataset=dataset,
+                profile=profile,
+                plan=plan,
+                workspace_root=self._workspace_root.resolve(),
+            )
+        except ImportError:
+            logger.debug(
+                "_build_section_prompt: backend.prompts.section not yet available; "
+                "using placeholder."
+            )
+            return (
+                f"Build section {section_id}: {title}. "
+                f"Hypothesis: {hypothesis}. Dataset: {dataset}. Aim: {aim}."
+            )
+
     @staticmethod
     def _load_plan_schema() -> Any:
         """Return the plan JSON schema for structured output, or ``None``.
@@ -498,6 +637,25 @@ class Orchestrator:
     # ------------------------------------------------------------------
     # Fire-and-forget helpers
     # ------------------------------------------------------------------
+
+    async def _run_section_turn(self, session_id: str, prompt: str) -> None:
+        """Send the section build prompt to OpenCode and handle errors.
+
+        Scheduled as a fire-and-forget ``asyncio.Task`` by ``accept_plan()``.
+        Passes ``schema=None`` — section output is free-form (ADR-005).
+
+        Args:
+            session_id: The active OpenCode session ID.
+            prompt: The section build prompt text to send.
+
+        N2-S05.
+        """
+        assert self._client is not None  # guarded by caller  # noqa: S101
+        try:
+            await self._client.prompt(session_id, prompt, schema=None)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Section turn failed: %s", exc)
+            await self._bus.publish("turn.error", {"message": str(exc)})
 
     async def _run_plan_turn(self, session_id: str, prompt: str) -> None:
         """Send the planning prompt to OpenCode and handle errors.
