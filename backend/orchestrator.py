@@ -27,6 +27,11 @@ triplet (``analyses/*.py``, ``charts/*.png``, ``sections/*.md``) and emits
 either ``section.proposed`` (triplet present) or ``section.failed`` (files
 missing).  ``start_build_section`` emits ``section.building`` immediately
 after dispatching the section prompt and arms the watchdog.
+
+N2-S20: ``QA_FORCE_SECTION_FAIL=1`` env-var seam in ``_handle_section_idle``.
+When set, the ``.md`` artefact is removed before the triplet check so that
+``section.failed`` fires deterministically for QA without model misbehaviour.
+Off by default; zero production-path impact.
 """
 
 from __future__ import annotations
@@ -677,7 +682,11 @@ class Orchestrator:
         without emitting.  If the current stage is not ``building``: returns
         immediately (idempotent guard).
 
-        N2-S07.
+        When ``QA_FORCE_SECTION_FAIL=1`` is set, the ``.md`` file is removed
+        before the check so that the normal missing-artefact path fires and
+        ``section.failed`` is emitted deterministically (N2-S20 test seam).
+
+        N2-S07, N2-S20.
         """
         state = self._state_manager.get_state()
         current_stage: str = state.get("stage", "")
@@ -709,6 +718,25 @@ class Orchestrator:
 
         nn = str(section_index).zfill(2)
         base_name = f"sec_{nn}_{slug}"
+
+        # N2-S20: QA_FORCE_SECTION_FAIL -- delete the .md before the triplet check
+        # so the normal missing-artefact path fires and section.failed is emitted
+        # deterministically.  Off by default; zero production-path impact.
+        if os.environ.get("QA_FORCE_SECTION_FAIL") == "1":
+            md_to_remove = self._workspace_root / "sections" / f"{base_name}.md"
+            if md_to_remove.exists():
+                try:
+                    md_to_remove.unlink()
+                    logger.info(
+                        "QA_FORCE_SECTION_FAIL: removed %s to force section.failed",
+                        md_to_remove,
+                    )
+                except OSError as exc:
+                    logger.warning(
+                        "QA_FORCE_SECTION_FAIL: could not remove %s: %s",
+                        md_to_remove,
+                        exc,
+                    )
 
         py_path_abs = self._workspace_root / "analyses" / f"{base_name}.py"
         png_path_abs = self._workspace_root / "charts" / f"{base_name}.png"
