@@ -1,9 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import type { Mock } from "vitest";
 import { render, screen } from "@testing-library/react";
 import ActivityRail from "./ActivityRail";
 import { useActivityState } from "../hooks/useActivityState";
 import type { ActivityRailState } from "../hooks/useActivityState";
+
+beforeAll(() => {
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+});
 
 vi.mock("../hooks/useActivityState", () => ({
   useActivityState: vi.fn(),
@@ -15,6 +19,7 @@ function setState(s: Partial<ActivityRailState>) {
     bashCount: 0,
     fileCount: 0,
     dotPhase: 0 as const,
+    log: [] as string[],
     ...s,
   });
 }
@@ -93,5 +98,33 @@ describe("ActivityRail", () => {
     render(<ActivityRail />);
     expect(screen.queryByTestId("activity-thinking")).toBeNull();
     expect(screen.getByTestId("activity-summary").textContent).toBe("3 commands run · 1 file written");
+  });
+
+  it("activity-log is hidden when log is empty", () => {
+    setState({ log: [] });
+    render(<ActivityRail />);
+    expect(screen.queryByTestId("activity-log")).toBeNull();
+  });
+
+  it("activity-log is shown when log has entries", () => {
+    setState({ log: ["✓ ls -la", "workspace/out.csv"] });
+    render(<ActivityRail />);
+    expect(screen.getByTestId("activity-log")).toBeInTheDocument();
+  });
+
+  it("activity-log renders each entry as text", () => {
+    setState({ log: ["✓ python run.py", "results/output.csv", "✓ cat file.txt"] });
+    render(<ActivityRail />);
+    const logEl = screen.getByTestId("activity-log");
+    expect(logEl.textContent).toContain("✓ python run.py");
+    expect(logEl.textContent).toContain("results/output.csv");
+    expect(logEl.textContent).toContain("✓ cat file.txt");
+  });
+
+  it("activity-log is visible alongside thinking indicator during active run", () => {
+    setState({ isRunning: true, bashCount: 1, dotPhase: 0, log: ["✓ ls"] });
+    render(<ActivityRail />);
+    expect(screen.getByTestId("activity-thinking")).toBeInTheDocument();
+    expect(screen.getByTestId("activity-log")).toBeInTheDocument();
   });
 });
