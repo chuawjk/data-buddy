@@ -4,7 +4,7 @@
 
 ---
 
-## Night 1 complete — all demo wiring fixed; develop green; awaiting morning review for develop → main promotion
+## Night 2 COMPLETE. All lane stories merged, integration merged, QA passed (63 assertions, 0 defects). Awaiting morning human review for develop → main promotion.
 
 ---
 
@@ -214,7 +214,7 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
   - 69/69 FE + 80/80 BE = 149 total tests pass; CI green on merge
   - Self-approve not possible (same account owns PR); merged after all three gates verified green
 
-### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring, styling, drag-and-drop UX, and concise activity rail resolved. QA structural + live gate passed (all 6 steps). Awaiting morning human review for develop → main promotion.**
+### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring, styling, drag-and-drop UX, and concise activity rail resolved. QA structural + live gate passed (all 6 steps). Promoted to `main` at morning review.**
 
 ---
 
@@ -290,13 +290,21 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 3. **Zero-OpenCode-call check passed:** `POST /plan/update`, `POST /section/:id/accept`, `POST /section/:id/drop`, `GET /export`, `GET /file` all confirmed to make zero OpenCode calls via implementation review and MagicMock assertions.
 4. **Concurrent-save race identified in integration test harness:** fire-and-forget `setup_complete()` tasks race with direct `state_manager.update()` calls in tests. Integration tests fixed to use direct state.json file writes instead of `update()` to avoid ENOENT races. No production code impact.
 
+### N2-S19 · Night 2 QA — PASS (2026-06-03)
+
+- **63 structural assertions** in `qa/structural/test_n2_structural.py` — all pass
+- **332 BE + 154 FE = 486 total tests** — all pass
+- No blocking defects found
+- REG-N2-01 through REG-N2-07 standing regression checks added to `QA_LOG.md`
+- Minor observation (non-blocking): `POST /setup` with empty string `""` triggers FastAPI 422 rather than custom error envelope; whitespace-only aim correctly returns custom error; frontend validates before submission; pre-existing from Night 1
+
 ### NOW STARTABLE
 
-- **N2-S19** · Night 2 QA — all lane stories and integration are on `develop`. QA can begin.
+Night 3 stories are not startable yet — they depend on Night 2 being promoted to `main` at morning review.
 
 ### In Dev / In Review / In QA
 
-*N2-S19 (QA): ready to start. All Night 2 stories merged and integrated.*
+*All Night 2 stories complete. Awaiting morning human review.*
 
 ### Blockers
 
@@ -309,6 +317,8 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
 **RESOLVED — section.py plan type annotation (integration, 2026-06-03)**
 `build_section_prompt()` declared `plan: dict` but orchestrator passes a list. No runtime error (json.dumps handles both), fixed as annotation-only change in N2-S18 integration commit. See ADR-016.
 
+### **Night 2 COMPLETE. All lane stories merged, integration merged, QA passed (63 structural assertions, 0 defects, 486 total tests). Awaiting morning human review for develop → main promotion.**
+
 ### Overnight ADR decisions (Night 2)
 
 - ADR-014 (Proposed — pending review): POST /plan/update accepts new section IDs (add-section feature). Full replacement semantics; N2-S04 must not gate on existing IDs.
@@ -318,11 +328,14 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
 ### Post-Night-2 fixes
 
 - **fix: profiling stage now pauses for user review** — `fix/profiling-pause` → develop, merge commit `e4dca81` (2026-06-03)
-  - `backend/orchestrator.py`: removed `profile.ready → _handle_planning_transition` wiring from `start_bus_listener`; added `accept_profile()` public method (delegates to `_handle_planning_transition`)
-  - `backend/router.py`: added `POST /profile/accept` endpoint — calls `orchestrator.accept_profile()` as fire-and-forget task; returns 204; idempotent
-  - `backend/tests/unit/app/test_orchestrator.py`: `test_bus_listener_handles_profile_ready` replaced by two tests — one asserting stage stays `profiling` after `profile.ready` (no auto-advance), one asserting `accept_profile()` transitions to `planning` and emits `stage.changed`
-  - **Behaviour change:** app now pauses at profiling stage after `profile.ready` fires. User must call `POST /profile/accept` to advance to planning. The frontend `ProfileView` needs an "Accept" button wired to this endpoint (next fix).
-  - Demo script step 3 updated: profiling completes → user presses Accept profile → plan view renders.
+  - `backend/orchestrator.py`: removed `profile.ready → _handle_planning_transition` auto-advance from `start_bus_listener`; added `accept_profile()` public method
+  - `backend/router.py`: added `POST /profile/accept` endpoint — calls `orchestrator.accept_profile()`; returns 204; idempotent
+  - `backend/tests/unit/app/test_orchestrator.py`: two tests replacing the old auto-advance assertion; 303 BE tests pass
+
+- **feat(fe): Accept profile button in ProfileView** — `fix/profile-accept-button` → develop, merge commit `40389d7` (2026-06-03)
+  - `frontend/src/hooks/useApi.ts`: `postProfileAccept()` added
+  - `frontend/src/components/StageViews/ProfileView.tsx`: "Accept profile →" button; renders only when profile is loaded; disabled while in flight; on success App.tsx routes to PlanView via `stage.changed`
+  - `frontend/src/components/StageViews/ProfileView.test.tsx`: 4 new tests; 158 FE tests total pass
 
 ### Post-Night-1 fixes (QA-01, QA-02)
 
@@ -345,26 +358,25 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
 
 ---
 
-## Night 2 demo script (morning review / QA)
+## Night 2 demo script (morning review)
 
-1. `make clean` (reset workspace) → `make install` → `make dev`
-2. Open http://localhost:5173 → upload `data/customers_q3.csv` + enter an aim
-3. Watch profiling complete → Profile view renders → click **Accept profile**
-4. Plan view renders with sections (plan.json written, plan.ready event received)
-5. Edit a section title inline → POST /plan/update → section list refreshes
-6. Accept plan → POST /plan/accept → stage transitions to building → first section build starts
-7. BuildView shows section status as `building` → section pane visible
-8. Section build completes → status becomes `proposed` → Accept/Drop buttons visible
-9. Accept the section → POST /section/:id/accept → status becomes `accepted`
-10. Export button enables → click Export → browser downloads `brief.md`
-11. For redirect path: start section build → POST /turn with redirect text → section rebuilds
+1. `make install && make dev` — both servers start; app loads at http://localhost:5173
+2. Upload `data/customers_q3.csv` + enter aim → profiling → profile view renders
+3. Watch profiling complete → Profile view renders → click **Accept profile** → PlanView renders section list
+4. Edit one section title inline → POST /plan/update (no OpenCode call)
+5. Enter bottom-bar revision → POST /turn (planning stage) → plan updates
+6. Accept plan → POST /plan/accept → stage=building → first section build starts
+7. Watch Activity Rail — section build completes → SectionPane renders (code + chart + interpretation)
+8. Click Accept → POST /section/:id/accept → ExportButton enabled
+9. Click Export → GET /export → Markdown brief delivered
+10. Refresh browser → UI re-hydrates to current stage/state from GET /state
 
 **QA test hook:** To exercise section.failed without model misbehaviour:
 ```bash
 QA_FORCE_SECTION_FAIL=1 make dev   # section.failed fires on next section build turn
 ```
 
-*Note: steps 3–10 require provider credentials. Backend-only operations (plan/update, section/accept, section/drop, export) work without OpenCode.*
+*Note: steps 3–9 require provider credentials in `~/.local/share/opencode/auth.json`. Backend-only operations (plan/update, section/accept, section/drop, export) work without OpenCode.*
 
 ---
 

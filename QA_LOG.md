@@ -100,3 +100,69 @@ The following checks are promoted to the standing regression suite and will re-r
 | REG-N1-10 | watchdog stall → fresh session recovery | unit test `test_watchdog.py` | Abort fires; new session ID created and persisted; no hang |
 | REG-N1-11 | SSE subscription does not crash on first iteration | unit test `test_opencode_client.py` | `_run_one_connection` connects to a mock `/event` endpoint without `_AsyncGeneratorContextManager` TypeError; at least one event is published to the bus |
 | REG-N1-12 | prompt_async payload uses `parts` array format | unit/integration test `test_opencode_client.py` | `client.prompt(sid, "text")` sends body `{"parts":[{"type":"text","text":"text"}]}`; response is not HTTP 400 |
+
+---
+
+## Night 2 — QA Run — 2026-06-03
+
+### Night 1 regression recheck
+
+All REG-N1-01 through REG-N1-12 re-verified against the develop slice at commit `14e647d`.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| REG-N1-01 profile schema fields complete | PASS | `PROFILE_SCHEMA` in `backend/prompts/profile.py`; `shape.{rows,columns}`, `columns[].{name,type,flags,summary}`, `flags[]` all required; verified via `TestNight1RegressionCarryForward` |
+| REG-N1-02 orchestrator httpx boundary | PASS | AST walk — zero `import httpx` / `from httpx` nodes in `orchestrator.py`; verified via `TestArchitectureBoundaries` |
+| REG-N1-03 opencode_client orchestrator boundary | PASS | AST walk — zero orchestrator imports in `opencode_client.py`; verified via `TestArchitectureBoundaries` |
+| REG-N1-04 single event subscription | PASS | Exactly one `start_event_subscription` in `main.py`; verified via `TestNight1RegressionCarryForward` |
+| REG-N1-05 data-testid completeness (>= 17) | PASS | 40 unique `data-testid` values in production frontend (Night 2 additions included); verified via `TestDataTestidCompleteness` |
+| REG-N1-06 test suite count (486 total) | PASS | 332 BE + 154 FE = 486 total; all pass |
+| REG-N1-07 lint clean | PASS | `ruff check backend` and `eslint src` both exit 0 with 0 warnings |
+| REG-N1-08 POST /setup 204 + stage advance | PASS | Covered by existing `test_setup.py` unit tests; 332 BE pass |
+| REG-N1-09 state.json atomic write | PASS | Covered by existing `test_state_manager.py` unit tests |
+| REG-N1-10 watchdog stall → fresh session | PASS | Covered by existing `test_watchdog.py` unit tests |
+| REG-N1-11 SSE subscription no crash | PASS | Covered by existing `test_opencode_client.py` unit tests |
+| REG-N1-12 prompt_async parts format | PASS | Covered by existing `test_opencode_client.py` unit tests |
+
+### Night 2 structural gate
+
+All structural assertions run in `qa/structural/test_n2_structural.py` — 63 tests, all pass.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| A. Plan schema (REG-N2-01) | PASS | `PLAN_SCHEMA` has `sections[{id,title,hypothesis}]`, 3–6 entries, all required fields; validated 3/6/7 section counts |
+| B. Zero OpenCode calls — backend-only endpoints (REG-N2-02) | PASS | Spy (`MagicMock`) attached to `orchestrator._client.prompt`; zero calls confirmed for `POST /plan/update`, `POST /section/:id/accept`, `POST /section/:id/drop`, `GET /export`, `GET /file` |
+| C. Frontmatter parser shape (REG-N2-03) | PASS | `parse_frontmatter` returns `{frontmatter, body, parse_error}`; fields extracted correctly; malformed YAML sets `parse_error=True`, no raise; missing file returns fail-safe result |
+| D. Architecture boundaries carry-forward (REG-N1-02/03) | PASS | See above |
+| E. Forced-failure hook (REG-N2-04) | PASS | `QA_FORCE_SECTION_FAIL=1` + full triplet → `section.failed` emitted with `section_id`; `.md` removed from disk; hook unset + full triplet → `section.proposed` |
+| F. State transitions (REG-N2-05) | PASS | `GET /state` returns `stage`, `plan`, `profile` fields; does not expose `opencode_session_id`; `POST /plan/update` changes plan synchronously and writes `plan.json`; `POST /section/:id/accept` transitions `proposed→accepted` |
+| G. Export correctness (REG-N2-06) | PASS | Accepted sections included; dropped/proposed excluded; zero-section plan returns default doc; multi-section concatenation works; `Content-Disposition: attachment; filename="brief.md"`; zero OpenCode calls |
+| H. data-testid completeness Night 2 (REG-N2-07) | PASS | `plan-view`, `plan-section-list`, `plan-accept-btn`, `plan-turn-input`, `plan-turn-submit`, `build-view`, `export-btn`, `section-code`, `section-interpretation` all present in production frontend files |
+| make test (486 tests) | PASS | 332 BE + 154 FE = 486 total; all pass |
+| make lint | PASS | ruff + eslint exit 0 |
+
+### Defects found
+
+None. All structural assertions pass. No defects logged.
+
+### Run note — POST /setup empty aim contract observation
+
+The API contract specifies a 422 `invalid_aim` error for empty aim. FastAPI's multipart form parser silently treats a truly-empty aim string (`""`) as a missing required field and returns a framework-level 422 with `detail[].type="missing"` — not the custom `"error":"invalid_aim"` envelope. The router's custom error fires correctly for whitespace-only aim. This is a narrow gap in the contract surface: the custom error envelope is not returned for the zero-character case. Logged as an observation only (not a blocking defect) because: (a) the frontend already validates non-empty input before submission, (b) the 422 status code is correct, (c) this gap existed in Night 1. A regression check was added to assert whitespace-only aim → custom `invalid_aim` error.
+
+### Overall: PASS
+
+Night 2 QA gate: PASS — ready for morning human review (develop → main promotion).
+
+---
+
+## Regression suite — Night 2 standing checks
+
+| ID | Check | Location | Asserts |
+|----|-------|----------|---------|
+| REG-N2-01 | plan schema valid | `qa/structural/test_n2_structural.py` | `PLAN_SCHEMA` has `sections[{id,title,hypothesis}]`; 3-6 entries; minItems=3 enforced; maxItems=6 enforced |
+| REG-N2-02 | zero OpenCode calls — backend-only endpoints | `qa/structural/test_n2_structural.py` | spy count unchanged after `/plan/update`, `/section/*/accept`, `/section/*/drop`, `/export`, `/file` |
+| REG-N2-03 | frontmatter parser correctness | `qa/structural/test_n2_structural.py` | `parse_frontmatter` returns fields; malformed YAML handled safely; `parse_section_file` separates frontmatter from body; missing file is fail-safe |
+| REG-N2-04 | forced-failure hook fires section.failed | `qa/structural/test_n2_structural.py` | `QA_FORCE_SECTION_FAIL=1` → `section.failed` with `section_id`; `.md` removed; hook unset → `section.proposed` (regression guard) |
+| REG-N2-05 | state transitions correct | `qa/structural/test_n2_structural.py` | `GET /state` has `stage`, `plan`, `profile`; no `opencode_session_id`; `plan/update` → state.json changes synchronously; `section/accept` → `proposed→accepted` |
+| REG-N2-06 | export correctness | `qa/structural/test_n2_structural.py` | accepted sections in output; dropped/proposed excluded; zero-section default doc returned; zero OpenCode calls; `Content-Disposition: attachment; filename="brief.md"` |
+| REG-N2-07 | data-testid completeness Night 2 | `qa/structural/test_n2_structural.py` | `plan-view`, `plan-section-list`, `plan-accept-btn`, `plan-turn-input`, `plan-turn-submit`, `build-view`, `export-btn`, `section-code`, `section-interpretation` present in production frontend; Night 1 testids also present; total >= 30 unique testids |
