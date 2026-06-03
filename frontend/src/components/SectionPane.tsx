@@ -17,6 +17,7 @@ export interface SectionPaneProps {
   section: Section;
   onAccept: (id: string) => void;
   onDrop: (id: string) => void;
+  onRevise?: (id: string, text: string) => Promise<void> | void;
   /** Optional: re-fetch trigger key from file.ready events */
   fileReadyPath?: string | null;
 }
@@ -31,6 +32,7 @@ export default function SectionPane({
   section,
   onAccept,
   onDrop,
+  onRevise,
   fileReadyPath,
 }: SectionPaneProps) {
   const [artefacts, setArtefacts] = useState<ArtefactState>({
@@ -41,6 +43,9 @@ export default function SectionPane({
   const [artefactsLoaded, setArtefactsLoaded] = useState(false);
   const [codeExpanded, setCodeExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [revisionText, setRevisionText] = useState("");
+  const [isRevising, setIsRevising] = useState(false);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Collapse code when the section changes so stale expand state doesn't carry over.
@@ -117,6 +122,23 @@ export default function SectionPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section.py_path, section.md_path, fileReadyPath]);
 
+  async function handleRevise() {
+    const text = revisionText.trim();
+    if (!text || isRevising || onRevise == null) return;
+
+    setIsRevising(true);
+    setRevisionError(null);
+    try {
+      await onRevise(section.id, text);
+      setRevisionText("");
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string };
+      setRevisionError(apiErr.message ?? "Could not revise this section.");
+    } finally {
+      setIsRevising(false);
+    }
+  }
+
   return (
     <div data-testid="section-pane" className="border border-[#ddd5c5] rounded-lg bg-white p-6">
       <h3 data-testid="section-pane-title" className="text-lg font-semibold text-[#1a1a17] mb-4">
@@ -189,27 +211,67 @@ export default function SectionPane({
             </div>
           )}
 
-          {/* Accept / Drop actions (proposed status only, enabled once artefacts load) */}
+          {/* Section-scoped revision + Accept / Drop actions */}
           {section.status === "proposed" && (
-            <div className="mt-6 flex gap-3">
-              <button
-                data-testid="section-accept-btn"
-                type="button"
-                onClick={() => onAccept(section.id)}
-                disabled={!artefactsLoaded}
-                className="bg-[#b8732a] text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#a06120] disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Accept &amp; continue
-              </button>
-              <button
-                data-testid="section-drop-btn"
-                type="button"
-                onClick={() => onDrop(section.id)}
-                disabled={!artefactsLoaded}
-                className="border border-[#c8563d] text-[#c8563d] rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#c8563d]/5 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Drop section
-              </button>
+            <div className="mt-6 flex flex-col gap-3">
+              <div className="flex gap-2">
+                <input
+                  data-testid="section-revise-input"
+                  type="text"
+                  value={revisionText}
+                  onChange={(e) => {
+                    setRevisionText(e.target.value);
+                    if (revisionError !== null) setRevisionError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void handleRevise();
+                    }
+                  }}
+                  placeholder="Ask for a revision to this section..."
+                  disabled={!artefactsLoaded || isRevising || onRevise == null}
+                  className="flex-1 border border-[#ddd5c5] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30 disabled:opacity-50"
+                />
+                <button
+                  data-testid="section-revise-btn"
+                  type="button"
+                  onClick={() => void handleRevise()}
+                  disabled={
+                    !artefactsLoaded || isRevising || onRevise == null || revisionText.trim() === ""
+                  }
+                  className="border border-[#b8732a] text-[#b8732a] rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#b8732a]/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Revise
+                </button>
+              </div>
+              {revisionError !== null && (
+                <div
+                  data-testid="section-revise-error"
+                  className="text-sm text-[#a85c4a] bg-[#f9f0ed] border border-[#e8cfc8] rounded px-3 py-2"
+                >
+                  {revisionError}
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  data-testid="section-accept-btn"
+                  type="button"
+                  onClick={() => onAccept(section.id)}
+                  disabled={!artefactsLoaded}
+                  className="bg-[#b8732a] text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#a06120] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Accept &amp; continue
+                </button>
+                <button
+                  data-testid="section-drop-btn"
+                  type="button"
+                  onClick={() => onDrop(section.id)}
+                  disabled={!artefactsLoaded}
+                  className="border border-[#c8563d] text-[#c8563d] rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#c8563d]/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Drop section
+                </button>
+              </div>
             </div>
           )}
 

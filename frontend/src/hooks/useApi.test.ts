@@ -121,6 +121,29 @@ describe("api.postTurn", () => {
     );
   });
 
+  it("includes section_id when targeting a building-stage section revision", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 204,
+        json: () => Promise.resolve(null),
+        text: () => Promise.resolve(""),
+      })
+    );
+
+    await api.postTurn("use a grouped chart", "sec_02");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/turn",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ text: "use a grouped chart", section_id: "sec_02" }),
+      })
+    );
+  });
+
   it("throws an ApiError on non-2xx response", async () => {
     vi.stubGlobal(
       "fetch",

@@ -318,24 +318,25 @@ class Orchestrator:
             name="re-plan-turn",
         )
 
-    async def redirect_section(self, text: str) -> None:
+    async def redirect_section(self, text: str, section_id: str | None = None) -> None:
         """Called by POST /turn during the building stage (Stage 4b).
 
-        Fires a redirect turn for the currently-building section.  The user's
-        bottom-bar text is incorporated into a redirect prompt that instructs
-        OpenCode to discard any draft artefacts and rebuild from scratch.
+        Fires a redirect turn for a specific section.  The user's natural-language
+        instruction is incorporated into a redirect prompt that tells OpenCode
+        to discard any draft artefacts and rebuild from scratch.
 
         Steps:
         1. Validate: session ID must be set and stage must be ``"building"``.
-        2. Find the active section (first with ``status="building"`` in plan).
+        2. Find the requested section, or fall back to the active building section.
         3. Delete any draft files for that section from disk.
         4. Build the redirect prompt via ``build_redirect_prompt()``.
         5. Arm the watchdog.
         6. Fire-and-forget ``_run_section_turn()``.
 
         Args:
-            text: The user's bottom-bar redirect instruction (already stripped
+            text: The user's redirect instruction (already stripped
                 by the router).
+            section_id: Optional exact section ID supplied by the UI.
 
         Raises:
             ValueError: If no session ID is stored in state.
@@ -354,21 +355,23 @@ class Orchestrator:
                 f"redirect_section only valid in building stage; current stage: {current_stage!r}"
             )
 
-        # Find the active (building) section.
         plan: list[dict[str, Any]] = state.get("plan") or []
-        building_section: dict[str, Any] | None = next(
-            (s for s in plan if s.get("status") == "building"),
-            None,
-        )
-        if building_section is None:
-            logger.debug("redirect_section: no section with status=building in plan; no-op")
+        target_section = self._select_redirect_target(plan, section_id)
+        if target_section is None:
+            logger.debug(
+                "redirect_section: no redirectable section matched section_id=%r; no-op",
+                section_id,
+            )
             return
 
-        section_id: str = building_section.get("id", "")
-        title: str = building_section.get("title", "")
-        hypothesis: str = building_section.get("hypothesis", "")
-        section_index: int = building_section.get("index", 1)
-        slug: str = building_section.get("slug", "")
+        section_id: str = target_section.get("id", "")
+        title: str = target_section.get("title", "")
+        hypothesis: str = target_section.get("hypothesis", "")
+        section_index: int = target_section.get("index") or next(
+            (i + 1 for i, s in enumerate(plan) if s.get("id") == section_id),
+            1,
+        )
+        slug: str = target_section.get("slug", "")
 
         if not slug:
             from backend.prompts.section import _make_slug  # noqa: PLC0415
@@ -383,9 +386,17 @@ class Orchestrator:
         # This guarantees clean state even if OpenCode partially wrote them.
         nn = str(section_index).zfill(2)
         base_name = f"sec_{nn}_{slug}"
-        for sub_dir, ext in [("analyses", ".py"), ("charts", ".png"), ("sections", ".md")]:
-            draft_path = self._workspace_root / sub_dir / f"{base_name}{ext}"
-            if draft_path.exists():
+        draft_paths = {
+            self._workspace_root / sub_dir / f"{base_name}{ext}"
+            for sub_dir, ext in [("analyses", ".py"), ("charts", ".png"), ("sections", ".md")]
+        }
+        for key in ("py_path", "png_path", "md_path"):
+            rel_path = target_section.get(key)
+            if rel_path:
+                draft_paths.add(self._workspace_root / rel_path)
+
+        for draft_path in draft_paths:
+            if draft_path.exists() and draft_path.is_file():
                 try:
                     draft_path.unlink()
                     logger.debug("redirect_section: deleted draft %s", draft_path)
@@ -395,6 +406,31 @@ class Orchestrator:
                         draft_path,
                         exc,
                     )
+
+        # Move the section back into the active build state before dispatching
+        # the prompt, so GET /state and the session.idle handler agree on which
+        # section is being rebuilt.
+        updated_plan = [
+            {
+                **s,
+                "status": "building",
+                "index": section_index,
+                "slug": slug,
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            }
+            if s.get("id") == section_id
+            else s
+            for s in plan
+        ]
+        self._state_manager.update(plan=updated_plan)
+
+        ts = int(time.time() * 1000)
+        await self._bus.publish(
+            "section.building",
+            {"section_id": section_id, "title": title, "ts": ts},
+        )
 
         # Build the redirect prompt.
         prompt_text = self._build_redirect_prompt(
@@ -988,6 +1024,32 @@ class Orchestrator:
                 f"Write analyses/sec_{nn}_*.py, charts/sec_{nn}_*.png, "
                 f"sections/sec_{nn}_*.md with YAML frontmatter."
             )
+
+    @staticmethod
+    def _select_redirect_target(
+        plan: list[dict[str, Any]],
+        section_id: str | None,
+    ) -> dict[str, Any] | None:
+        """Select which section a building-stage turn should revise.
+
+        The UI passes ``section_id`` for proposed-section revisions. If absent,
+        preserve the existing active-build behavior for older callers.
+        """
+        redirectable_statuses = {"building", "proposed", "accepted", "failed"}
+        if section_id:
+            return next(
+                (
+                    s
+                    for s in plan
+                    if s.get("id") == section_id and s.get("status") in redirectable_statuses
+                ),
+                None,
+            )
+
+        return next(
+            (s for s in plan if s.get("status") == "building"),
+            next((s for s in plan if s.get("status") == "proposed"), None),
+        )
 
     def _build_redirect_prompt(
         self,

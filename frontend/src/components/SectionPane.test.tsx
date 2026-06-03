@@ -65,6 +65,7 @@ const MOCK_MD_CONTENT = `Churn rate is 14.3% for the cohort.`;
 describe("SectionPane", () => {
   const mockOnAccept = vi.fn();
   const mockOnDrop = vi.fn();
+  const mockOnRevise = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -175,13 +176,22 @@ describe("SectionPane", () => {
   // ── test_shows_accept_and_drop_when_proposed ─────────────────────────────
 
   it("test_shows_accept_and_drop_when_proposed — accept/drop buttons visible for proposed section", async () => {
-    render(<SectionPane section={PROPOSED_SECTION} onAccept={mockOnAccept} onDrop={mockOnDrop} />);
+    render(
+      <SectionPane
+        section={PROPOSED_SECTION}
+        onAccept={mockOnAccept}
+        onDrop={mockOnDrop}
+        onRevise={mockOnRevise}
+      />
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("section-accept-btn")).toBeInTheDocument();
     });
 
     expect(screen.getByTestId("section-drop-btn")).toBeInTheDocument();
+    expect(screen.getByTestId("section-revise-input")).toBeInTheDocument();
+    expect(screen.getByTestId("section-revise-btn")).toBeInTheDocument();
   });
 
   // ── test_accept_calls_onAccept ────────────────────────────────────────────
@@ -212,6 +222,80 @@ describe("SectionPane", () => {
     await user.click(screen.getByTestId("section-drop-btn"));
     expect(mockOnDrop).toHaveBeenCalledOnce();
     expect(mockOnDrop).toHaveBeenCalledWith("sec-01");
+  });
+
+  it("test_revise_calls_onRevise — clicking revise calls onRevise with section id and text", async () => {
+    const user = userEvent.setup();
+    mockOnRevise.mockResolvedValue(undefined);
+    render(
+      <SectionPane
+        section={PROPOSED_SECTION}
+        onAccept={mockOnAccept}
+        onDrop={mockOnDrop}
+        onRevise={mockOnRevise}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("section-revise-input")).not.toBeDisabled();
+    });
+
+    await user.type(screen.getByTestId("section-revise-input"), "use grouped bars");
+    await user.click(screen.getByTestId("section-revise-btn"));
+
+    expect(mockOnRevise).toHaveBeenCalledOnce();
+    expect(mockOnRevise).toHaveBeenCalledWith("sec-01", "use grouped bars");
+  });
+
+  it("test_revise_clears_on_success — revision input clears after onRevise resolves", async () => {
+    const user = userEvent.setup();
+    mockOnRevise.mockResolvedValue(undefined);
+    render(
+      <SectionPane
+        section={PROPOSED_SECTION}
+        onAccept={mockOnAccept}
+        onDrop={mockOnDrop}
+        onRevise={mockOnRevise}
+      />
+    );
+
+    const input = screen.getByTestId("section-revise-input") as HTMLInputElement;
+    await waitFor(() => {
+      expect(input).not.toBeDisabled();
+    });
+
+    await user.type(input, "tighten the interpretation");
+    await user.click(screen.getByTestId("section-revise-btn"));
+
+    await waitFor(() => {
+      expect(input.value).toBe("");
+    });
+  });
+
+  it("test_revise_error — failed revision preserves input and shows error", async () => {
+    const user = userEvent.setup();
+    mockOnRevise.mockRejectedValue(new Error("Agent is busy."));
+    render(
+      <SectionPane
+        section={PROPOSED_SECTION}
+        onAccept={mockOnAccept}
+        onDrop={mockOnDrop}
+        onRevise={mockOnRevise}
+      />
+    );
+
+    const input = screen.getByTestId("section-revise-input") as HTMLInputElement;
+    await waitFor(() => {
+      expect(input).not.toBeDisabled();
+    });
+
+    await user.type(input, "use grouped bars");
+    await user.click(screen.getByTestId("section-revise-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("section-revise-error")).toHaveTextContent("Agent is busy.");
+    });
+    expect(input.value).toBe("use grouped bars");
   });
 
   // ── test_shows_file_error_on_fetch_failure ────────────────────────────────

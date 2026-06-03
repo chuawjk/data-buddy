@@ -7,10 +7,6 @@
 //   ├── section list [data-testid="section-list"]
 //   │   └── section-row-{id}, section-status-{id} per section
 //   ├── SectionPane [data-testid="section-pane"] (active section only)
-//   └── BottomBar [data-testid="build-bottom-bar"]
-//       ├── input [data-testid="bottom-bar-input"]
-//       ├── send [data-testid="bottom-bar-send"]
-//       └── error [data-testid="turn-busy-error"]
 //
 // Coded against docs/contracts/API_CONTRACT.html — never backend internals.
 
@@ -53,9 +49,6 @@ function getSectionPanes(sections: Section[]): Section[] {
 
 export default function BuildView({ sections: initialSections = [], onSectionsChange }: BuildViewProps) {
   const [sections, setSections] = useState<Section[]>(initialSections);
-  const [redirectText, setRedirectText] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [turnError, setTurnError] = useState<string | null>(null);
   const [fileReadyPath, setFileReadyPath] = useState<string | null>(null);
 
   // Hydrate sections from GET /state on mount (covers page refresh with pre-existing sections)
@@ -166,33 +159,18 @@ export default function BuildView({ sections: initialSections = [], onSectionsCh
     }
   }, [onSectionsChange]);
 
-  const handleSend = useCallback(async () => {
-    const text = redirectText.trim();
-    if (!text || isSending) return;
-    setIsSending(true);
-    setTurnError(null);
-    try {
-      await api.postTurn(text);
-      setRedirectText("");
-    } catch (err: unknown) {
-      const apiErr = err as { error?: string; message?: string };
-      if (apiErr.error === "turn_busy") {
-        setTurnError(apiErr.message ?? "Agent is busy. Please wait.");
-      }
-      // Non-busy errors: preserve input, no error shown (agent will recover)
-    } finally {
-      setIsSending(false);
-    }
-  }, [redirectText, isSending]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
-        void handleSend();
-      }
-    },
-    [handleSend]
-  );
+  const handleRevise = useCallback(async (id: string, text: string) => {
+    await api.postTurn(text, id);
+    setSections((prev) => {
+      const next = prev.map((s) =>
+        s.id === id
+          ? { ...s, status: "building" as const, py_path: null, png_path: null, md_path: null }
+          : s
+      );
+      onSectionsChange?.(next);
+      return next;
+    });
+  }, [onSectionsChange]);
 
   const sectionPanes = getSectionPanes(sections);
 
@@ -232,48 +210,10 @@ export default function BuildView({ sections: initialSections = [], onSectionsCh
           section={section}
           onAccept={(id) => void handleAccept(id)}
           onDrop={(id) => void handleDrop(id)}
+          onRevise={(id, text) => handleRevise(id, text)}
           fileReadyPath={fileReadyPath}
         />
       ))}
-
-      {/* Bottom bar */}
-      <div
-        data-testid="build-bottom-bar"
-        className="bg-white border border-[#ddd5c5] rounded-lg px-4 py-3 flex gap-3 items-center"
-      >
-        <input
-          data-testid="bottom-bar-input"
-          type="text"
-          value={redirectText}
-          onChange={(e) => {
-            setRedirectText(e.target.value);
-            if (turnError !== null) setTurnError(null);
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Comment on this section, or ask the agent to revise…"
-          disabled={isSending}
-          className="flex-1 border border-[#ddd5c5] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30 disabled:opacity-50"
-        />
-        <button
-          data-testid="bottom-bar-send"
-          type="button"
-          onClick={() => void handleSend()}
-          disabled={redirectText.trim() === "" || isSending}
-          className="bg-[#b8732a] text-white rounded-lg px-5 py-2.5 text-sm font-medium hover:bg-[#a06120] disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Send
-        </button>
-      </div>
-
-      {/* Turn busy error */}
-      {turnError !== null && (
-        <div
-          data-testid="turn-busy-error"
-          className="text-sm text-[#a85c4a] bg-[#f9f0ed] border border-[#e8cfc8] rounded px-3 py-2"
-        >
-          {turnError}
-        </div>
-      )}
     </div>
   );
 }
