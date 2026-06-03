@@ -166,3 +166,43 @@ Night 2 QA gate: PASS — ready for morning human review (develop → main promo
 | REG-N2-05 | state transitions correct | `qa/structural/test_n2_structural.py` | `GET /state` has `stage`, `plan`, `profile`; no `opencode_session_id`; `plan/update` → state.json changes synchronously; `section/accept` → `proposed→accepted` |
 | REG-N2-06 | export correctness | `qa/structural/test_n2_structural.py` | accepted sections in output; dropped/proposed excluded; zero-section default doc returned; zero OpenCode calls; `Content-Disposition: attachment; filename="brief.md"` |
 | REG-N2-07 | data-testid completeness Night 2 | `qa/structural/test_n2_structural.py` | `plan-view`, `plan-section-list`, `plan-accept-btn`, `plan-turn-input`, `plan-turn-submit`, `build-view`, `export-btn`, `section-code`, `section-interpretation` present in production frontend; Night 1 testids also present; total >= 30 unique testids |
+
+---
+
+## Post-Night-2 QA process defects — 2026-06-03
+
+Three structural gaps identified after Night 2 QA passed despite real integration issues being present in the codebase.
+
+**Gap 1 — Profile schema validation was definition-only, not output-validated**
+
+| Field | Value |
+|-------|-------|
+| ID | QA-POST-N2-01 |
+| Symptom | `profile.shape.rows` and `profile.shape.columns` rendered as `undefined` in the frontend shape strip. Agent wrote `total_rows`/`total_columns` instead of schema-specified `rows`/`columns`. |
+| Root cause | REG-N1-01 checked that `PROFILE_SCHEMA` *defines* `rows`/`columns` as required. It never validated actual agent output against the schema. The orchestrator's `_handle_profile_idle` did a soft top-level key check (`shape`, `columns`, `flags`) but did not call `jsonschema.validate()`. The field-name deviation was invisible to all existing checks. |
+| Fix reference | Frontend: `??` fallback added to `ProfileShape` type and `ProfileView` shape strip. Structural gate: `test_post_n2_contract.py` REG-POST-N2-01/02/03. |
+| Regression check added | REG-POST-N2-01: canonical fixture passes `jsonschema.validate(PROFILE_SCHEMA)`. REG-POST-N2-02: deviation fixture with `total_rows`/`total_columns` *fails* schema validation. REG-POST-N2-03: `GET /state` with both variants returns shape accessible via `rows ?? total_rows`. |
+| State | Closed |
+
+**Gap 2 — `section-build.spec.ts` was orphaned outside Playwright's testDir**
+
+| Field | Value |
+|-------|-------|
+| ID | QA-POST-N2-02 |
+| Symptom | `section-build.spec.ts` lived at `frontend/e2e/` while Playwright's `testDir` is `./tests`. The spec never ran. It also asserted a `build-bottom-bar` testid that was removed post-Night-2; the failure was silent. |
+| Root cause | Spec created in `e2e/` instead of `tests/e2e/`. No check verified all `*.spec.ts` files were inside `testDir`. |
+| Fix reference | Moved to `frontend/tests/e2e/`. Stale `build-bottom-bar` test replaced with `section-revise-input`/`section-revise-btn` assertions. |
+| Regression check added | REG-POST-N2-04: `section-revise-input` and `section-revise-btn` present in `SectionPane.tsx`; `build-bottom-bar` absent. REG-POST-N2-05: no `*.spec.ts` files exist outside `frontend/tests/e2e/`. |
+| State | Closed |
+
+---
+
+## Regression suite — Post-Night-2 standing checks
+
+| ID | Check | Location | Asserts |
+|----|-------|----------|---------|
+| REG-POST-N2-01 | canonical profile passes PROFILE_SCHEMA | `qa/structural/test_post_n2_contract.py` | `profile_canonical.json` passes `jsonschema.validate(PROFILE_SCHEMA)` |
+| REG-POST-N2-02 | agent deviation fails PROFILE_SCHEMA | `qa/structural/test_post_n2_contract.py` | `profile_agent_deviation.json` (with `total_rows`/`total_columns`) raises `ValidationError` — schema is strict enough to catch field-name deviations |
+| REG-POST-N2-03 | GET /state shape accessible for both variants | `qa/structural/test_post_n2_contract.py` | Both canonical and deviation profiles stored in state return non-None values for `shape.rows ?? shape.total_rows` and `shape.columns ?? shape.total_columns` |
+| REG-POST-N2-04 | per-section revision testids present; global bottom bar absent | `qa/structural/test_post_n2_contract.py` | `section-revise-input`, `section-revise-btn` in `SectionPane.tsx`; `build-bottom-bar` absent |
+| REG-POST-N2-05 | no stray e2e specs outside testDir | `qa/structural/test_post_n2_contract.py` | Zero `*.spec.ts` files outside `frontend/tests/e2e/`; all specs are in Playwright's configured `testDir` |

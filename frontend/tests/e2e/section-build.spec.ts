@@ -127,12 +127,36 @@ test.describe("@N2-S16 Section build screen — structural gate", () => {
     await expect(page.getByTestId("section-building-spinner")).toBeVisible();
   });
 
-  // ── bottom bar present ────────────────────────────────────────────────────
+  // ── per-section revision controls present (global bottom bar was removed post-Night-2) ──
 
-  test("build-bottom-bar present with input and send button", async ({ page }) => {
-    await expect(page.getByTestId("build-bottom-bar")).toBeVisible();
-    await expect(page.getByTestId("bottom-bar-input")).toBeVisible();
-    await expect(page.getByTestId("bottom-bar-send")).toBeVisible();
+  test("section-revise-input and section-revise-btn present on proposed section", async ({ page }) => {
+    const proposedOnlyState = {
+      ...MOCK_STATE,
+      plan: [
+        {
+          id: "sec-01",
+          title: "Cohort overview",
+          hypothesis: "Check churn baseline",
+          status: "proposed",
+          py_path: "analyses/01_cohort.py",
+          png_path: "charts/01_cohort.png",
+          md_path: "sections/01_cohort.md",
+        },
+      ],
+    };
+
+    await page.route("**/api/state", (route) => {
+      void route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(proposedOnlyState),
+      });
+    });
+
+    await page.goto("/");
+
+    await expect(page.getByTestId("section-revise-input")).toBeVisible();
+    await expect(page.getByTestId("section-revise-btn")).toBeVisible();
   });
 
   // ── section-accept-btn and section-drop-btn visible for proposed section ──

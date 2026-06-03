@@ -1,0 +1,22 @@
+{
+  "shape": {
+    "rows": 100,
+    "columns": 9,
+    "target": "churned"
+  },
+  "columns": [
+    {
+      "name": "customer_id",
+      "type": "text",
+      "flags": ["high_cardinality", "id_like"],
+      "summary": "Unique customer identifier for each record."
+    },
+    {
+      "name": "churned",
+      "type": "categorical",
+      "flags": ["low_cardinality"],
+      "summary": "Binary churn indicator that appears to be the outcome of interest."
+    }
+  ],
+  "flags": ["small_dataset", "binary_target_present"]
+}
