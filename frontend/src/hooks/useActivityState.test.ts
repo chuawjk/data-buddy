@@ -115,4 +115,61 @@ describe("useActivityState", () => {
     dispatch({ type: "stage.changed", stage: "profiling", ts: 1 });
     expect(result.current.isRunning).toBe(false);
   });
+
+  it("initial log is empty", () => {
+    const { result } = renderHook(() => useActivityState());
+    expect(result.current.log).toEqual([]);
+  });
+
+  it("tool.bash_done appends a ✓-prefixed trimmed command to log", () => {
+    const { result } = renderHook(() => useActivityState());
+    dispatch({ type: "tool.bash_done", command: "ls -la", exit_code: 0, elapsed_ms: 10, ts: 1 });
+    expect(result.current.log).toEqual(["✓ ls -la"]);
+  });
+
+  it("tool.file_written appends the file path to log", () => {
+    const { result } = renderHook(() => useActivityState());
+    dispatch({ type: "tool.file_written", file: "workspace/sections/s1.md", op: "add", additions: 5, deletions: 0, elapsed_ms: 5, ts: 1 });
+    expect(result.current.log).toEqual(["workspace/sections/s1.md"]);
+  });
+
+  it("commands longer than 40 chars are trimmed with ellipsis", () => {
+    const { result } = renderHook(() => useActivityState());
+    const longCmd = "python analyze_data.py --input data.csv --output results.json";
+    dispatch({ type: "tool.bash_done", command: longCmd, exit_code: 0, elapsed_ms: 100, ts: 1 });
+    expect(result.current.log[0]).toHaveLength(42); // "✓ " + 39 chars + "…"
+    expect(result.current.log[0].endsWith("…")).toBe(true);
+  });
+
+  it("log is preserved after session.idle", () => {
+    const { result } = renderHook(() => useActivityState());
+    dispatch({ type: "tool.bash_done", command: "ls", exit_code: 0, elapsed_ms: 1, ts: 1 });
+    dispatch({ type: "session.idle", ts: 2 });
+    expect(result.current.log).toEqual(["✓ ls"]);
+  });
+
+  it("log resets on first event after session.idle", () => {
+    const { result } = renderHook(() => useActivityState());
+    dispatch({ type: "tool.bash_done", command: "ls", exit_code: 0, elapsed_ms: 1, ts: 1 });
+    dispatch({ type: "session.idle", ts: 2 });
+    dispatch({ type: "tool.bash_done", command: "pwd", exit_code: 0, elapsed_ms: 1, ts: 3 });
+    expect(result.current.log).toEqual(["✓ pwd"]);
+  });
+
+  it("log is capped at 20 entries", () => {
+    const { result } = renderHook(() => useActivityState());
+    for (let i = 0; i < 25; i++) {
+      dispatch({ type: "tool.bash_done", command: `cmd${i}`, exit_code: 0, elapsed_ms: 1, ts: i });
+    }
+    expect(result.current.log).toHaveLength(20);
+    expect(result.current.log[0]).toBe("✓ cmd5");
+    expect(result.current.log[19]).toBe("✓ cmd24");
+  });
+
+  it("mixed bash and file events produce interleaved log entries", () => {
+    const { result } = renderHook(() => useActivityState());
+    dispatch({ type: "tool.bash_done", command: "run.sh", exit_code: 0, elapsed_ms: 1, ts: 1 });
+    dispatch({ type: "tool.file_written", file: "out.csv", op: "add", additions: 10, deletions: 0, elapsed_ms: 1, ts: 2 });
+    expect(result.current.log).toEqual(["✓ run.sh", "out.csv"]);
+  });
 });

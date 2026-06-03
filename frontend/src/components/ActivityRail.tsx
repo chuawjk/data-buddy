@@ -1,9 +1,15 @@
+import { useEffect, useRef } from "react";
 import { useActivityState } from "../hooks/useActivityState";
 
 const DOTS = [".", "..", "..."] as const;
 
 export default function ActivityRail() {
-  const { isRunning, bashCount, fileCount, dotPhase } = useActivityState();
+  const { isRunning, bashCount, fileCount, dotPhase, log } = useActivityState();
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [log]);
 
   const hasActivity = bashCount > 0 || fileCount > 0;
 
@@ -37,6 +43,20 @@ export default function ActivityRail() {
           className="text-xs text-[#9b9489] mt-1"
         >
           {summaryText}
+        </div>
+      )}
+
+      {log.length > 0 && (
+        <div
+          data-testid="activity-log"
+          className="mt-2 max-h-48 overflow-y-auto rounded bg-[#1e1c1a] p-2 font-mono text-xs text-[#c6bfb0] space-y-0.5"
+        >
+          {log.map((entry, i) => (
+            <div key={i} className="truncate leading-5">
+              {entry}
+            </div>
+          ))}
+          <div ref={logEndRef} />
         </div>
       )}
     </div>

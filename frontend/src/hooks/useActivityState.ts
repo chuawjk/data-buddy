@@ -7,6 +7,7 @@ export interface ActivityRailState {
   bashCount: number;
   fileCount: number;
   dotPhase: 0 | 1 | 2;
+  log: string[];
 }
 
 const INITIAL: ActivityRailState = {
@@ -14,7 +15,20 @@ const INITIAL: ActivityRailState = {
   bashCount: 0,
   fileCount: 0,
   dotPhase: 0,
+  log: [],
 };
+
+const LOG_CAP = 20;
+const CMD_MAX = 40;
+
+function trimCmd(cmd: string): string {
+  return cmd.length > CMD_MAX ? cmd.slice(0, CMD_MAX - 1) + "…" : cmd;
+}
+
+function appendLog(existing: string[], entry: string): string[] {
+  const next = [...existing, entry];
+  return next.length > LOG_CAP ? next.slice(next.length - LOG_CAP) : next;
+}
 
 export function useActivityState(): ActivityRailState {
   const [state, setState] = useState<ActivityRailState>(INITIAL);
@@ -32,10 +46,18 @@ export function useActivityState(): ActivityRailState {
           const base = resetting ? { ...INITIAL, isRunning: true } : { ...prev, isRunning: true };
 
           if (event.type === "tool.bash_done") {
-            return { ...base, bashCount: base.bashCount + 1 };
+            return {
+              ...base,
+              bashCount: base.bashCount + 1,
+              log: appendLog(base.log, `✓ ${trimCmd(event.command as string)}`),
+            };
           }
           if (event.type === "tool.file_written") {
-            return { ...base, fileCount: base.fileCount + 1 };
+            return {
+              ...base,
+              fileCount: base.fileCount + 1,
+              log: appendLog(base.log, event.file as string),
+            };
           }
           return base;
         });
@@ -45,6 +67,7 @@ export function useActivityState(): ActivityRailState {
         wasIdleRef.current = true;
         setState((prev) => ({ ...prev, isRunning: false, dotPhase: 0 }));
         break;
+
       default:
         break;
     }
