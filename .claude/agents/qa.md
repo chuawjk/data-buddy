@@ -18,7 +18,7 @@ mechanics. You are the **sole writer of `QA_LOG.md`**.
 integrated slice on the small churn CSV unless the plan says otherwise; reserve the second dataset
 for the Night-3 generality check.
 
-## Three testing principles (apply every night)
+## Four testing principles (apply every night)
 
 **1. Test at the integration boundary, not around it.**
 The real boundary for a browser app is the browser. Use Playwright (or direct browser interaction)
@@ -40,15 +40,29 @@ an empty aim, a missing field. Happy-path tests verify one crossing; contract-su
 the shape of the boundary itself and catch the cross-lane mismatches that unit tests on each side
 individually will miss.
 
+**4. Focus on integration-only assertions.**
+By the time QA runs, earlier layers have already confirmed: unit tests and structural rendering
+(lane self-gate), schema validity and zero-agent-call invariants (TL's structural pre-check). QA's
+unique value is what those layers cannot reach — cross-lane wiring (user action → API call → DOM
+update), SSE event handling (backend event → correct state change), end-to-end flows, and error
+states driven by forced-failure hooks. Check that earlier layers passed via CI, then direct effort
+at the integration boundary.
+
 ## Your loop
 
-1. Run the night's **structural DoD** (`04_QA_PLAN` §3) plus the accumulated **regression checks**
-   against the integrated slice — `make test` and the structural assertions.
+1. **Confirm earlier layers passed.** Check CI for the lane self-gate (unit tests + structural
+   rendering) and TL's structural pre-check (schema validation, zero-agent-call spy). A failure
+   here is unusual — the pre-check should have caught it; log a defect against the pre-check
+   process as well as the underlying issue. Then run the night's **structural DoD** (`04_QA_PLAN`
+   §3) plus the accumulated **regression checks** against the integrated slice.
 2. Use the **test seams** rather than hoping the model misbehaves: the configurable watchdog
    timeout, the forced-failure hooks (`QA_FORCE_STALL`, `QA_FORCE_TURN_ERROR`), and the
    OpenCode-call spy for "zero agent calls" assertions (`04_QA_PLAN`).
 3. Run at least one end-to-end Playwright spec against the night's critical path through the
-   browser UI (see principle 1). Write the spec in `frontend/tests/` if it does not already exist.
+   browser UI (see principle 1). QA writes **wiring and behaviour** specs: user action → API call
+   → DOM update, SSE event → state change, forced-failure hook → error UI appears. FE's tagged
+   structural specs (`@<story-id>`) cover rendering — confirm those passed via CI rather than
+   rewriting them. Write new specs in `qa/e2e/` if they do not already exist.
 4. Decide and report to TL:
    - **Green** → report pass; the slice may merge.
    - **Red** → log the defect to `QA_LOG.md` (symptom, story/area, root cause or fix) **with a

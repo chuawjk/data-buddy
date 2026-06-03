@@ -73,6 +73,17 @@ Each night runs one loop:
    layout) and note the deviation in the PR body. As dependencies clear, the next stories unlock.
    Agents read `DEV_STATUS.md` to see what is merged, in flight, or free to grab.
 
+   **Lane self-gate (before `gh pr ready`).** Before converting a draft PR to reviewable, each
+   lane must run its full test suite (`make test`) and confirm it exits green. A lane must not
+   mark a PR ready while its own tests are red — that pushes avoidable failures onto TL's review
+   cycle. Additionally, the **FE lane** runs its tagged per-story Playwright **structural** tests
+   before marking ready. These are scoped to rendering and structure only — component mounts
+   correctly, required `data-testid` attributes are present, basic state-machine behaviour (e.g.
+   submit disabled until fields are filled). They do not test API wiring or SSE event handling;
+   those cross the lane boundary and are QA's responsibility at the formal gate. Tag per-story
+   structural specs with the story ID (e.g. `@N1-S05`) so they can be run in isolation against
+   an MSW fixture without a live backend: `pnpm playwright test --grep @<story-id>`.
+
 3. **Review (TL, parallelised).** When a lane marks a PR ready for review
    (`gh pr ready <n>` to convert from draft), TL reviews it against the story's **acceptance
    criteria**, **code quality and error handling** (see TL review protocol), the **lane
@@ -82,13 +93,29 @@ Each night runs one loop:
    route the fix back to the lane, or make a trivial in-lane hygiene fix itself (§2) — and merges
    only once it's green. Otherwise: approve with comments, or request changes — the lane gets one
    retry pass.
-4. **Integrate (TL).** Once the night's lane stories are merged, TL runs that night's
-   **integration story** (`N1-S18` / `N2-S18` / `N3-S13`): assemble the slice, reconcile any
-   wiring/contract mismatch, get the end-to-end path running, and **write integration tests** for
-   the night's new cross-lane behaviour (see TL integration protocol). **Integration must include
-   at least one pass through the browser UI** — open `http://localhost:5173`, exercise the upload
-   form, and confirm stage transitions render. API-only verification (httpx/curl) misses component
-   wiring gaps, form field mismatches, and host-access issues that only appear in a real browser.
+4. **Integrate (TL).** Once the night's lane stories are merged, TL runs a **structural
+   pre-check** before starting the integration story, then runs the integration story itself.
+
+   **Structural pre-check (TL, pre-integration).** Before assembling the integrated slice, TL
+   runs the cheapest structural assertions against the individually-merged lane PRs — checks that
+   do not require cross-lane wiring and therefore need not wait for integration:
+   - Schema validation: any `profile.json` / `plan.json` produced by the BE story validates
+     against its JSON schema in `docs/contracts/schemas/`.
+   - API shape: a `GET /state` (and any other endpoints touched by the night's stories) returns
+     a response matching `API_CONTRACT.html` — run via `pytest -m pre_integration`.
+   - Zero-OpenCode-call spy: backend-only endpoints (`/plan/update`, `/plan/accept`,
+     `/section/:id/accept`, `/section/:id/drop`, `/export`, `/file`) make zero OpenCode calls
+     when exercised individually.
+   If any pre-check fails, TL routes the fix back to the owning lane before proceeding to the
+   integration story. This step catches contract-shape mismatches before they block integration.
+
+   TL then runs the night's **integration story** (`N1-S18` / `N2-S18` / `N3-S13`): assemble
+   the slice, reconcile any wiring/contract mismatch, get the end-to-end path running, and
+   **write integration tests** for the night's new cross-lane behaviour (see TL integration
+   protocol). **Integration must include at least one pass through the browser UI** — open
+   `http://localhost:5173`, exercise the upload form, and confirm stage transitions render.
+   API-only verification (httpx/curl) misses component wiring gaps, form field mismatches, and
+   host-access issues that only appear in a real browser.
 5. **QA gate (QA).** Run the night's **structural DoD** (`docs/planning/04_QA_PLAN.md`) plus the
    accumulated regression checks against the integrated slice. Log any defect to `QA_LOG.md` with
    a regression check added. A green check is the precondition for the slice being done. Three
@@ -102,7 +129,9 @@ Each night runs one loop:
 7. **End the run.** The last act is leaving `DEV_STATUS.md` clean and current for the morning
    review — merged, carried-over, blockers, and the night's demo script.
 
-The sequencing constraint to honour: **QA does not run until TL's integration commit lands.**
+The sequencing constraint to honour: **the formal QA gate does not run until TL's integration
+commit lands.** The lane self-gate (step 2) and TL's structural pre-check (step 4) are
+lighter-weight earlier checks — they do not replace QA and do not write to `QA_LOG.md`.
 QA gating ahead of integration is the one race the orchestrator must prevent.
 
 ---
