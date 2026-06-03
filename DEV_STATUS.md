@@ -261,24 +261,31 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 | N2-S12 · Redirect a section (Stage 4b) | #42 | `c83e24b` | `redirect_section`, `_build_redirect_prompt` in orchestrator; `backend/prompts/redirect.py` (new); `POST /turn` building-stage dispatch in router; 17 new tests. Conflict resolved: S12's `_build_redirect_prompt` added alongside S07's `_build_section_prompt` (both new vs merge base, different insertion point conflict); duplicate `_run_section_turn` from S12 removed (S07's version kept — functionally identical) |
 | N2-S08 · Detect failed section | #46 | `2d56b48` | 7 new tests in `test_section_failed.py` verifying `_handle_section_idle()` failure detection: AC1 (missing .md/.png/.py → section.failed + payload shape), AC2 (mid-turn tool events do not trigger section.failed), regression guard (triplet present → section.proposed), stage guard (non-building → no emit). No production code changed — N2-S07 already implemented the logic. CI green (run 26863165041). |
 
-### NOW STARTABLE (as of Wave 3)
+### Merged to `develop` — Wave 4 (2026-06-03)
 
-**Unlocked by N2-S03 merge:**
-- **N2-S04** · Edit plan (POST /plan/update) — depends on N2-S03 ✓
-- **N2-S05** · Accept plan & start first section — depends on N2-S03 ✓ + N2-S06 ✓
-- **N2-S10** · Accept section (POST /section/:id/accept) — depends on N2-S03 ✓
-- **N2-S11** · Drop section (POST /section/:id/drop) — depends on N2-S03 ✓
+**4 additional BE stories merged. 296 BE + 154 FE = 450 total tests pass.**
 
-**Unlocked by N2-S08 merge:**
-- **N2-S20** · Forced section-failure hook — depends on N2-S08 ✓ (now startable)
+| Story | PR | Squash SHA | Notes |
+|---|---|---|---|
+| N2-S10 · Accept section (POST /section/:id/accept) | #43 | `ff9a05a` | Real handler; proposed→accepted; 400 section_not_found + 400 section_not_proposed error envelopes; no OpenCode call; 10 new tests. CI green. |
+| N2-S11 · Drop section (POST /section/:id/drop) | #44 | `fff708d` | Real handler; proposed→dropped; same error envelope pattern as S10; export exclusion verified by test; 11 new tests. CI green. |
+| N2-S04 · Edit plan (POST /plan/update) | #45 | `c9838a5` | Full replacement semantics per ADR-014; preserves existing section statuses; new sections get status=proposed; writes plan.json atomically; 422 invalid_request/invalid_section error envelopes; 17 new tests. CI green. |
+| N2-S05 · Accept plan & start first section | #47 | `056997e` | `accept_plan()` in orchestrator + real `post_plan_accept` router handler. Conflict resolved: N2-S07's `_build_section_prompt()` and `_run_section_turn()` kept; S05's duplicate methods dropped; `accept_plan()` calls `_build_section_prompt(plan=list)` per N2-S07 signature. 12 new tests. |
 
-**Integration and QA after all remaining stories:**
-- **N2-S18** (TL integration)
-- **N2-S19** (QA)
+**Conflict resolution note — N2-S05:** PR #47 contained duplicate `_build_section_prompt` and `_run_section_turn` vs N2-S07 (already on develop). Resolution: kept N2-S07's implementations (functionally equivalent, already tested); applied only S05's `accept_plan()` method and router handler. `accept_plan()` calls `_build_section_prompt(plan=plan)` with a list (consistent with `start_build_section()` pattern). Merged directly as TL-authored commit `056997e`, PR #47 closed with explanation.
+
+### NOW STARTABLE (as of Wave 4)
+
+**All Night 2 lane stories implemented. Only N2-S20 remains before N2-S18 integration:**
+- **N2-S20** · Forced section-failure hook — depends on N2-S08 ✓ (startable, in progress)
+
+**Unlocks after N2-S20 merges:**
+- **N2-S18** (TL integration — all lane stories + N2-S20 must be merged first)
+- **N2-S19** (QA — after N2-S18 integration lands)
 
 ### In Dev / In Review / In QA
 
-*(N2-S07, N2-S12, N2-S08 merged. N2-S20 now startable.)*
+*(S04, S05, S10, S11 merged in Wave 4. N2-S20 in dev.)*
 
 ### Blockers
 
