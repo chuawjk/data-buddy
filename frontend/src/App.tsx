@@ -29,7 +29,7 @@ function renderStageView(stage: Stage, profile: Profile | null, plan: Section[])
       return <PlanView initialSections={plan} />;
     case "building":
     case "done":
-      return <BuildView />;
+      return <BuildView sections={plan} />;
   }
 }
 
@@ -66,7 +66,11 @@ export default function App() {
   }, []);
 
   useSSE((event: SSEEvent) => {
-    if (event.type === "stage.changed" || event.type === "profile.ready") {
+    if (
+      event.type === "stage.changed" ||
+      event.type === "profile.ready" ||
+      event.type === "plan.ready"
+    ) {
       api
         .getState()
         .then((data) => {
