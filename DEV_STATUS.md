@@ -336,6 +336,29 @@ N2-S15 added `plan.ready` to the `getState()` trigger branch, causing a race whe
 
 ---
 
+## Night 2 demo script (morning review / QA)
+
+1. `make clean` (reset workspace) → `make install` → `make dev`
+2. Open http://localhost:5173 → upload `data/customers_q3.csv` + enter an aim
+3. Watch profiling complete → Profile view renders
+4. Plan view renders with sections (plan.json written, plan.ready event received)
+5. Edit a section title inline → POST /plan/update → section list refreshes
+6. Accept plan → POST /plan/accept → stage transitions to building → first section build starts
+7. BuildView shows section status as `building` → section pane visible
+8. Section build completes → status becomes `proposed` → Accept/Drop buttons visible
+9. Accept the section → POST /section/:id/accept → status becomes `accepted`
+10. Export button enables → click Export → browser downloads `brief.md`
+11. For redirect path: start section build → POST /turn with redirect text → section rebuilds
+
+**QA test hook:** To exercise section.failed without model misbehaviour:
+```bash
+QA_FORCE_SECTION_FAIL=1 make dev   # section.failed fires on next section build turn
+```
+
+*Note: steps 3–10 require provider credentials. Backend-only operations (plan/update, section/accept, section/drop, export) work without OpenCode.*
+
+---
+
 ## Night 1 demo script (morning review)
 
 1. Fresh clone → `make install` → `make dev`
