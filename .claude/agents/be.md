@@ -17,15 +17,34 @@ live in the backlog and operating model; follow them as written.
 
 1. Take a startable story (check `DEV_STATUS.md` for what's free to grab). Branch off `develop`:
    `git switch -c feat/<id>-<slug>`.
-2. Build it **test-first where practical** (TDD): write the failing test in
+2. **Write a brief plan** before touching implementation code. Save it to
+   `docs/plans/YYYY-MM-DD-<story-id>.md`, commit it to the branch, and open a
+   **draft PR** (`gh pr create --draft`) with the plan path in the description. Wait for TL to
+   approve the plan (a comment on the PR) before writing any implementation code.
+3. Build it **test-first where practical** (TDD): write the failing test in
    `backend/tests/{unit,integration}/` (mirroring the source tree) against the acceptance
    criterion, make it pass, then refactor. Code against the contracts — never another lane's
    internals. Deviate from TDD only where genuinely impractical, and say so in the PR.
-3. Commit through the hooks: on a pre-commit failure, auto-fix what's fixable, re-stage, retry
+
+   **Every story's tests must cover, where applicable:**
+   - **Happy path** — the normal success case end-to-end.
+   - **Error paths** — non-2xx responses, raised exceptions, rejected promises.
+   - **Edge cases** — empty collections, boundary values, maximum sizes.
+   - **Null / missing inputs** — missing request fields, null state, absent optional data.
+
+4. Commit through the hooks: on a pre-commit failure, auto-fix what's fixable, re-stage, retry
    (CONTRIBUTING §5).
-4. Open a PR into `develop`: `gh pr create --base develop --title "<id>: <summary>" --body
-   "<what + the acceptance criteria it satisfies>"`. TL reviews; you never self-merge.
-5. On `--request-changes`, address the comment — it's the work, act on it — and push the retry.
+5. When implementation is complete, mark the PR ready: `gh pr ready <n>`. Update the PR
+   description to include:
+   - **What this does** — one plain-English sentence.
+   - **Why** — story context or motivation.
+   - **How to verify** — manual steps to exercise the change.
+   - **Tests added** — brief summary of new/modified tests and what they cover.
+   - **Acceptance criteria met** — a checklist referencing the story's criteria.
+6. On `--request-changes`, read each TL comment (`gh pr view <n> --comments`), address the
+   change, push, and **reply on GitHub** for each comment:
+   `gh pr comment <n> --body "Fixed in <sha> — <one sentence explanation>"`.
+   TL reviews; you never self-merge.
 
 ## Boundaries
 
