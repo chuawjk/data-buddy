@@ -251,20 +251,25 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 
 **Status note — N2-S03:** initial section status was `"queued"` in the N2-S02 implementation; N2-S03 corrects this to `"proposed"` per the backlog spec (sections are proposed to the user awaiting review/acceptance; `"queued"` is the post-acceptance pre-build state). One orchestrator test (`test_handle_plan_idle_injects_queued_status`) was renamed and updated to assert `"proposed"`.
 
-### Third-wave stories — NOW STARTABLE
+### Merged to `develop` — Wave 3 (2026-06-03)
 
-**Unlocked by N2-S03 merge (all dependencies on develop):**
+**2 additional BE stories merged. 239 BE + 154 FE = 393 total tests pass.**
+
+| Story | PR | Squash SHA | Notes |
+|---|---|---|---|
+| N2-S07 · Section build events | #40 | `eeca6b0` | `start_build_section`, `_handle_section_idle`, `_build_section_prompt`, `_run_section_turn`; bus listener extended for building-stage dispatch; 12 new tests. Conflict resolved: docstring only (develop's N2-S03 "proposed" note merged with incoming N2-S07 note) |
+| N2-S12 · Redirect a section (Stage 4b) | #42 | `c83e24b` | `redirect_section`, `_build_redirect_prompt` in orchestrator; `backend/prompts/redirect.py` (new); `POST /turn` building-stage dispatch in router; 17 new tests. Conflict resolved: S12's `_build_redirect_prompt` added alongside S07's `_build_section_prompt` (both new vs merge base, different insertion point conflict); duplicate `_run_section_turn` from S12 removed (S07's version kept — functionally identical) |
+
+### NOW STARTABLE (as of Wave 3)
+
+**Unlocked by N2-S03 merge:**
 - **N2-S04** · Edit plan (POST /plan/update) — depends on N2-S03 ✓
 - **N2-S05** · Accept plan & start first section — depends on N2-S03 ✓ + N2-S06 ✓
 - **N2-S10** · Accept section (POST /section/:id/accept) — depends on N2-S03 ✓
 - **N2-S11** · Drop section (POST /section/:id/drop) — depends on N2-S03 ✓
 
-**Already in dev / PR pending (from wave 2 unlocks):**
-- **N2-S07** · Section build events — depends on N2-S06 ✓ + N1-S08 ✓ (in progress)
-- **N2-S12** · Redirect a section (Stage 4b) — depends on N2-S06 ✓ + N1-S11 ✓ (in progress)
-
-**Unlocks after N2-S07 merges:**
-- **N2-S08** · Detect failed section
+**Unlocked by N2-S07 merge:**
+- **N2-S08** · Detect failed section — depends on N2-S07 ✓ (now startable)
 
 **Unlocks after N2-S08 merges:**
 - **N2-S20** · Forced section-failure hook
@@ -275,7 +280,7 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 
 ### In Dev / In Review / In QA
 
-*(N2-S07 and N2-S12 in progress — PRs pending)*
+*(N2-S07 and N2-S12 merged. N2-S08 now startable.)*
 
 ### Blockers
 
