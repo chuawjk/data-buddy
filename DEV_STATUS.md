@@ -240,21 +240,28 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 - App.tsx `plan: Section[]` state field unified (N2-S16 used `sections`; renamed to `plan` to match N2-S15/N2-S17)
 - BuildView receives `sections={plan}` via renderStageView — consistent prop name
 
-### Second-wave stories — NOW STARTABLE
+### Merged to `develop` — Wave 2 (2026-06-03)
 
-**Unlocked now (all dependencies on develop):**
-- **N2-S03** · Persist plan & section statuses — depends on N1-S03 + N2-S02
-- **N2-S13** · Export brief (GET /export) — depends on N2-S09
-- **N2-S07** · Section build events — depends on N2-S06 + N1-S08
-- **N2-S12** · Redirect a section (Stage 4b) — depends on N2-S06 + N1-S11
+**2 additional BE stories merged. 210 BE + 154 FE = 364 total tests pass.**
 
-**Unlocks after N2-S03 merges:**
-- **N2-S04** · Edit plan (POST /plan/update)
-- **N2-S10** · Accept section
-- **N2-S11** · Drop section
+| Story | PR | Squash SHA | Notes |
+|---|---|---|---|
+| N2-S03 · Persist plan & section statuses | #39 | `e243b64` | `_write_plan_json()` static helper; initial section status changed `"queued"` → `"proposed"` per backlog spec; 11 new tests + 1 orchestrator test updated |
+| N2-S13 · Export brief (GET /export) | #41 | `2f15b32` | Real GET /export handler; reads accepted sections from state, finds .md via md_path or glob, parses body with `parse_section_file()`, concatenates with `\n\n---\n\n`; returns text/markdown with Content-Disposition; 12 new tests |
 
-**Unlocks after N2-S03 + N2-S06 both merged (already true):**
-- **N2-S05** · Accept plan & start first section
+**Status note — N2-S03:** initial section status was `"queued"` in the N2-S02 implementation; N2-S03 corrects this to `"proposed"` per the backlog spec (sections are proposed to the user awaiting review/acceptance; `"queued"` is the post-acceptance pre-build state). One orchestrator test (`test_handle_plan_idle_injects_queued_status`) was renamed and updated to assert `"proposed"`.
+
+### Third-wave stories — NOW STARTABLE
+
+**Unlocked by N2-S03 merge (all dependencies on develop):**
+- **N2-S04** · Edit plan (POST /plan/update) — depends on N2-S03 ✓
+- **N2-S05** · Accept plan & start first section — depends on N2-S03 ✓ + N2-S06 ✓
+- **N2-S10** · Accept section (POST /section/:id/accept) — depends on N2-S03 ✓
+- **N2-S11** · Drop section (POST /section/:id/drop) — depends on N2-S03 ✓
+
+**Already in dev / PR pending (from wave 2 unlocks):**
+- **N2-S07** · Section build events — depends on N2-S06 ✓ + N1-S08 ✓ (in progress)
+- **N2-S12** · Redirect a section (Stage 4b) — depends on N2-S06 ✓ + N1-S11 ✓ (in progress)
 
 **Unlocks after N2-S07 merges:**
 - **N2-S08** · Detect failed section
@@ -262,13 +269,13 @@ Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
 **Unlocks after N2-S08 merges:**
 - **N2-S20** · Forced section-failure hook
 
-**Integration and QA after all second-wave stories:**
+**Integration and QA after all third-wave stories:**
 - **N2-S18** (TL integration)
 - **N2-S19** (QA)
 
 ### In Dev / In Review / In QA
 
-*(second-wave stories — see startable set above)*
+*(N2-S07 and N2-S12 in progress — PRs pending)*
 
 ### Blockers
 
