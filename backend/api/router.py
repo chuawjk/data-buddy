@@ -459,6 +459,11 @@ async def post_section_accept(request: Request, section_id: str) -> Response:
     updated_plan[section_index]["status"] = "accepted"
     state_manager.update(plan=updated_plan)
 
+    # N3-S01: check whether all sections are now terminal and transition to
+    # done if so.  Fire-and-forget so the 204 response is not delayed.
+    orchestrator = request.app.state.orchestrator
+    asyncio.create_task(orchestrator._check_done_or_next(section_id))
+
     return Response(status_code=204)
 
 
@@ -517,6 +522,11 @@ async def post_section_drop(request: Request, section_id: str) -> Response:
     updated_plan = [dict(s) for s in plan]
     updated_plan[section_index]["status"] = "dropped"
     state_manager.update(plan=updated_plan)
+
+    # N3-S01: check whether all sections are now terminal and transition to
+    # done if so.  Fire-and-forget so the 204 response is not delayed.
+    orchestrator = request.app.state.orchestrator
+    asyncio.create_task(orchestrator._check_done_or_next(section_id))
 
     return Response(status_code=204)
 
