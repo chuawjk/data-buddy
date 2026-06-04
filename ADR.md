@@ -22,14 +22,14 @@
 | ADR-011 | N1-S18: profile prompt must write workspace/profile.json explicitly | Accepted |
 | ADR-012 | N1-S18: OpenCode lifecycle owned by backend; make dev does not start opencode | Accepted |
 | ADR-013 | QA-02: prompt_async payload format changed in OpenCode v1.15.13 | Accepted |
-| ADR-014 | N2-S15: POST /plan/update accepts new section IDs (full replacement) | Proposed — pending review |
-| ADR-015 | N2-S17: plan.ready SSE handler updates state directly from event, no API refresh | Proposed — pending review |
-| ADR-016 | N2-S18: build_section_prompt() plan parameter corrected to list\|dict | Proposed — pending review |
-| ADR-017 | N3-S02/S03/S16: BE-2 proceeded to implementation without waiting for plan approval | Proposed — pending review |
-| ADR-018 | N3-S16: QA_FORCE_TURN_ERROR seam placed in orchestrator._run_*_turn, not opencode_client.prompt | Proposed — pending review |
-| ADR-019 | N3-S09/S10/S11/S12: TL packaging stories skipped plan review step | Proposed — pending review |
-| ADR-020 | turn.error payload contract: reason enum string, not retryable bool | Proposed — pending review |
-| ADR-021 | QA-03: /api prefix added at router mount; Vite proxy rewrite removed | Proposed — pending review |
+| ADR-014 | N2-S15: POST /plan/update accepts new section IDs (full replacement) | Accepted |
+| ADR-015 | N2-S17: plan.ready SSE handler updates state directly from event, no API refresh | Accepted |
+| ADR-016 | N2-S18: build_section_prompt() plan parameter corrected to list\|dict | Accepted |
+| ADR-017 | N3-S02/S03/S16: BE-2 proceeded to implementation without waiting for plan approval | Accepted |
+| ADR-018 | N3-S16: QA_FORCE_TURN_ERROR seam placed in orchestrator._run_*_turn, not opencode_client.prompt | Accepted |
+| ADR-019 | N3-S09/S10/S11/S12: TL packaging stories skipped plan review step | Accepted |
+| ADR-020 | turn.error payload contract: reason enum string, not retryable bool | Accepted |
+| ADR-021 | QA-03: /api prefix added at router mount; Vite proxy rewrite removed | Accepted |
 
 ---
 
@@ -368,7 +368,7 @@ The OpenAPI spec is authoritative. Both changes confirmed by live curl tests aga
 
 ## ADR-014 · N2-S15: POST /plan/update accepts new section IDs
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-03
 
 ### Decision
@@ -389,7 +389,7 @@ Full replacement semantics are simpler and consistent with how the plan is treat
 
 ## ADR-016 · N2-S18: build_section_prompt() plan parameter corrected to list|dict
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-03
 
 ### Decision
@@ -410,7 +410,7 @@ The prompt template serialises `plan` as JSON context for the agent. `json.dumps
 
 ## ADR-015 · N2-S17: plan.ready SSE handler updates state directly from event
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-03
 
 ### Decision
@@ -431,7 +431,7 @@ N2-S15 added `plan.ready` to the `api.getState()` trigger block in App.tsx. When
 
 ## ADR-017 · N3-S02/S03/S16: BE-2 proceeded to implementation without waiting for plan approval
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-04
 
 ### Decision
@@ -459,7 +459,7 @@ The plan-first protocol in CONTRIBUTING.md §3 exists to catch risky approaches 
 
 ## ADR-018 · N3-S16: QA_FORCE_TURN_ERROR seam placed in orchestrator, not opencode_client
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-04
 
 ### Decision
@@ -480,7 +480,7 @@ Placing a QA seam in the client layer pollutes the narrow-interface boundary (`o
 
 ## ADR-019 · N3-S09/S10/S11/S12: TL packaging stories skipped plan review step
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-04
 
 ### Decision
@@ -501,7 +501,7 @@ The plan-review gate exists so an independent reviewer can catch risks before co
 
 ## ADR-020 · turn.error payload: reason enum string, not retryable bool
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-04
 
 ### Decision
@@ -537,7 +537,7 @@ The contract is the interface. The FE lane (N3-S05/S07 in development) must read
 
 ## ADR-021 · QA-03: /api prefix added at router mount; Vite proxy rewrite removed
 
-**Status:** Proposed — pending review
+**Status:** Accepted
 **Date:** 2026-06-04
 
 ### Decision
