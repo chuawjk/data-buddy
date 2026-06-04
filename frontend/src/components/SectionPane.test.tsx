@@ -1,4 +1,4 @@
-// SectionPane tests — N2-S16
+// SectionPane tests
 // TDD: tests written before/alongside implementation.
 // Acceptance criteria from docs/plans/2026-06-03-n2-s16.md
 

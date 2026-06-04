@@ -1,4 +1,4 @@
-"""Unit tests for N2-S06 — section build turn: section prompt builder.
+"""Unit tests for the section build turn: section prompt builder.
 
 TDD: tests written before implementation.
 

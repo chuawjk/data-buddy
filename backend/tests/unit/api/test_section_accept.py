@@ -1,4 +1,4 @@
-"""Unit tests for POST /section/:id/accept — N2-S10.
+"""Unit tests for POST /section/:id/accept.
 
 TDD: tests written before the implementation.
 

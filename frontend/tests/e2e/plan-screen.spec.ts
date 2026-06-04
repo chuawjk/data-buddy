@@ -1,12 +1,11 @@
-// Playwright structural spec — N2-S15 · Plan screen
-// Tagged @N2-S15 so it can be run in isolation: pnpm playwright test --grep @N2-S15
+// Playwright structural spec — Plan screen
 //
 // Structural checks only — asserts that required data-testid elements are present
 // in the rendered DOM at the planning stage. Does not test API wiring or live backend.
 
 import { test, expect } from "@playwright/test";
 
-test.describe("@N2-S15 Plan screen — structural", () => {
+test.describe("Plan screen — structural", () => {
   test("plan-view mounts with plan-section-list and items at planning stage", async ({ page }) => {
     // Intercept /api/state to return planning stage with two sections
     await page.route("/api/state", (route) => {

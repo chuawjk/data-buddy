@@ -1,4 +1,4 @@
-"""Plan prompt template and JSON Schema for the planning turn (N2-S02).
+"""Plan prompt template and JSON Schema for the planning turn.
 
 Used by the orchestrator when it fires the planning turn against OpenCode:
     client.prompt(session_id, build_plan_prompt(dataset, aim, profile, workspace_root),

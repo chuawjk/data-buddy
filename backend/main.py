@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
        ``SKIP_OPENCODE`` environment variable is set to a truthy value
        (``1``, ``true``, or ``yes``) -- for CI and environments without the
        binary installed.
-    4. Orchestrator -- full setup→profiling state machine (N1-S04).
+    4. Orchestrator -- full setup→profiling state machine.
        Holds a reference to the OpenCodeClient for the narrow prompt interface.
 
     Shutdown order (reverse):
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
             client = None
 
         if client is not None:
-            # Start the persistent SSE subscription as a background task (N1-S08).
+            # Start the persistent SSE subscription as a background task.
             # One connection, running for the lifetime of the server.
             subscription_task = asyncio.create_task(client.start_event_subscription(app.state.bus))
             client._register_subscription_task(subscription_task)
@@ -98,16 +98,15 @@ async def lifespan(app: FastAPI):
 
     app.state.opencode_client = client
 
-    # Wire up the watchdog (N1-S11 / N1-S12).  Only created when OpenCode is running;
-    # Watchdog requires a live client reference so it can call abort() and
-    # create_fresh_session().  When SKIP_OPENCODE=1, watchdog is omitted and the
-    # orchestrator guards internally (no-op start_turn path).
+    # Wire up the watchdog.  Only created when OpenCode is running; Watchdog requires
+    # a live client reference so it can call abort() and create_fresh_session().
+    # When SKIP_OPENCODE=1, watchdog is omitted and the orchestrator guards internally.
     watchdog: Watchdog | None = None
     if client is not None:
         watchdog = Watchdog(client=client, state_manager=state_manager, bus=app.state.bus)
         app.state.watchdog = watchdog
 
-    # Wire up the stage orchestrator (N1-S04: setup→profiling state machine).
+    # Wire up the stage orchestrator.
     orchestrator = Orchestrator(
         state_manager=state_manager,
         bus=app.state.bus,
@@ -117,7 +116,7 @@ async def lifespan(app: FastAPI):
     )
     app.state.orchestrator = orchestrator
 
-    # Start the orchestrator's bus listener as a background task (N1-S18 integration).
+    # Start the orchestrator's bus listener as a background task.
     # This consumes session.idle events and drives stage-output handling
     # (profile.ready, plan.ready, section.proposed/failed).
     bus_listener_task = asyncio.create_task(
@@ -173,7 +172,7 @@ async def health() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Static file serving for the built Vite bundle (N3-S09 / ADR-008).
+# Static file serving for the built Vite bundle (ADR-008).
 #
 # Only mounted when ``frontend/dist/`` exists -- i.e. after ``make run`` has
 # built the bundle.  In ``make dev`` mode the dist directory is absent and

@@ -1,4 +1,4 @@
-"""Unit tests for POST /setup endpoint -- N1-S05.
+"""Unit tests for POST /setup endpoint.
 
 TDD: tests written before the implementation.
 

@@ -1,8 +1,8 @@
-"""Unit tests for orchestrator.py -- N1-S04, N2-S01.
+"""Unit tests for orchestrator.py.
 
 TDD: tests written before the implementation is extended.
 
-Acceptance criteria covered (N1-S04):
+Acceptance criteria covered:
 - Given the machine, when it runs, then states ``setup`` and ``profiling`` exist with
   a single legal transition between them.
 - Given a state is entered, when the transition completes, then ``stage.changed`` is
@@ -10,12 +10,10 @@ Acceptance criteria covered (N1-S04):
 - Given setup completes, when the orchestrator advances, then it auto-triggers the
   profiling turn via the narrow ``client.prompt(...)`` interface (not ``httpx``
   directly).
-
-Acceptance criteria covered (N2-S01):
 - ``profile.ready`` → profiling → planning + ``stage.changed`` emitted.
 - Plan prompt auto-triggered via ``client.prompt()`` narrow interface.
 - ``watchdog.start_turn()`` called if wired.
-- No ``httpx`` import in orchestrator (AST check — shared with N1-S04).
+- No ``httpx`` import in orchestrator (AST check).
 
 Architecture constraints verified:
 - ``httpx`` is NOT imported in ``orchestrator.py``.
@@ -205,7 +203,7 @@ def test_no_httpx_import():
 
 
 # ---------------------------------------------------------------------------
-# N1-S18 integration: _handle_profile_idle and start_bus_listener
+# _handle_profile_idle and start_bus_listener
 # ---------------------------------------------------------------------------
 
 
@@ -409,7 +407,7 @@ async def test_setup_complete_skips_turn_without_client(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# N2-S01: profile.ready → planning transition
+# profile.ready → planning transition
 # ---------------------------------------------------------------------------
 
 
@@ -540,7 +538,7 @@ async def test_plan_turn_error_publishes_turn_error(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# N2-S02: session.idle in planning stage → plan.json → plan.ready
+# session.idle in planning stage → plan.json → plan.ready
 # ---------------------------------------------------------------------------
 
 
@@ -602,8 +600,8 @@ async def test_handle_plan_idle_updates_state(tmp_path):
 async def test_handle_plan_idle_injects_proposed_status(tmp_path):
     """Each section in the plan gets status='proposed' injected by the orchestrator.
 
-    N2-S03: initial section status is 'proposed' (plan proposed to user for
-    review), not 'queued' (which is the status after plan acceptance, pre-build).
+    Initial section status is 'proposed' (plan proposed to user for review),
+    not 'queued' (which is the status after plan acceptance, pre-build).
     """
     orch, sm, bus, client = _make_orchestrator_planning(tmp_path)
     _write_valid_plan_json(tmp_path, num_sections=3)
@@ -1258,7 +1256,7 @@ async def test_accept_plan_transitions_sections_to_queued(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# N3-S02: retry_last_turn
+# retry_last_turn
 # ---------------------------------------------------------------------------
 
 
@@ -1376,7 +1374,7 @@ async def test_retry_without_prior_turn(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# N3-S03: turn.error payload includes stage and reason
+# turn.error payload includes stage and reason
 # ---------------------------------------------------------------------------
 
 
@@ -1384,8 +1382,8 @@ async def test_retry_without_prior_turn(tmp_path):
 async def test_turn_error_has_stage_and_reason(tmp_path):
     """_run_profile_turn emits turn.error with stage='profiling' and reason='provider_error'.
 
-    Acceptance (N3-S03): structured-output failures and provider errors emit
-    turn.error with stage/section_id/reason fields per the API contract.
+    Structured-output failures and provider errors emit turn.error with
+    stage/section_id/reason fields per the API contract.
     """
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="profiling")
@@ -1456,7 +1454,7 @@ async def test_turn_error_building_has_stage_and_section_id(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# N3-S16: QA_FORCE_TURN_ERROR seam
+# QA_FORCE_TURN_ERROR seam
 # ---------------------------------------------------------------------------
 
 
@@ -1464,8 +1462,8 @@ async def test_turn_error_building_has_stage_and_section_id(tmp_path):
 async def test_qa_force_turn_error(tmp_path, monkeypatch):
     """With QA_FORCE_TURN_ERROR=1, client.prompt raises and turn.error is emitted.
 
-    Acceptance (N3-S16): when the env var is set, the prompt raises before any
-    OpenCode traffic occurs, and turn.error fires via the existing exception handler.
+    When the env var is set, the prompt raises before any OpenCode traffic occurs,
+    and turn.error fires via the existing exception handler.
     """
     monkeypatch.setenv("QA_FORCE_TURN_ERROR", "1")
 
@@ -1493,7 +1491,7 @@ async def test_qa_force_turn_error(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# N3-S01: _check_done_or_next — done transition and sequencing
+# _check_done_or_next — done transition and sequencing
 # ---------------------------------------------------------------------------
 
 
@@ -1540,8 +1538,8 @@ def _all_accepted_plan() -> list[dict]:
 async def test_done_transition_when_all_accepted(tmp_path):
     """_check_done_or_next: all sections accepted → stage=done, stage.changed(done) emitted.
 
-    N3-S01 acceptance: Given the last section is accepted, when the loop runs,
-    then stage transitions to done and stage.changed(done) is emitted.
+    Given the last section is accepted, when the loop runs, then stage
+    transitions to done and stage.changed(done) is emitted.
     """
     orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=_all_accepted_plan())
     sub = bus.subscribe()
@@ -1561,8 +1559,8 @@ async def test_done_transition_when_all_accepted(tmp_path):
 async def test_done_transition_when_mixed_accepted_dropped(tmp_path):
     """_check_done_or_next: mix of accepted and dropped (no queued/building) → done.
 
-    N3-S01 acceptance: Given dropped sections, when sequencing, then they are skipped
-    (already handled by queued status) and done is emitted when all are terminal.
+    Given dropped sections, when sequencing, then they are skipped (already handled
+    by queued status) and done is emitted when all are terminal.
     """
     plan = [
         {
@@ -1608,7 +1606,7 @@ async def test_done_transition_when_mixed_accepted_dropped(tmp_path):
 async def test_no_done_while_section_still_queued(tmp_path):
     """_check_done_or_next: a queued section still remains → no done transition.
 
-    N3-S01 acceptance: auto-sequence is still running; done must not fire prematurely.
+    Auto-sequence is still running; done must not fire prematurely.
     """
     plan = [
         {
@@ -1681,7 +1679,7 @@ async def test_no_done_while_section_still_building(tmp_path):
 async def test_rapid_accept_safety(tmp_path):
     """Two rapid _check_done_or_next calls do not double-emit stage.changed(done).
 
-    N3-S01 acceptance: Given rapid accepts, when they occur, the loop is re-entrant safe.
+    Given rapid accepts, when they occur, the loop is re-entrant safe.
     """
     orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=_all_accepted_plan())
     sub = bus.subscribe()

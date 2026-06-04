@@ -1,4 +1,4 @@
-// SetupView tests — N1-S15
+// SetupView tests
 // TDD: tests written before implementation.
 // Acceptance criteria from docs/planning/02_STORY_BACKLOG.md and story brief.
 

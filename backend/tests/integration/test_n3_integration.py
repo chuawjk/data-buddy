@@ -1,4 +1,4 @@
-"""Night 3 integration tests: N3-S13.
+"""Night 3 integration tests.
 
 Tests for new Night 3 cross-lane behaviour:
   - test_section_accept_triggers_done — last accepted section causes stage="done"
@@ -108,15 +108,15 @@ def single_section_building_client(workspace: Path):
 
 
 # ---------------------------------------------------------------------------
-# 1. Section accept → done transition (N3-S01)
+# 1. Section accept → done transition
 # ---------------------------------------------------------------------------
 
 
 def test_section_accept_triggers_done(single_section_building_client):
     """Given one proposed section, accepting it causes GET /state to return stage='done'.
 
-    This is the core N3-S01 requirement: _check_done_or_next transitions the
-    stage to 'done' when every section is in a terminal status.
+    _check_done_or_next transitions the stage to 'done' when every section
+    is in a terminal status.
     """
     c = single_section_building_client
 
@@ -216,7 +216,7 @@ def test_dropped_sections_are_terminal(building_client):
 
 
 # ---------------------------------------------------------------------------
-# 2. POST /section error cases (N3-S01 guard)
+# 2. POST /section error cases
 # ---------------------------------------------------------------------------
 
 
@@ -244,7 +244,7 @@ def test_section_accept_unknown_id_returns_400(building_client):
 
 
 # ---------------------------------------------------------------------------
-# 3. POST /turn retry path (N3-S02)
+# 3. POST /turn retry path
 # ---------------------------------------------------------------------------
 
 
@@ -276,7 +276,7 @@ def test_retry_turn_whitespace_text_returns_204(client):
 
 
 # ---------------------------------------------------------------------------
-# 4. turn.error event payload shape (N3-S03, ADR-020)
+# 4. turn.error event payload shape (ADR-020)
 # ---------------------------------------------------------------------------
 
 
@@ -298,7 +298,7 @@ def test_turn_error_payload_shape_via_event_bus(workspace: Path):
 
     async def _run():
         sub = bus.subscribe()
-        # Publish a turn.error event matching the N3-S03 shape.
+        # Publish a turn.error event.
         await bus.publish(
             "turn.error",
             {"stage": "profiling", "reason": "provider_error", "ts": 1234567890},
@@ -321,8 +321,7 @@ def test_turn_error_payload_shape_via_event_bus(workspace: Path):
 def test_turn_error_with_section_id_shape(workspace: Path):
     """turn.error for a building-stage section includes section_id in payload.
 
-    N3-S03: section-scoped errors include section_id so the SPA can target
-    the correct SectionPane.
+    Section-scoped errors include section_id so the SPA can target the correct SectionPane.
     """
     import asyncio as _asyncio
 
@@ -358,14 +357,14 @@ def test_turn_error_with_section_id_shape(workspace: Path):
 
 
 # ---------------------------------------------------------------------------
-# 5. GET / static serving (N3-S09)
+# 5. GET / static serving
 # ---------------------------------------------------------------------------
 
 
 def test_static_html_served_when_dist_exists(workspace: Path, tmp_path: Path):
     """GET / returns HTML content when frontend/dist/index.html exists.
 
-    N3-S09: make run serves the built bundle from FastAPI on one port.
+    ``make run`` serves the built bundle from FastAPI on one port.
     """
     # Find the real frontend/dist path (relative to the repo root).
     repo_root = Path(__file__).parents[3]

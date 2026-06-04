@@ -175,7 +175,7 @@ def test_state_loaded_from_disk_on_startup(tmp_path):
 
 
 def test_turn_empty_text_triggers_retry(client):
-    """POST /turn with whitespace-only or absent text triggers retry (N3-S02).
+    """POST /turn with whitespace-only or absent text triggers retry.
 
     Empty/absent text now calls retry_last_turn() instead of returning 422.
     Returns 204; retry logs a warning when there is no prior turn.
@@ -185,7 +185,7 @@ def test_turn_empty_text_triggers_retry(client):
 
 
 def test_turn_missing_text_field_triggers_retry(client):
-    """POST /turn with no text field triggers retry (N3-S02)."""
+    """POST /turn with no text field triggers retry."""
     r = client.post("/api/turn", json={})
     assert r.status_code == 204
 

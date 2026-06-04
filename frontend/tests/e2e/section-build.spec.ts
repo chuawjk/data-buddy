@@ -1,6 +1,5 @@
-// section-build.spec.ts — N2-S16 @N2-S16
+// section-build.spec.ts
 // Playwright structural gate: verifies QA-seam testids are present on the build screen.
-// Tagged @N2-S16.
 //
 // These tests mock the API so they don't require a running backend.
 // They assert structural presence of testids, not interactive behaviour
@@ -48,7 +47,7 @@ const MOCK_STATE = {
 const MOCK_PY = `import pandas as pd\ndf = pd.read_csv("data.csv")`;
 const MOCK_MD = `Churn rate is 14.3% for the cohort.`;
 
-test.describe("@N2-S16 Section build screen — structural gate", () => {
+test.describe("Section build screen — structural gate", () => {
   test.beforeEach(async ({ page }) => {
     // Mock GET /api/state
     await page.route("**/api/state", (route) => {

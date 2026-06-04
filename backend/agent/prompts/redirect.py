@@ -1,10 +1,10 @@
-"""Redirect prompt template for Stage 4b section rebuild (N2-S12).
+"""Redirect prompt template for Stage 4b section rebuild.
 
 Used by the orchestrator when the user submits bottom-bar text while a section
 is building.  Instructs OpenCode to discard any draft artefacts and rebuild
 the section from scratch applying the user's redirect instruction.
 
-Like the section build prompt (N2-S06), the redirect uses NO structured output
+Like the section build prompt, the redirect uses NO structured output
 (schema=None).  The rebuilt section's structure is the file triplet on disk
 (ADR-005):
   - analyses/sec_NN_<slug>.py   — Python analysis script

@@ -13,7 +13,7 @@
  * Tests assert the DoneView renders correctly via real HTTP from a known state.
  * This layer catches contract mismatches that mocked specs cannot see.
  *
- * N3-S14 (QA): regression check for the done stage transition.
+ * Regression check for the done stage transition.
  */
 
 import { test, expect } from "@playwright/test";

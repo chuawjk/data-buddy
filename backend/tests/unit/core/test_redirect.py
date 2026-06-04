@@ -1,8 +1,8 @@
-"""Unit tests for N2-S12 — Redirect a section (Stage 4b).
+"""Unit tests for section redirect (Stage 4b).
 
 TDD: tests written before implementation.
 
-Acceptance criteria covered (N2-S12):
+Acceptance criteria covered:
 - Building section + POST /turn with redirect text → redirect prompt dispatched,
   204 returned.
 - Prior drafts for that section discarded before rebuild.
@@ -533,7 +533,6 @@ def _make_app(tmp_path: Path, *, stage: str = "building") -> TestClient:
     mock_orch = MagicMock()
     mock_orch.redirect_section = AsyncMock(return_value=None)
     mock_orch.re_profile = AsyncMock(return_value=None)
-    # N3-S02: retry_last_turn is called when POST /turn body is empty.
     mock_orch.retry_last_turn = AsyncMock(return_value=None)
 
     app.state.state_manager = sm
@@ -575,7 +574,7 @@ def test_post_turn_wrong_stage_returns_422(tmp_path: Path) -> None:
 
 
 def test_post_turn_empty_text_triggers_retry_building(tmp_path: Path) -> None:
-    """POST /turn with empty text in building stage triggers retry (N3-S02).
+    """POST /turn with empty text in building stage triggers retry.
 
     Empty/absent text now calls retry_last_turn() instead of returning 422.
     Returns 204; retry is a no-op when there is no prior turn.
@@ -587,7 +586,7 @@ def test_post_turn_empty_text_triggers_retry_building(tmp_path: Path) -> None:
 
 
 def test_post_turn_missing_text_triggers_retry_building(tmp_path: Path) -> None:
-    """POST /turn with missing text field in building stage triggers retry (N3-S02)."""
+    """POST /turn with missing text field in building stage triggers retry."""
     test_client, _ = _make_app(tmp_path, stage="building")
 
     resp = test_client.post("/turn", json={})

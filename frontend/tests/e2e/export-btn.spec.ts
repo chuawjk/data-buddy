@@ -1,5 +1,4 @@
-// Playwright structural spec — N2-S17 · Export control
-// Tagged @N2-S17 so it can be run in isolation: pnpm playwright test --grep @N2-S17
+// Playwright structural spec — Export control
 //
 // Structural checks only — asserts that required data-testid elements are present
 // in the rendered DOM at the building stage. Does not test API wiring or live backend.
@@ -11,7 +10,7 @@ import { test, expect } from "@playwright/test";
 // For the lane self-gate, we verify the element structure only (data-testid presence
 // and basic disabled state). Full export behaviour is QA's responsibility.
 
-test.describe("@N2-S17 Export control — structural", () => {
+test.describe("Export control — structural", () => {
   test("export-btn is present in the header at building stage with no accepted sections", async ({
     page,
   }) => {

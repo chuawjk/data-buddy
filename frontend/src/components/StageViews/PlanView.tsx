@@ -1,4 +1,4 @@
-// PlanView — N2-S15
+// PlanView
 // Interactive plan-proposal screen.
 //
 // Layout:

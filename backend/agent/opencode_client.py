@@ -8,13 +8,10 @@ Responsibilities:
   expires.
 - Create a single session via the **v1 /session** API and persist the session
   ID to ``state.json`` through the ``StateManager``.
-- Maintain a single persistent ``GET /event`` SSE subscription (N1-S08):
+- Maintain a single persistent ``GET /event`` SSE subscription:
   normalise raw OpenCode events and publish them to the ``EventBus``.
   Reconnects automatically if no ``server.heartbeat`` arrives for 30s.
 - Tear down the subprocess cleanly on shutdown (SIGTERM, then SIGKILL after 5 s).
-
-Out of scope:
-- Watchdog abort/recovery (N1-S11).
 
 Hard boundary: this module never imports the orchestrator.  The orchestrator
 calls this client through the narrow interface only.  ``httpx`` is imported
@@ -123,7 +120,6 @@ class OpenCodeClient:
         self._process: asyncio.subprocess.Process | None = None
         self._session_id: str | None = None
 
-        # Subscription state (N1-S08).
         self._subscription_task: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------------
@@ -209,7 +205,7 @@ class OpenCodeClient:
         logger.info("OpenCode session created: %s", session_id)
 
     async def abort(self, session_id: str) -> None:
-        """POST /session/:id/abort -- best-effort abort (N1-S11).
+        """POST /session/:id/abort -- best-effort abort.
 
         Per the spike (SPIKE_REPORT.md §5), abort returns 200 but does NOT reliably
         unblock a stuck turn.  Called as a courtesy before creating a fresh session.
@@ -227,7 +223,7 @@ class OpenCodeClient:
             logger.warning("Abort POST %s failed (%s) -- continuing to fresh-session.", url, exc)
 
     async def create_fresh_session(self) -> str:
-        """Create a new OpenCode session and return its ID (N1-S11).
+        """Create a new OpenCode session and return its ID.
 
         Re-uses ``_create_session()`` internally.  Does NOT update ``_session_id``
         or ``state_manager`` -- the caller (``Watchdog``) is responsible for
@@ -330,7 +326,7 @@ class OpenCodeClient:
             heartbeat_timeout: Maximum seconds to wait for the next event before
                 treating the connection as stale and returning.
         """
-        # N1-S20: QA_FORCE_STALL -- stop emitting after the first event to drive the
+        # QA_FORCE_STALL -- stop emitting after the first event to drive the
         # watchdog abort -> fresh-session path deterministically.  Off by default.
         force_stall = os.environ.get("QA_FORCE_STALL") == "1"
         stall_triggered = False
@@ -399,7 +395,6 @@ class OpenCodeClient:
                             )
                             continue
 
-                    # N1-S20: QA_FORCE_STALL -- emit first event then suppress the rest.
                     if force_stall:
                         if stall_triggered:
                             logger.debug(

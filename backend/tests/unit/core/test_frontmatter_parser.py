@@ -1,4 +1,4 @@
-"""Unit tests for frontmatter_parser.py (N2-S09).
+"""Unit tests for frontmatter_parser.py.
 
 TDD: tests written before the implementation.
 
