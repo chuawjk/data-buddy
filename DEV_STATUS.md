@@ -193,7 +193,7 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 | N3-S12 Architecture write-up | TL | Merged | PR #57 squashed to develop — `docs/ARCHITECTURE.md` |
 | N3-S16 Forced turn-error hook | BE | Merged | PR #58 squashed to develop |
 | N3-S13 Integration | TL | Integrated | `5df011a` — 15 integration tests; 563 total tests green |
-| N3-S14 Full regression | QA | Startable | QA gate open — all dependencies merged |
+| N3-S14 Full regression | QA | Startable | QA gate open — QA-03 fixed in `388b1d8`, re-gate required |
 | N3-S15 Submission demo script | QA | Backlog | Depends on N3-S14 |
 
 ### Night 3 Merge Ledger
@@ -283,10 +283,11 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 
 **Resolved (this run):** PR #54 had out-of-lane edits to `.claude/agents/` and BE plan docs in the FE branch. TL removed them in a cleanup commit (`edc6952`) before merge. The agent file improvements were already on develop from a prior commit (`3238f21`); no net change.
 
-No other blockers. All Night 3 stories are merged. QA is the next gate.
+**Resolved (this run):** QA-03 — `make run` production routing broken. Built SPA calls `/api/state`, `/api/setup`, etc. but backend router had no `/api` prefix. Fix: `app.include_router(router, prefix="/api")` in `backend/main.py`; removed Vite dev proxy `rewrite` so dev and prod both use `/api/*` paths. Updated 13 test files to use `/api/*` paths. Commit `388b1d8`. 563 tests green; smoke test confirms `/` returns HTML and `/api/state` returns 200 JSON. See ADR-021.
 
 ## Overnight ADR Decisions (Night 3)
 
 - **ADR-017 (Proposed):** BE-2 proceeded to implementation of N3-S02/S03/S16 without waiting for TL plan approval. Implementation was correct and merged via PR #58. Plan-only PR #55 closed. Human to decide at morning review whether agent prompts need reinforcement.
 - **ADR-018 (Proposed):** `QA_FORCE_TURN_ERROR` seam placed in `orchestrator._run_*_turn` methods (not in `opencode_client.prompt()`). Better placement — keeps QA concerns in the orchestrator layer, consistent with `QA_FORCE_STALL` / `QA_FORCE_SECTION_FAIL` pattern.
 - **ADR-020 (Proposed):** `turn.error` payload contract correction applied inline to develop by TL. PR #58 merged with `retryable: bool`; the correct contract field is `reason: string` (enum: `"structured_output_failed"` / `"provider_error"` / `"timeout"`). Corrected in `ae99ecd` before QA ran. TL may make this class of contract-correctness fix directly on develop (not a feature change, zero behaviour change observable to the user, all tests green). Human to confirm at morning review.
+- **ADR-021 (Proposed):** QA-03 routing fix applied inline by TL on develop. `prefix="/api"` added at `include_router` call site in `main.py`; Vite proxy rewrite removed. All API routes now registered at `/api/*`. Bare paths (e.g. `/state`) are no longer registered — only `/api/state` works. 13 test files updated accordingly. TL judges this cross-lane wiring fix as within TL remit (it is the integration wiring, not a feature). Human to confirm at morning review.

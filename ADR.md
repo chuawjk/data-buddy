@@ -29,6 +29,7 @@
 | ADR-018 | N3-S16: QA_FORCE_TURN_ERROR seam placed in orchestrator._run_*_turn, not opencode_client.prompt | Proposed — pending review |
 | ADR-019 | N3-S09/S10/S11/S12: TL packaging stories skipped plan review step | Proposed — pending review |
 | ADR-020 | turn.error payload contract: reason enum string, not retryable bool | Proposed — pending review |
+| ADR-021 | QA-03: /api prefix added at router mount; Vite proxy rewrite removed | Proposed — pending review |
 
 ---
 
@@ -531,4 +532,32 @@ The contract is the interface. The FE lane (N3-S05/S07 in development) must read
 - All tests updated to assert `reason` and assert `retryable` is NOT present.
 - Commit `ae99ecd` on develop; applied by TL inline before QA gate.
 - FE lane (PR #54) must read `event.reason` (not `event.retryable`) when handling `turn.error`.
+
+---
+
+## ADR-021 · QA-03: /api prefix added at router mount; Vite proxy rewrite removed
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-04
+
+### Decision
+Add `prefix="/api"` to the `app.include_router(router, ...)` call in `backend/main.py` so all API routes are registered at `/api/state`, `/api/setup`, `/api/events`, etc. Remove the `rewrite` from the Vite dev proxy so `/api/*` is forwarded as-is to `localhost:8000` in dev mode (matching production).
+
+### Context
+QA-03 found that `make run` (production mode, no Vite proxy) was broken: the built SPA calls `/api/state`, `/api/setup`, etc. but the backend router had no `/api` prefix — it registered routes at bare paths (`/state`, `/setup`). The SPA catch-all at `GET /{full_path:path}` matched those paths and returned HTML. All API calls from the built bundle failed silently.
+
+Root cause: the Vite dev proxy had a `rewrite` rule that stripped `/api` before forwarding. This masked the prefix mismatch during development. In production there is no proxy; the mismatch was fatal.
+
+### Rationale
+Adding the prefix at the `include_router` call site in `main.py` is the minimal, correct fix. It keeps the router file (`router.py`) clean — route strings remain as readable relative paths (`/state`, `/setup`). The prefix is applied once at mount time. This is the standard FastAPI pattern for versioned/prefixed APIs.
+
+Removing the Vite dev `rewrite` ensures dev and prod both use the `/api/*` path, eliminating the proxy-masking effect that hid the bug. `changeOrigin: true` remains so the Host header is set correctly.
+
+### Consequences
+- All API routes now registered at `/api/*` only. Bare paths (e.g. `/state`) return 404.
+- 13 test files updated: all `TestClient` calls against `backend.main:app` use `/api/*` paths.
+- Tests against custom test apps (test_setup.py, test_turn.py, test_redirect.py) are unaffected — those apps mount the router without a prefix and retain bare paths.
+- REG-N3-07 (`test_api_state_route_is_registered`) updated: the bare-path assertion is removed since bare `/state` is no longer registered. Only `/api/state` is asserted.
+- Smoke test: `GET /` returns HTML; `GET /api/state` returns 200 `application/json`. 563 tests green.
+- Commit `388b1d8` on develop; applied by TL inline as a cross-lane wiring fix (TL remit per CONTRIBUTING §2).
 
