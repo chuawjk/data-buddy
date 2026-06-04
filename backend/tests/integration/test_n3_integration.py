@@ -121,7 +121,7 @@ def test_section_accept_triggers_done(single_section_building_client):
     c = single_section_building_client
 
     # Accept the only section.
-    r = c.post("/section/sec_only/accept")
+    r = c.post("/api/section/sec_only/accept")
     assert r.status_code == 204
 
     # The fire-and-forget _check_done_or_next runs inside TestClient's event loop.
@@ -131,7 +131,7 @@ def test_section_accept_triggers_done(single_section_building_client):
     time.sleep(0.05)
 
     # State must now reflect done.
-    state_r = c.get("/state")
+    state_r = c.get("/api/state")
     assert state_r.status_code == 200
     assert state_r.json()["stage"] == "done"
 
@@ -143,14 +143,14 @@ def test_section_drop_triggers_done(single_section_building_client):
     """
     c = single_section_building_client
 
-    r = c.post("/section/sec_only/drop")
+    r = c.post("/api/section/sec_only/drop")
     assert r.status_code == 204
 
     import time
 
     time.sleep(0.05)
 
-    state_r = c.get("/state")
+    state_r = c.get("/api/state")
     assert state_r.status_code == 200
     assert state_r.json()["stage"] == "done"
 
@@ -160,7 +160,7 @@ def test_done_stage_persisted_to_disk(workspace: Path, single_section_building_c
     c = single_section_building_client
     state_path = workspace / "state.json"
 
-    c.post("/section/sec_only/accept")
+    c.post("/api/section/sec_only/accept")
 
     import time
 
@@ -174,14 +174,14 @@ def test_accept_first_section_does_not_trigger_done(building_client):
     """Accepting one of two sections does NOT transition to done while one remains."""
     c = building_client
 
-    r = c.post("/section/sec_001/accept")
+    r = c.post("/api/section/sec_001/accept")
     assert r.status_code == 204
 
     import time
 
     time.sleep(0.05)
 
-    state_r = c.get("/state")
+    state_r = c.get("/api/state")
     assert state_r.json()["stage"] == "building"
 
 
@@ -189,14 +189,14 @@ def test_accept_all_sections_triggers_done(building_client):
     """Accepting every section in sequence transitions stage to done."""
     c = building_client
 
-    c.post("/section/sec_001/accept")
-    c.post("/section/sec_002/accept")
+    c.post("/api/section/sec_001/accept")
+    c.post("/api/section/sec_002/accept")
 
     import time
 
     time.sleep(0.05)
 
-    state_r = c.get("/state")
+    state_r = c.get("/api/state")
     assert state_r.json()["stage"] == "done"
 
 
@@ -204,14 +204,14 @@ def test_dropped_sections_are_terminal(building_client):
     """Mix of accepted + dropped sections is sufficient to trigger done."""
     c = building_client
 
-    c.post("/section/sec_001/accept")
-    c.post("/section/sec_002/drop")
+    c.post("/api/section/sec_001/accept")
+    c.post("/api/section/sec_002/drop")
 
     import time
 
     time.sleep(0.05)
 
-    state_r = c.get("/state")
+    state_r = c.get("/api/state")
     assert state_r.json()["stage"] == "done"
 
 
@@ -224,13 +224,13 @@ def test_section_accept_not_proposed_returns_400(building_client):
     """Double-accepting a section returns 400 section_not_proposed."""
     c = building_client
 
-    c.post("/section/sec_001/accept")
+    c.post("/api/section/sec_001/accept")
 
     import time
 
     time.sleep(0.05)
 
-    r2 = c.post("/section/sec_001/accept")
+    r2 = c.post("/api/section/sec_001/accept")
     assert r2.status_code == 400
     assert r2.json()["error"] == "section_not_proposed"
 
@@ -238,7 +238,7 @@ def test_section_accept_not_proposed_returns_400(building_client):
 def test_section_accept_unknown_id_returns_400(building_client):
     """Accepting a non-existent section returns 400 section_not_found."""
     c = building_client
-    r = c.post("/section/does_not_exist/accept")
+    r = c.post("/api/section/does_not_exist/accept")
     assert r.status_code == 400
     assert r.json()["error"] == "section_not_found"
 
@@ -256,13 +256,13 @@ def test_retry_turn_empty_json_body_returns_204(client):
     """
     # Seed profiling stage so the stage guard doesn't fire for text turns.
     # For the empty-body path, stage doesn't matter — it always retries.
-    r = client.post("/turn", json={})
+    r = client.post("/api/turn", json={})
     assert r.status_code == 204
 
 
 def test_retry_turn_null_body_returns_204(client):
     """POST /turn with no body at all returns 204 (not 422)."""
-    r = client.post("/turn")
+    r = client.post("/api/turn")
     assert r.status_code == 204
 
 
@@ -271,7 +271,7 @@ def test_retry_turn_whitespace_text_returns_204(client):
 
     Whitespace-only text is treated as absent and triggers retry.
     """
-    r = client.post("/turn", json={"text": "   "})
+    r = client.post("/api/turn", json={"text": "   "})
     assert r.status_code == 204
 
 
@@ -414,7 +414,7 @@ def test_get_state_returns_done_stage(workspace: Path):
 
     with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
         with TestClient(app) as c:
-            r = c.get("/state")
+            r = c.get("/api/state")
 
     assert r.status_code == 200
     body = r.json()

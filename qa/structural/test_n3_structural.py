@@ -106,7 +106,7 @@ class TestDoneStageState:
         )
         with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
             with TestClient(app) as c:
-                r = c.get("/state")
+                r = c.get("/api/state")
         assert r.status_code == 200
         body = r.json()
         assert body["stage"] == "done"
@@ -145,7 +145,7 @@ class TestDoneStageState:
         )
         with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
             with TestClient(app) as c:
-                r = c.get("/state")
+                r = c.get("/api/state")
         assert r.status_code == 200
         plan = r.json()["plan"]
         assert len(plan) == 2
@@ -166,17 +166,17 @@ class TestRetryTurnEmptyBody:
         REG-N3-02: the retry path must be reachable from an empty body.
         This is the same contract as the retry-banner button.
         """
-        r = client.post("/turn", json={})
+        r = client.post("/api/turn", json={})
         assert r.status_code == 204
 
     def test_no_body_returns_204(self, client) -> None:
         """POST /turn with no body at all returns 204 not 422."""
-        r = client.post("/turn")
+        r = client.post("/api/turn")
         assert r.status_code == 204
 
     def test_whitespace_only_text_returns_204(self, client) -> None:
         """POST /turn text='   ' returns 204 — whitespace treated as empty."""
-        r = client.post("/turn", json={"text": "   "})
+        r = client.post("/api/turn", json={"text": "   "})
         assert r.status_code == 204
 
     def test_real_text_turn_in_setup_stage_returns_422(self, client) -> None:
@@ -186,7 +186,7 @@ class TestRetryTurnEmptyBody:
         planning, and building stages. The empty-body retry path is the only
         stage-independent path (always 204).
         """
-        r = client.post("/turn", json={"text": "some revision"})
+        r = client.post("/api/turn", json={"text": "some revision"})
         # Default state is setup — text turn is not valid here
         assert r.status_code == 422
         assert r.json()["error"] == "invalid_stage"
@@ -417,12 +417,12 @@ class TestDoneTransition:
         every section reaches a terminal status.
         """
         c = building_client
-        r = c.post("/section/sec_only/accept")
+        r = c.post("/api/section/sec_only/accept")
         assert r.status_code == 204
 
         time.sleep(0.1)
 
-        r2 = c.get("/state")
+        r2 = c.get("/api/state")
         assert r2.json()["stage"] == "done"
 
     def test_drop_last_section_transitions_to_done(self, building_client) -> None:
@@ -431,12 +431,12 @@ class TestDoneTransition:
         REG-N3-05: dropped sections are terminal — done check fires.
         """
         c = building_client
-        r = c.post("/section/sec_only/drop")
+        r = c.post("/api/section/sec_only/drop")
         assert r.status_code == 204
 
         time.sleep(0.1)
 
-        r2 = c.get("/state")
+        r2 = c.get("/api/state")
         assert r2.json()["stage"] == "done"
 
     def test_mixed_terminal_statuses_trigger_done(self, workspace: Path) -> None:
@@ -461,10 +461,10 @@ class TestDoneTransition:
         state_path.write_text(json.dumps(initial))
         with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
             with TestClient(app) as c:
-                c.post("/section/s1/accept")
-                c.post("/section/s2/drop")
+                c.post("/api/section/s1/accept")
+                c.post("/api/section/s2/drop")
                 time.sleep(0.1)
-                r = c.get("/state")
+                r = c.get("/api/state")
         assert r.json()["stage"] == "done"
 
     def test_partial_accept_does_not_trigger_done(self, workspace: Path) -> None:
@@ -489,9 +489,9 @@ class TestDoneTransition:
         state_path.write_text(json.dumps(initial))
         with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
             with TestClient(app) as c:
-                c.post("/section/s1/accept")
+                c.post("/api/section/s1/accept")
                 time.sleep(0.1)
-                r = c.get("/state")
+                r = c.get("/api/state")
         assert r.json()["stage"] == "building"
 
 
@@ -630,21 +630,18 @@ class TestApiRouteNotIntercepted:
 
         with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
             with TestClient(app) as c:
-                # Without /api prefix — should work as before
-                r_bare = c.get("/state")
-                # With /api prefix — must also work in make run mode
+                # /api prefix is the registered path (QA-03 fix: prefix="/api" on include_router)
                 r_api = c.get("/api/state")
 
-        # Bare path must still work (existing tests rely on it)
-        assert r_bare.status_code == 200
-        assert "application/json" in r_bare.headers.get("content-type", "")
-
-        # /api path must also return JSON (the production SPA path)
+        # /api/state must return JSON (the production SPA path and the only registered path)
         ct_api = r_api.headers.get("content-type", "")
         assert "application/json" in ct_api, (
             f"GET /api/state returned {ct_api!r}. "
             "Router must register routes at /api/* for make run compatibility."
         )
+        assert r_api.status_code == 200
+        body = r_api.json()
+        assert "stage" in body, f"Response missing 'stage' field: {body}"
 
 
 # ---------------------------------------------------------------------------

@@ -39,7 +39,7 @@ def client(tmp_path: Path):
 
 def test_get_state(client):
     """GET /state responds 200 with the required top-level fields."""
-    r = client.get("/state")
+    r = client.get("/api/state")
     assert r.status_code == 200
     body = r.json()
     # Must include the mandatory fields from the contract.
@@ -55,7 +55,7 @@ def test_post_setup(client):
     """POST /setup is registered and returns a valid stub (not 404/500)."""
     # Stub: send minimal multipart; handler is not yet real so a stub response is acceptable.
     r = client.post(
-        "/setup",
+        "/api/setup",
         data={"aim": "test aim"},
         files={"file": ("test.csv", b"col_a,col_b\n1,2\n", "text/csv")},
     )
@@ -96,37 +96,37 @@ async def test_get_events_registered(client):
 
 def test_post_turn(client):
     """POST /turn is registered and returns a non-error stub."""
-    r = client.post("/turn", json={"text": "hello"})
+    r = client.post("/api/turn", json={"text": "hello"})
     assert r.status_code not in (404, 500, 501, 502, 503)
 
 
 def test_post_plan_update(client):
     """POST /plan/update is registered and returns a non-error stub."""
-    r = client.post("/plan/update", json={"sections": []})
+    r = client.post("/api/plan/update", json={"sections": []})
     assert r.status_code not in (404, 500, 501, 502, 503)
 
 
 def test_post_plan_accept(client):
     """POST /plan/accept is registered and returns a non-error stub."""
-    r = client.post("/plan/accept")
+    r = client.post("/api/plan/accept")
     assert r.status_code not in (404, 500, 501, 502, 503)
 
 
 def test_post_section_accept(client):
     """POST /section/{id}/accept is registered."""
-    r = client.post("/section/sec_01/accept")
+    r = client.post("/api/section/sec_01/accept")
     assert r.status_code not in (404, 500, 501, 502, 503)
 
 
 def test_post_section_drop(client):
     """POST /section/{id}/drop is registered."""
-    r = client.post("/section/sec_01/drop")
+    r = client.post("/api/section/sec_01/drop")
     assert r.status_code not in (404, 500, 501, 502, 503)
 
 
 def test_get_export(client):
     """GET /export is registered and returns a non-error stub."""
-    r = client.get("/export")
+    r = client.get("/api/export")
     assert r.status_code not in (404, 500, 501, 502, 503)
 
 
@@ -139,7 +139,7 @@ def test_get_file(client):
     it does not 5xx.  We verify by checking status < 500 and by inspecting the
     error envelope shape.
     """
-    r = client.get("/file", params={"path": "data/test.csv"})
+    r = client.get("/api/file", params={"path": "data/test.csv"})
     # Route must be registered: no 5xx from an unregistered route.
     assert r.status_code < 500
     # Contract allows 404 with error envelope for missing files.

@@ -113,7 +113,7 @@ def test_get_state_shape_accessible_for_both_variants(fixture_name, qa_app):
     # Write profile directly via the shared state manager (no new TestClient needed).
     app.state.state_manager.update(stage="profiling", profile=fixture)
 
-    resp = client.get("/state")
+    resp = client.get("/api/state")
     assert resp.status_code == 200
     profile = resp.json().get("profile", {})
     assert profile, "profile must be present in GET /state response"

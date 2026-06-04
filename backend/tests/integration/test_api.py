@@ -53,7 +53,7 @@ def client(workspace: Path):
 def test_setup_writes_csv_to_workspace(client, workspace):
     """Uploaded CSV must be written to workspace/data/<filename>."""
     r = client.post(
-        "/setup",
+        "/api/setup",
         data={"aim": "find patterns"},
         files={"csv": ("customers.csv", _CSV, "text/csv")},
     )
@@ -67,7 +67,7 @@ def test_setup_writes_csv_to_workspace(client, workspace):
 def test_setup_persists_state_to_disk(client, workspace):
     """POST /setup must write dataset_path and aim to state.json on disk."""
     client.post(
-        "/setup",
+        "/api/setup",
         data={"aim": "find patterns"},
         files={"csv": ("customers.csv", _CSV, "text/csv")},
     )
@@ -82,12 +82,12 @@ def test_setup_persists_state_to_disk(client, workspace):
 def test_get_state_reflects_upload(client):
     """GET /state after POST /setup must return aim and dataset_path."""
     client.post(
-        "/setup",
+        "/api/setup",
         data={"aim": "find patterns"},
         files={"csv": ("customers.csv", _CSV, "text/csv")},
     )
 
-    r = client.get("/state")
+    r = client.get("/api/state")
     assert r.status_code == 200
     body = r.json()
     assert body["aim"] == "find patterns"
@@ -96,7 +96,7 @@ def test_get_state_reflects_upload(client):
 
 def test_get_state_strips_internal_field(client):
     """GET /state must never expose opencode_session_id to the SPA."""
-    r = client.get("/state")
+    r = client.get("/api/state")
     assert r.status_code == 200
     assert "opencode_session_id" not in r.json()
 
@@ -108,7 +108,7 @@ def test_get_state_strips_internal_field(client):
 
 def test_setup_rejects_empty_aim(client):
     r = client.post(
-        "/setup",
+        "/api/setup",
         data={"aim": "   "},
         files={"csv": ("data.csv", _CSV, "text/csv")},
     )
@@ -118,7 +118,7 @@ def test_setup_rejects_empty_aim(client):
 
 def test_setup_rejects_non_csv_content_type(client):
     r = client.post(
-        "/setup",
+        "/api/setup",
         data={"aim": "find patterns"},
         files={"csv": ("data.txt", b"hello", "text/plain")},
     )
@@ -129,7 +129,7 @@ def test_setup_rejects_non_csv_content_type(client):
 def test_setup_rejects_oversized_file(client):
     big = b"x" * (10 * 1024 * 1024 + 1)
     r = client.post(
-        "/setup",
+        "/api/setup",
         data={"aim": "find patterns"},
         files={"csv": ("big.csv", big, "text/csv")},
     )
@@ -159,7 +159,7 @@ def test_state_loaded_from_disk_on_startup(tmp_path):
 
     with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
         with TestClient(app) as c:
-            r = c.get("/state")
+            r = c.get("/api/state")
 
     assert r.status_code == 200
     body = r.json()
@@ -180,19 +180,19 @@ def test_turn_empty_text_triggers_retry(client):
     Empty/absent text now calls retry_last_turn() instead of returning 422.
     Returns 204; retry logs a warning when there is no prior turn.
     """
-    r = client.post("/turn", json={"text": "   "})
+    r = client.post("/api/turn", json={"text": "   "})
     assert r.status_code == 204
 
 
 def test_turn_missing_text_field_triggers_retry(client):
     """POST /turn with no text field triggers retry (N3-S02)."""
-    r = client.post("/turn", json={})
+    r = client.post("/api/turn", json={})
     assert r.status_code == 204
 
 
 def test_turn_rejected_in_setup_stage(client):
     """POST /turn is not valid in the default setup stage."""
-    r = client.post("/turn", json={"text": "look at the age column"})
+    r = client.post("/api/turn", json={"text": "look at the age column"})
     assert r.status_code == 422
     assert r.json()["error"] == "invalid_stage"
 
@@ -201,5 +201,5 @@ def test_turn_accepted_in_profiling_stage(client):
     """POST /turn returns 204 when stage is profiling."""
     client.app.state.state_manager.update(stage="profiling")
 
-    r = client.post("/turn", json={"text": "look at the age column"})
+    r = client.post("/api/turn", json={"text": "look at the age column"})
     assert r.status_code == 204

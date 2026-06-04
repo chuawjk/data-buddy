@@ -59,7 +59,7 @@ def test_section_drop_returns_204(tmp_path: Path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_01/drop")
+            r = c.post("/api/section/sec_01/drop")
 
     assert r.status_code == 204
 
@@ -74,7 +74,7 @@ def test_section_drop_updates_status_to_dropped(tmp_path: Path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            c.post("/section/sec_01/drop")
+            c.post("/api/section/sec_01/drop")
 
     plan = sm.get_state()["plan"]
     sec_01 = next(s for s in plan if s["id"] == "sec_01")
@@ -91,7 +91,7 @@ def test_section_drop_only_mutates_target_section(tmp_path: Path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            c.post("/section/sec_01/drop")
+            c.post("/api/section/sec_01/drop")
 
     plan = sm.get_state()["plan"]
     sec_02 = next(s for s in plan if s["id"] == "sec_02")
@@ -110,7 +110,7 @@ def test_section_drop_second_section(tmp_path: Path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_02/drop")
+            r = c.post("/api/section/sec_02/drop")
 
     assert r.status_code == 204
     plan = sm.get_state()["plan"]
@@ -133,7 +133,7 @@ def test_section_drop_unknown_id_returns_400(tmp_path: Path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_99/drop")
+            r = c.post("/api/section/sec_99/drop")
 
     assert r.status_code == 400
     body = r.json()
@@ -151,7 +151,7 @@ def test_section_drop_unknown_id_error_envelope_shape(tmp_path: Path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_99/drop")
+            r = c.post("/api/section/sec_99/drop")
 
     body = r.json()
     assert "error" in body
@@ -181,7 +181,7 @@ def test_section_drop_already_accepted_returns_400(tmp_path: Path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_01/drop")
+            r = c.post("/api/section/sec_01/drop")
 
     assert r.status_code == 400
     body = r.json()
@@ -206,7 +206,7 @@ def test_section_drop_already_dropped_returns_400(tmp_path: Path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_01/drop")
+            r = c.post("/api/section/sec_01/drop")
 
     assert r.status_code == 400
     body = r.json()
@@ -228,7 +228,7 @@ def test_section_drop_empty_plan_returns_400(tmp_path: Path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_01/drop")
+            r = c.post("/api/section/sec_01/drop")
 
     assert r.status_code == 400
     body = r.json()
@@ -264,9 +264,9 @@ def test_section_drop_excluded_from_export(tmp_path: Path):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
             # Drop sec_01.
-            c.post("/section/sec_01/drop")
+            c.post("/api/section/sec_01/drop")
             # Export must not include sec_01 content.
-            r = c.get("/export")
+            r = c.get("/api/export")
 
     assert r.status_code == 200
     assert "Secret content here" not in r.text
@@ -291,6 +291,6 @@ def test_section_drop_makes_zero_opencode_calls(tmp_path: Path):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
             c.app.state.orchestrator._client = mock_client
-            c.post("/section/sec_01/drop")
+            c.post("/api/section/sec_01/drop")
 
     mock_client.prompt.assert_not_awaited()

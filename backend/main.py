@@ -151,7 +151,10 @@ app = FastAPI(
 )
 
 # Mount all REST routes (10 routes from the API contract).
-app.include_router(router)
+# The /api prefix is added here (at mount time) so the built Vite bundle's
+# /api/* calls reach the backend without the dev-proxy rewrite.  The router
+# itself stays prefix-free so its path strings remain readable.
+app.include_router(router, prefix="/api")
 
 
 # ---------------------------------------------------------------------------
