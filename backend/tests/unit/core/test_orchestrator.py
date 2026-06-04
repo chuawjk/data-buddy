@@ -1321,10 +1321,10 @@ async def test_retry_last_turn_uses_fresh_session(tmp_path):
 
 @pytest.mark.asyncio
 async def test_retry_bounded_at_three(tmp_path):
-    """retry_last_turn() emits turn.error with retryable=False after 3 retries.
+    """retry_last_turn() emits turn.error with reason='provider_error' after 3 retries.
 
     On the 4th retry attempt (retries >= 3), no further client.prompt is called;
-    turn.error is emitted with retryable=False.
+    turn.error is emitted with reason='provider_error'.
     """
     orch, sm, bus, client = _make_orchestrator(tmp_path)
     sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
@@ -1345,11 +1345,11 @@ async def test_retry_bounded_at_three(tmp_path):
     # No further prompt call.
     client.prompt.assert_not_awaited()
 
-    # turn.error must be emitted with retryable=False.
+    # turn.error must be emitted with reason='provider_error'.
     event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
     assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
-    assert event.get("retryable") is False, (
-        f"Expected retryable=False; got {event.get('retryable')!r}"
+    assert event.get("reason") == "provider_error", (
+        f"Expected reason='provider_error'; got {event.get('reason')!r}"
     )
 
 
@@ -1376,16 +1376,16 @@ async def test_retry_without_prior_turn(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# N3-S03: turn.error payload includes stage and retryable
+# N3-S03: turn.error payload includes stage and reason
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_turn_error_has_stage_and_retryable(tmp_path):
-    """_run_profile_turn emits turn.error with stage='profiling' and retryable=True on failure.
+async def test_turn_error_has_stage_and_reason(tmp_path):
+    """_run_profile_turn emits turn.error with stage='profiling' and reason='provider_error'.
 
     Acceptance (N3-S03): structured-output failures and provider errors emit
-    turn.error with stage/section_id/retryable fields per the API contract.
+    turn.error with stage/section_id/reason fields per the API contract.
     """
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="profiling")
@@ -1404,15 +1404,15 @@ async def test_turn_error_has_stage_and_retryable(tmp_path):
     assert event.get("stage") == "profiling", (
         f"Expected stage='profiling'; got {event.get('stage')!r}"
     )
-    assert event.get("retryable") is True, (
-        f"Expected retryable=True; got {event.get('retryable')!r}"
+    assert event.get("reason") == "provider_error", (
+        f"Expected reason='provider_error'; got {event.get('reason')!r}"
     )
-    assert "message" in event, "turn.error must include message field"
+    assert "retryable" not in event, "turn.error must not include legacy retryable field"
 
 
 @pytest.mark.asyncio
 async def test_turn_error_planning_has_stage(tmp_path):
-    """_run_plan_turn emits turn.error with stage='planning' on failure."""
+    """_run_plan_turn emits turn.error with stage='planning' and reason='provider_error'."""
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="planning")
     bus = EventBus()
@@ -1428,12 +1428,13 @@ async def test_turn_error_planning_has_stage(tmp_path):
     event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
     assert event["type"] == "turn.error"
     assert event.get("stage") == "planning"
-    assert event.get("retryable") is True
+    assert event.get("reason") == "provider_error"
+    assert "retryable" not in event
 
 
 @pytest.mark.asyncio
 async def test_turn_error_building_has_stage_and_section_id(tmp_path):
-    """_run_section_turn emits turn.error with stage='building' and section_id on failure."""
+    """_run_section_turn emits turn.error with stage='building', section_id, reason."""
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="building")
     bus = EventBus()
@@ -1450,7 +1451,8 @@ async def test_turn_error_building_has_stage_and_section_id(tmp_path):
     assert event["type"] == "turn.error"
     assert event.get("stage") == "building"
     assert event.get("section_id") == "sec_01"
-    assert event.get("retryable") is True
+    assert event.get("reason") == "provider_error"
+    assert "retryable" not in event
 
 
 # ---------------------------------------------------------------------------
@@ -1484,7 +1486,8 @@ async def test_qa_force_turn_error(tmp_path, monkeypatch):
     event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
     assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
     assert event.get("stage") == "profiling"
-    assert event.get("retryable") is True
+    assert event.get("reason") == "provider_error"
+    assert "retryable" not in event
     # The seam fires before client.prompt — so prompt should not have been awaited.
     mock_client.prompt.assert_not_awaited()
 

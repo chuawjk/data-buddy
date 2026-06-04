@@ -150,7 +150,7 @@ async def test_state_updated_with_new_session() -> None:
 
 @pytest.mark.asyncio
 async def test_turn_error_emitted() -> None:
-    """After recovery, bus.publish('turn.error', ...) is called."""
+    """After recovery, turn.error is published with reason='timeout' and stage."""
     wmod = _load_watchdog()
     client = _make_client()
     sm = _make_state_manager()
@@ -163,7 +163,11 @@ async def test_turn_error_emitted() -> None:
     event_type = bus.publish.call_args[0][0]
     payload = bus.publish.call_args[0][1]
     assert event_type == "turn.error"
-    assert "message" in payload
+    assert payload.get("reason") == "timeout", (
+        f"Expected reason='timeout'; got {payload.get('reason')!r}"
+    )
+    assert "stage" in payload, "turn.error from watchdog must include stage"
+    assert "retryable" not in payload, "turn.error must not include legacy retryable field"
 
 
 # ---------------------------------------------------------------------------

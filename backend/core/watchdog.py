@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -114,6 +115,7 @@ class Watchdog:
         """Abort the stuck turn and recover with a fresh session."""
         state = self._state_manager.get_state()
         session_id: str | None = state.get("opencode_session_id")
+        stage: str = state.get("stage", "")
 
         if session_id:
             logger.info("Watchdog: aborting stuck session %s (best-effort).", session_id)
@@ -134,6 +136,10 @@ class Watchdog:
 
         await self._bus.publish(
             "turn.error",
-            {"message": "turn timed out; session replaced"},
+            {
+                "stage": stage,
+                "reason": "timeout",
+                "ts": int(time.time() * 1000),
+            },
         )
-        logger.info("Watchdog: published turn.error.")
+        logger.info("Watchdog: published turn.error (stage=%r, reason=timeout).", stage)

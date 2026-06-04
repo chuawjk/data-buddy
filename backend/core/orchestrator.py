@@ -39,8 +39,8 @@ re-dispatches it against the current session ID, bounded to 3 attempts.
 ``POST /turn`` with an empty body calls ``retry_last_turn()``.
 
 N3-S03: ``_run_profile_turn``, ``_run_plan_turn``, and ``_run_section_turn``
-emit ``turn.error`` payloads including ``stage``, ``retryable``, and
-(for building) ``section_id`` per the API contract.
+emit ``turn.error`` payloads including ``stage``, ``reason`` (enum string),
+and (for building) ``section_id`` per the API contract.
 
 N3-S16: ``QA_FORCE_TURN_ERROR=1`` env-var seam in the ``_run_*_turn`` methods.
 When set, each method raises ``RuntimeError`` before calling ``client.prompt``,
@@ -484,7 +484,7 @@ class Orchestrator:
 
         Behaviour:
         - ``_last_turn is None`` → log a warning and return (no turn to retry).
-        - ``retries >= 3`` → emit ``turn.error`` with ``retryable=False``
+        - ``retries >= 3`` → emit ``turn.error`` with ``reason="provider_error"``
           (max retries exceeded) and return without firing a new prompt.
         - Otherwise: increment ``retries``, dispatch the prompt to the
           appropriate ``_run_*_turn`` as a fire-and-forget task.
@@ -507,8 +507,8 @@ class Orchestrator:
                 {
                     "stage": self._last_turn.get("stage", ""),
                     "section_id": self._last_turn.get("section_id"),
-                    "retryable": False,
-                    "message": "max retries exceeded",
+                    "reason": "provider_error",
+                    "ts": int(time.time() * 1000),
                 },
             )
             return
@@ -1406,13 +1406,13 @@ class Orchestrator:
                 self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("Plan turn failed: %s", exc)
-            # N3-S03: include stage and retryable in the turn.error payload.
+            # N3-S03: include stage and reason in the turn.error payload.
             await self._bus.publish(
                 "turn.error",
                 {
                     "stage": "planning",
-                    "retryable": True,
-                    "message": str(exc),
+                    "reason": "provider_error",
+                    "ts": int(time.time() * 1000),
                 },
             )
 
@@ -1459,11 +1459,11 @@ class Orchestrator:
                 self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("Section turn failed: %s", exc)
-            # N3-S03: include stage, section_id, and retryable in the payload.
+            # N3-S03: include stage, section_id, and reason in the payload.
             error_payload: dict[str, Any] = {
                 "stage": "building",
-                "retryable": True,
-                "message": str(exc),
+                "reason": "provider_error",
+                "ts": int(time.time() * 1000),
             }
             if section_id is not None:
                 error_payload["section_id"] = section_id
@@ -1510,13 +1510,13 @@ class Orchestrator:
                 self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("Profile turn failed: %s", exc)
-            # N3-S03: include stage and retryable in the turn.error payload.
+            # N3-S03: include stage and reason in the turn.error payload.
             await self._bus.publish(
                 "turn.error",
                 {
                     "stage": "profiling",
-                    "retryable": True,
-                    "message": str(exc),
+                    "reason": "provider_error",
+                    "ts": int(time.time() * 1000),
                 },
             )
 
