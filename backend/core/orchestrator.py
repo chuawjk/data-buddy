@@ -32,6 +32,20 @@ N2-S20: ``QA_FORCE_SECTION_FAIL=1`` env-var seam in ``_handle_section_idle``.
 When set, the ``.md`` artefact is removed before the triplet check so that
 ``section.failed`` fires deterministically for QA without model misbehaviour.
 Off by default; zero production-path impact.
+
+N3-S02: ``_last_turn`` field on ``Orchestrator`` records the most recently
+dispatched turn (stage, prompt, section_id, retries).  ``retry_last_turn()``
+re-dispatches it against the current session ID, bounded to 3 attempts.
+``POST /turn`` with an empty body calls ``retry_last_turn()``.
+
+N3-S03: ``_run_profile_turn``, ``_run_plan_turn``, and ``_run_section_turn``
+emit ``turn.error`` payloads including ``stage``, ``retryable``, and
+(for building) ``section_id`` per the API contract.
+
+N3-S16: ``QA_FORCE_TURN_ERROR=1`` env-var seam in the ``_run_*_turn`` methods.
+When set, each method raises ``RuntimeError`` before calling ``client.prompt``,
+driving the ``turn.error`` path deterministically for QA without token spend.
+Off by default; zero production-path impact.
 """
 
 from __future__ import annotations
@@ -93,6 +107,9 @@ class Orchestrator:
         self._client = client
         self._workspace_root = Path(workspace_root)
         self._watchdog = watchdog
+        # N3-S02: last dispatched turn — used by retry_last_turn() to replay.
+        # Shape: {"stage": str, "prompt": str, "section_id": str|None, "retries": int}
+        self._last_turn: dict | None = None
 
     # ------------------------------------------------------------------
     # Stage transitions
@@ -452,9 +469,94 @@ class Orchestrator:
         # Fire-and-forget.
         assert self._client is not None  # noqa: S101  # guarded by session check above
         asyncio.create_task(
-            self._run_section_turn(session_id, prompt_text),
+            self._run_section_turn(session_id, prompt_text, section_id=section_id),
             name=f"redirect-turn-{section_id}",
         )
+
+    async def retry_last_turn(self) -> None:
+        """Re-dispatch the last recorded turn prompt against the current session.
+
+        Called by ``POST /turn`` when the request body is absent or empty (the
+        retry-banner path).  Reads ``_last_turn`` recorded by the most recent
+        ``_run_*_turn`` call and replays the same prompt to the same stage,
+        using the session ID fresh from ``state_manager`` so a watchdog session
+        swap is automatically picked up.
+
+        Behaviour:
+        - ``_last_turn is None`` → log a warning and return (no turn to retry).
+        - ``retries >= 3`` → emit ``turn.error`` with ``retryable=False``
+          (max retries exceeded) and return without firing a new prompt.
+        - Otherwise: increment ``retries``, dispatch the prompt to the
+          appropriate ``_run_*_turn`` as a fire-and-forget task.
+
+        Returns immediately; the replayed turn runs asynchronously.
+
+        N3-S02.
+        """
+        if self._last_turn is None:
+            logger.warning("retry_last_turn: no prior turn recorded — nothing to retry")
+            return
+
+        if self._last_turn.get("retries", 0) >= 3:
+            logger.warning(
+                "retry_last_turn: max retries (3) exceeded for stage=%r",
+                self._last_turn.get("stage"),
+            )
+            await self._bus.publish(
+                "turn.error",
+                {
+                    "stage": self._last_turn.get("stage", ""),
+                    "section_id": self._last_turn.get("section_id"),
+                    "retryable": False,
+                    "message": "max retries exceeded",
+                },
+            )
+            return
+
+        # Increment the retry counter before re-dispatching so that the next
+        # _run_*_turn call does NOT reset it back to 0 (it only resets on success).
+        # We do it here rather than inside _run_*_turn so that the counter
+        # survives regardless of which path succeeds or fails.
+        self._last_turn["retries"] = self._last_turn.get("retries", 0) + 1
+
+        stage: str = self._last_turn.get("stage", "")
+        prompt: str = self._last_turn.get("prompt", "")
+        section_id: str | None = self._last_turn.get("section_id")
+
+        # Read the session ID fresh from state — the watchdog may have swapped it.
+        session_id: str | None = self._state_manager.get_state().get("opencode_session_id")
+        if not session_id or self._client is None:
+            logger.warning(
+                "retry_last_turn: no active session or client — cannot retry (stage=%r)",
+                stage,
+            )
+            return
+
+        logger.info(
+            "retry_last_turn: replaying %r turn (retry #%d, session=%s, section_id=%r)",
+            stage,
+            self._last_turn["retries"],
+            session_id,
+            section_id,
+        )
+
+        if stage == "profiling":
+            asyncio.create_task(
+                self._run_profile_turn(session_id, prompt),
+                name="retry-profile-turn",
+            )
+        elif stage == "planning":
+            asyncio.create_task(
+                self._run_plan_turn(session_id, prompt),
+                name="retry-plan-turn",
+            )
+        elif stage == "building":
+            asyncio.create_task(
+                self._run_section_turn(session_id, prompt, section_id=section_id),
+                name=f"retry-section-turn-{section_id}",
+            )
+        else:
+            logger.warning("retry_last_turn: unknown stage %r — cannot retry", stage)
 
     # ------------------------------------------------------------------
     # Bus listener — session.idle / profile.ready → stage output handling
@@ -769,7 +871,7 @@ class Orchestrator:
         # 4. Fire-and-forget the turn.
         assert self._client is not None  # noqa: S101  # guarded by session check above
         asyncio.create_task(
-            self._run_section_turn(session_id, prompt_text),
+            self._run_section_turn(session_id, prompt_text, section_id=section_id),
             name=f"section-turn-{section_id}",
         )
 
@@ -1222,18 +1324,45 @@ class Orchestrator:
             session_id: The active OpenCode session ID.
             prompt: The plan prompt text to send.
 
-        N2-S01.
+        N2-S01, N3-S02, N3-S03.
         """
+        # N3-S02: record this turn so retry_last_turn() can replay it.
+        self._last_turn = {
+            "stage": "planning",
+            "prompt": prompt,
+            "section_id": None,
+            "retries": self._last_turn.get("retries", 0) if self._last_turn else 0,
+        }
+
         schema: Any = self._load_plan_schema()
 
         assert self._client is not None  # guarded by caller  # noqa: S101
         try:
+            # N3-S16: QA_FORCE_TURN_ERROR seam.
+            if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
+                raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
             await self._client.prompt(session_id, prompt, schema=schema)
+            # N3-S02: successful turn — reset retry counter.
+            if self._last_turn is not None:
+                self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("Plan turn failed: %s", exc)
-            await self._bus.publish("turn.error", {"message": str(exc)})
+            # N3-S03: include stage and retryable in the turn.error payload.
+            await self._bus.publish(
+                "turn.error",
+                {
+                    "stage": "planning",
+                    "retryable": True,
+                    "message": str(exc),
+                },
+            )
 
-    async def _run_section_turn(self, session_id: str, prompt: str) -> None:
+    async def _run_section_turn(
+        self,
+        session_id: str,
+        prompt: str,
+        section_id: str | None = None,
+    ) -> None:
         """Send the section build prompt to OpenCode and handle errors.
 
         Scheduled as a fire-and-forget ``asyncio.Task`` by ``start_build_section``.
@@ -1246,16 +1375,40 @@ class Orchestrator:
         Args:
             session_id: The active OpenCode session ID.
             prompt: The section build prompt text.
+            section_id: Optional section identifier included in ``turn.error``
+                payloads so the SPA can locate the affected section.
 
-        N2-S07.
+        N2-S07, N3-S02, N3-S03.
         """
+        # N3-S02: record this turn so retry_last_turn() can replay it.
+        self._last_turn = {
+            "stage": "building",
+            "prompt": prompt,
+            "section_id": section_id,
+            "retries": self._last_turn.get("retries", 0) if self._last_turn else 0,
+        }
+
         assert self._client is not None  # noqa: S101  # guarded by caller
         try:
+            # N3-S16: QA_FORCE_TURN_ERROR seam.
+            if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
+                raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
             # schema=None — no structured output for section build (ADR-005).
             await self._client.prompt(session_id, prompt)
+            # N3-S02: successful turn — reset retry counter.
+            if self._last_turn is not None:
+                self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("Section turn failed: %s", exc)
-            await self._bus.publish("turn.error", {"message": str(exc)})
+            # N3-S03: include stage, section_id, and retryable in the payload.
+            error_payload: dict[str, Any] = {
+                "stage": "building",
+                "retryable": True,
+                "message": str(exc),
+            }
+            if section_id is not None:
+                error_payload["section_id"] = section_id
+            await self._bus.publish("turn.error", error_payload)
 
     async def _run_profile_turn(self, session_id: str, prompt: str) -> None:
         """Send the profiling prompt to OpenCode and handle errors.
@@ -1272,15 +1425,41 @@ class Orchestrator:
         Args:
             session_id: The active OpenCode session ID.
             prompt: The profile prompt text to send.
+
+        N3-S02, N3-S03.
         """
+        # N3-S02: record this turn so retry_last_turn() can replay it.
+        self._last_turn = {
+            "stage": "profiling",
+            "prompt": prompt,
+            "section_id": None,
+            "retries": self._last_turn.get("retries", 0) if self._last_turn else 0,
+        }
+
         schema: Any = self._load_profile_schema()
 
         assert self._client is not None  # guarded by caller
         try:
+            # N3-S16: QA_FORCE_TURN_ERROR seam — raise before any OpenCode call so the
+            # turn.error path fires deterministically for QA without token spend.
+            # Off by default; zero production-path impact.
+            if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
+                raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
             await self._client.prompt(session_id, prompt, schema=schema)
+            # N3-S02: successful turn — reset retry counter.
+            if self._last_turn is not None:
+                self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("Profile turn failed: %s", exc)
-            await self._bus.publish("turn.error", {"message": str(exc)})
+            # N3-S03: include stage and retryable in the turn.error payload.
+            await self._bus.publish(
+                "turn.error",
+                {
+                    "stage": "profiling",
+                    "retryable": True,
+                    "message": str(exc),
+                },
+            )
 
     @staticmethod
     def _load_profile_schema() -> Any:
