@@ -2,6 +2,8 @@
 
 Data Buddy is an agent-driven data analysis tool. Upload a CSV, state what you want to learn, and the system profiles your data, drafts a structured analysis plan, and builds it section by section — each section producing a Python analysis script, a chart, and a written interpretation.
 
+![Data Buddy Demo](data_buddy_demo.gif)
+
 The analysis is done by [OpenCode](https://opencode.ai), an AI coding agent. The backend orchestrates what OpenCode does and when; the frontend shows it happening in real time.
 
 ---
