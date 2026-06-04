@@ -29,15 +29,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
-
 import jsonschema
 import pytest
-from fastapi.testclient import TestClient
 
 from backend.agent.prompts.profile import PROFILE_SCHEMA
-from backend.core.state_manager import StateManager
-from backend.main import app
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -86,14 +81,6 @@ def test_agent_deviation_fails_schema():
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
-def client_with_profile(tmp_path):
-    state_path = tmp_path / "state.json"
-    with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
-        with TestClient(app) as c:
-            yield c, StateManager(path=state_path)
-
-
 def _shape_rows(profile: dict) -> int | None:
     shape = profile.get("shape", {})
     return shape.get("rows") or shape.get("total_rows")
@@ -111,23 +98,22 @@ def _shape_columns(profile: dict) -> int | None:
         "profile_agent_deviation.json",
     ],
 )
-def test_get_state_shape_accessible_for_both_variants(fixture_name, tmp_path):
+def test_get_state_shape_accessible_for_both_variants(fixture_name, qa_app):
     """GET /state must return a profile where the frontend can read shape values.
 
     Tests both the canonical (rows/columns) and deviation (total_rows/total_columns)
     variants. The frontend reads shape.rows ?? shape.total_rows; this test asserts
     at least one of those paths is populated in the stored profile.
     """
+    client, app, workspace = qa_app
+
     fixture = json.loads((FIXTURES / fixture_name).read_text())
     fixture.pop("_note", None)
 
-    state_path = tmp_path / "state.json"
-    sm = StateManager(path=state_path)
-    sm.update(stage="profiling", profile=fixture)
+    # Write profile directly via the shared state manager (no new TestClient needed).
+    app.state.state_manager.update(stage="profiling", profile=fixture)
 
-    with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
-        with TestClient(app) as client:
-            resp = client.get("/state")
+    resp = client.get("/state")
     assert resp.status_code == 200
     profile = resp.json().get("profile", {})
     assert profile, "profile must be present in GET /state response"

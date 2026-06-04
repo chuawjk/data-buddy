@@ -52,7 +52,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 
 # ---------------------------------------------------------------------------
 # Repo root and paths
@@ -82,23 +81,6 @@ def _write_state_file(state_path: Path, **kwargs) -> None:
     }
     base.update(kwargs)
     state_path.write_text(json.dumps(base, indent=2), encoding="utf-8")
-
-
-# ---------------------------------------------------------------------------
-# Lazy imports to keep test collection fast.
-# ---------------------------------------------------------------------------
-
-
-def _get_app_client(workspace: Path):
-    """Return a TestClient wired to the real ASGI app with an isolated workspace."""
-    from backend.main import app
-    from backend.core.state_manager import StateManager
-
-    state_path = workspace / "state.json"
-    with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
-        client = TestClient(app)
-        client.__enter__()
-        return client, app
 
 
 # ===========================================================================
@@ -228,21 +210,7 @@ class TestPlanSchema:
 class TestZeroOpenCodeCalls:
     """REG-N2-02: Backend-only endpoints make zero OpenCode calls."""
 
-    @pytest.fixture()
-    def workspace(self, tmp_path):
-        return tmp_path
-
-    @pytest.fixture()
-    def client_and_app(self, workspace):
-        from backend.main import app
-        from backend.core.state_manager import StateManager
-
-        state_path = workspace / "state.json"
-        with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
-            with TestClient(app) as c:
-                yield c, app
-
-    def _seed_planning_state(self, client, app, workspace):
+    def _seed_planning_state(self, app, workspace):
         """Write state.json to planning stage and reload."""
         state_path = workspace / "state.json"
         data_dir = workspace / "data"
@@ -277,10 +245,10 @@ class TestZeroOpenCodeCalls:
         app.state.orchestrator._client = mock
         return mock
 
-    def test_plan_update_zero_opencode_calls(self, client_and_app, workspace):
+    def test_plan_update_zero_opencode_calls(self, qa_app):
         """POST /plan/update makes zero OpenCode calls."""
-        client, app = client_and_app
-        self._seed_planning_state(client, app, workspace)
+        client, app, workspace = qa_app
+        self._seed_planning_state(app, workspace)
         spy = self._attach_spy(app)
 
         client.post(
@@ -290,10 +258,10 @@ class TestZeroOpenCodeCalls:
 
         spy.prompt.assert_not_called()
 
-    def test_section_accept_zero_opencode_calls(self, client_and_app, workspace):
+    def test_section_accept_zero_opencode_calls(self, qa_app):
         """POST /section/:id/accept makes zero OpenCode calls."""
-        client, app = client_and_app
-        self._seed_planning_state(client, app, workspace)
+        client, app, workspace = qa_app
+        self._seed_planning_state(app, workspace)
         self._seed_plan(client)
         spy = self._attach_spy(app)
 
@@ -301,10 +269,10 @@ class TestZeroOpenCodeCalls:
 
         spy.prompt.assert_not_called()
 
-    def test_section_drop_zero_opencode_calls(self, client_and_app, workspace):
+    def test_section_drop_zero_opencode_calls(self, qa_app):
         """POST /section/:id/drop makes zero OpenCode calls."""
-        client, app = client_and_app
-        self._seed_planning_state(client, app, workspace)
+        client, app, workspace = qa_app
+        self._seed_planning_state(app, workspace)
         self._seed_plan(client)
         spy = self._attach_spy(app)
 
@@ -312,20 +280,19 @@ class TestZeroOpenCodeCalls:
 
         spy.prompt.assert_not_called()
 
-    def test_export_zero_opencode_calls(self, client_and_app, workspace):
+    def test_export_zero_opencode_calls(self, qa_app):
         """GET /export makes zero OpenCode calls."""
-        client, app = client_and_app
-        self._seed_planning_state(client, app, workspace)
+        client, app, workspace = qa_app
+        self._seed_planning_state(app, workspace)
         spy = self._attach_spy(app)
 
         client.get("/export")
 
         spy.prompt.assert_not_called()
 
-    def test_file_endpoint_zero_opencode_calls(self, client_and_app, workspace):
+    def test_file_endpoint_zero_opencode_calls(self, qa_app):
         """GET /file makes zero OpenCode calls."""
-        client, app = client_and_app
-        # Write a file to serve.
+        client, app, workspace = qa_app
         data_dir = workspace / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         (data_dir / "test.csv").write_bytes(b"id,value\n1,100\n")
@@ -621,58 +588,45 @@ class TestForcedFailureHook:
 class TestStateTransitions:
     """REG-N2-05: GET /state shape and plan/update → state.json synchronously."""
 
-    @pytest.fixture()
-    def client_fixture(self, tmp_path):
-        from backend.main import app
-        from backend.core.state_manager import StateManager
-
-        state_path = tmp_path / "state.json"
-        with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
-            with TestClient(app) as c:
-                yield c, app, tmp_path
-
-    def test_get_state_returns_200(self, client_fixture):
+    def test_get_state_returns_200(self, qa_app):
         """GET /state must return 200."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         r = client.get("/state")
         assert r.status_code == 200
 
-    def test_get_state_has_stage_field(self, client_fixture):
+    def test_get_state_has_stage_field(self, qa_app):
         """GET /state must include 'stage' field."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         body = client.get("/state").json()
         assert "stage" in body, "GET /state must contain 'stage'"
 
-    def test_get_state_has_plan_field(self, client_fixture):
+    def test_get_state_has_plan_field(self, qa_app):
         """GET /state must include 'plan' field."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         body = client.get("/state").json()
         assert "plan" in body, "GET /state must contain 'plan'"
         assert isinstance(body["plan"], list), "'plan' must be a list"
 
-    def test_get_state_has_profile_field(self, client_fixture):
+    def test_get_state_has_profile_field(self, qa_app):
         """GET /state must include 'profile' field (may be null before profiling)."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         body = client.get("/state").json()
         assert "profile" in body, (
             "GET /state must contain 'profile' (null before profiling)"
         )
 
-    def test_get_state_does_not_expose_opencode_session_id(self, client_fixture):
+    def test_get_state_does_not_expose_opencode_session_id(self, qa_app):
         """GET /state must not expose opencode_session_id (internal field)."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         body = client.get("/state").json()
         assert "opencode_session_id" not in body, (
             "GET /state must not expose opencode_session_id"
         )
 
-    def test_plan_update_changes_state_synchronously(self, client_fixture):
+    def test_plan_update_changes_state_synchronously(self, qa_app):
         """POST /plan/update must change plan in state.json synchronously."""
-        client, app, workspace = client_fixture
-
-        # Seed planning state.
-        state_path = workspace / "state.json"
-        _write_state_file(state_path, stage="planning", aim="test")
+        client, app, workspace = qa_app
+        _write_state_file(workspace / "state.json", stage="planning", aim="test")
         app.state.state_manager.load()
 
         sections = [
@@ -683,7 +637,6 @@ class TestStateTransitions:
         r = client.post("/plan/update", json={"sections": sections})
         assert r.status_code == 200
 
-        # Immediately read state from in-memory manager.
         state = app.state.state_manager.get_state()
         plan = state.get("plan", [])
         plan_ids = [s["id"] for s in plan]
@@ -691,12 +644,10 @@ class TestStateTransitions:
         assert "sec_02" in plan_ids
         assert "sec_03" in plan_ids
 
-    def test_plan_update_also_writes_plan_json(self, client_fixture):
+    def test_plan_update_also_writes_plan_json(self, qa_app):
         """POST /plan/update must write plan.json to workspace atomically."""
-        client, app, workspace = client_fixture
-
-        state_path = workspace / "state.json"
-        _write_state_file(state_path, stage="planning", aim="test")
+        client, app, workspace = qa_app
+        _write_state_file(workspace / "state.json", stage="planning", aim="test")
         app.state.state_manager.load()
 
         sections = [
@@ -714,13 +665,11 @@ class TestStateTransitions:
         saved_ids = [s["id"] for s in plan_data["sections"]]
         assert "sec_01" in saved_ids
 
-    def test_section_accept_transitions_status_to_accepted(self, client_fixture):
+    def test_section_accept_transitions_status_to_accepted(self, qa_app):
         """POST /section/:id/accept transitions proposed→accepted in state.json."""
-        client, app, workspace = client_fixture
-
-        state_path = workspace / "state.json"
+        client, app, workspace = qa_app
         _write_state_file(
-            state_path,
+            workspace / "state.json",
             stage="planning",
             aim="test",
             plan=[
@@ -738,15 +687,15 @@ class TestStateTransitions:
         assert sec is not None
         assert sec["status"] == "accepted"
 
-    def test_plan_update_rejects_empty_aim(self, client_fixture):
+    def test_plan_update_rejects_empty_aim(self, qa_app):
         """POST /plan/update with empty sections returns 422."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         r = client.post("/plan/update", json={"sections": []})
         assert r.status_code == 422
 
-    def test_post_setup_rejects_empty_aim(self, client_fixture):
+    def test_post_setup_rejects_empty_aim(self, qa_app):
         """POST /setup with whitespace-only aim returns 422 invalid_aim."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         r = client.post(
             "/setup",
             data={"aim": "   "},
@@ -755,9 +704,9 @@ class TestStateTransitions:
         assert r.status_code == 422
         assert r.json()["error"] == "invalid_aim"
 
-    def test_post_setup_rejects_non_csv(self, client_fixture):
+    def test_post_setup_rejects_non_csv(self, qa_app):
         """POST /setup with a non-CSV file returns 422 invalid_file."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         r = client.post(
             "/setup",
             data={"aim": "analyse churn"},
@@ -794,16 +743,6 @@ class TestExportCorrectness:
         "Churn analysis content here.\n"
     )
 
-    @pytest.fixture()
-    def client_fixture(self, tmp_path):
-        from backend.main import app
-        from backend.core.state_manager import StateManager
-
-        state_path = tmp_path / "state.json"
-        with patch("backend.main.StateManager", lambda: StateManager(path=state_path)):
-            with TestClient(app) as c:
-                yield c, app, tmp_path
-
     def _write_section_file(self, workspace, filename, content):
         sections_dir = workspace / "sections"
         sections_dir.mkdir(parents=True, exist_ok=True)
@@ -814,9 +753,9 @@ class TestExportCorrectness:
         _write_state_file(state_path, stage="building", aim="test aim", plan=plan)
         app.state.state_manager.load()
 
-    def test_export_returns_text_markdown_content_type(self, client_fixture):
-        """GET /export must return Content-Type: text/markdown."""
-        client, app, workspace = client_fixture
+    def test_export_returns_text_markdown_content_type(self, qa_app):
+        """GET /export must return Content-Type: application/zip."""
+        client, app, workspace = qa_app
         r = client.get("/export")
         assert r.status_code == 200
         assert "application/zip" in r.headers.get("content-type", "")
@@ -827,18 +766,17 @@ class TestExportCorrectness:
         with zipfile.ZipFile(io.BytesIO(response_content)) as zf:
             return zf.read("report.md").decode("utf-8")
 
-    def test_export_content_disposition_attachment(self, client_fixture):
+    def test_export_content_disposition_attachment(self, qa_app):
         """GET /export must set Content-Disposition: attachment; filename=brief.zip."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         r = client.get("/export")
         cd = r.headers.get("content-disposition", "")
         assert "attachment" in cd
         assert "brief.zip" in cd
 
-    def test_export_includes_accepted_section_content(self, client_fixture):
+    def test_export_includes_accepted_section_content(self, qa_app):
         """GET /export includes body content of accepted sections."""
-        client, app, workspace = client_fixture
-
+        client, app, workspace = qa_app
         self._write_section_file(workspace, "sec_01_revenue.md", self._SECTION_MD)
 
         plan = [
@@ -856,10 +794,9 @@ class TestExportCorrectness:
         assert r.status_code == 200
         assert "Revenue analysis content here." in self._unzip_report(r.content)
 
-    def test_export_excludes_dropped_sections(self, client_fixture):
+    def test_export_excludes_dropped_sections(self, qa_app):
         """GET /export must not include dropped section content."""
-        client, app, workspace = client_fixture
-
+        client, app, workspace = qa_app
         self._write_section_file(workspace, "sec_01_revenue.md", self._SECTION_MD)
 
         plan = [
@@ -876,10 +813,9 @@ class TestExportCorrectness:
         r = client.get("/export")
         assert "Revenue analysis content here." not in self._unzip_report(r.content)
 
-    def test_export_excludes_proposed_sections(self, client_fixture):
+    def test_export_excludes_proposed_sections(self, qa_app):
         """GET /export must not include proposed section content."""
-        client, app, workspace = client_fixture
-
+        client, app, workspace = qa_app
         self._write_section_file(workspace, "sec_01_revenue.md", self._SECTION_MD)
 
         plan = [
@@ -896,10 +832,9 @@ class TestExportCorrectness:
         r = client.get("/export")
         assert "Revenue analysis content here." not in self._unzip_report(r.content)
 
-    def test_export_no_accepted_sections_returns_default_doc(self, client_fixture):
+    def test_export_no_accepted_sections_returns_default_doc(self, qa_app):
         """GET /export with zero accepted sections returns the default document."""
-        client, app, workspace = client_fixture
-
+        client, app, workspace = qa_app
         plan = [
             {
                 "id": "sec_01",
@@ -914,17 +849,19 @@ class TestExportCorrectness:
         assert r.status_code == 200
         assert "no accepted sections" in self._unzip_report(r.content).lower()
 
-    def test_export_with_no_plan_returns_default_doc(self, client_fixture):
+    def test_export_with_no_plan_returns_default_doc(self, qa_app):
         """GET /export with no plan returns the default document."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
+        # Reset to empty plan — previous tests may have left accepted sections.
+        _write_state_file(workspace / "state.json")
+        app.state.state_manager.load()
         r = client.get("/export")
         assert r.status_code == 200
         assert "no accepted sections" in self._unzip_report(r.content).lower()
 
-    def test_export_includes_multiple_accepted_sections(self, client_fixture):
+    def test_export_includes_multiple_accepted_sections(self, qa_app):
         """GET /export concatenates bodies of all accepted sections in plan order."""
-        client, app, workspace = client_fixture
-
+        client, app, workspace = qa_app
         self._write_section_file(workspace, "sec_01_revenue.md", self._SECTION_MD)
         self._write_section_file(workspace, "sec_02_churn.md", self._SECTION_B_MD)
 
@@ -950,9 +887,9 @@ class TestExportCorrectness:
         assert "Revenue analysis content here." in self._unzip_report(r.content)
         assert "Churn analysis content here." in self._unzip_report(r.content)
 
-    def test_export_zero_opencode_calls(self, client_fixture):
+    def test_export_zero_opencode_calls(self, qa_app):
         """GET /export makes zero OpenCode calls (spy assertion)."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         spy = MagicMock()
         spy.prompt = MagicMock(return_value=None)
         app.state.orchestrator._client = spy
@@ -960,23 +897,23 @@ class TestExportCorrectness:
         client.get("/export")
         spy.prompt.assert_not_called()
 
-    def test_get_file_missing_returns_400(self, client_fixture):
+    def test_get_file_missing_returns_400(self, qa_app):
         """GET /file?path=nonexistent.csv returns 400 missing_file."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         r = client.get("/file?path=data/nonexistent.csv")
         assert r.status_code == 400
         assert r.json()["error"] == "missing_file"
 
-    def test_get_file_path_traversal_returns_400(self, client_fixture):
+    def test_get_file_path_traversal_returns_400(self, qa_app):
         """GET /file?path=../etc/passwd returns 400 path_traversal."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         r = client.get("/file?path=../etc/passwd")
         assert r.status_code == 400
         assert r.json()["error"] == "path_traversal"
 
-    def test_get_file_returns_file_content(self, client_fixture):
+    def test_get_file_returns_file_content(self, qa_app):
         """GET /file?path=data/test.csv returns 200 with file contents."""
-        client, app, workspace = client_fixture
+        client, app, workspace = qa_app
         data_dir = workspace / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         (data_dir / "test.csv").write_bytes(b"id,value\n1,100\n")
