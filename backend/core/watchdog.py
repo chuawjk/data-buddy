@@ -61,9 +61,16 @@ class Watchdog:
         self._state_manager = state_manager
         self._bus = bus
         self._task: asyncio.Task[None] | None = None
+        # Stores the timeout passed to the most recent start_turn() call so that
+        # heartbeat() can re-arm the timer with the same per-turn budget rather than
+        # reverting to the global default (N3-S04).
+        self._current_timeout: int = WATCHDOG_TIMEOUT
 
     def start_turn(self, timeout: int | None = None) -> None:
         """Call when a turn begins. Cancels any existing timer and starts a fresh one.
+
+        Stores the resolved timeout so that subsequent ``heartbeat()`` calls
+        can re-arm the timer with the same per-turn budget (N3-S04).
 
         Args:
             timeout: Silence threshold in seconds before recovery fires.  Defaults
@@ -71,14 +78,18 @@ class Watchdog:
                 long-running turns such as section builds.
         """
         self.cancel()
-        self._task = asyncio.create_task(self._watch(timeout or WATCHDOG_TIMEOUT))
+        self._current_timeout = timeout or WATCHDOG_TIMEOUT
+        self._task = asyncio.create_task(self._watch(self._current_timeout))
 
     def heartbeat(self) -> None:
         """Call on every event received to reset the silence timer.
 
-        Restarts the internal watch task with the same default timeout.
+        Re-arms the timer using the same timeout that was passed to the most
+        recent ``start_turn()`` call.  This preserves the per-turn budget
+        (e.g. 180 s for section builds) instead of reverting to the global
+        ``WATCHDOG_TIMEOUT`` default (N3-S04 fix).
         """
-        self.start_turn()
+        self.start_turn(getattr(self, "_current_timeout", WATCHDOG_TIMEOUT))
 
     def cancel(self) -> None:
         """Cancel the current watch task. Safe to call when no task is running."""
