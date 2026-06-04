@@ -197,29 +197,36 @@ async def get_events(request: Request) -> StreamingResponse:
 
 
 @router.post("/turn", status_code=204)
-async def post_turn(request: Request, body: dict = Body(...)) -> Response:
+async def post_turn(request: Request, body: dict = Body(default=None)) -> Response:
     """Route bottom-bar text to the agent.
 
     Context-aware: dispatches to the appropriate orchestrator method based on
     the current stage.  Returns 204 immediately; agent progress arrives via SSE.
 
-    Currently implemented stages (N1-S12):
+    Implemented stages (N1-S12, N2, N3-S02):
     - ``profiling``: calls ``orchestrator.re_profile(text)``
-
-    Night 2 will add:
     - ``planning``: calls ``orchestrator.re_plan(text)``
     - ``building``: calls ``orchestrator.redirect_section(text)``
 
+    Empty body path (N3-S02 retry):
+    - If the body is absent or ``text`` is missing/empty, calls
+      ``orchestrator.retry_last_turn()`` to re-fire the last prompt.
+
     Error envelopes (API contract S4):
-    - 422 invalid_text -- text field missing or empty/whitespace-only.
-    - 422 invalid_stage -- POST /turn is not valid in the current stage.
+    - 422 invalid_text -- text field missing or empty/whitespace-only (only
+      returned when body was provided but text was explicitly empty; absent body
+      triggers retry instead).
+    - 422 invalid_stage -- POST /turn is not valid in the current stage (only
+      when body+text were provided).
     """
+    if body is None:
+        body = {}
+
     text: str = (body.get("text") or "").strip()
     if not text:
-        return JSONResponse(
-            status_code=422,
-            content={"error": "invalid_text", "message": "text is required and must not be empty"},
-        )
+        # N3-S02: absent or empty text → retry the last turn.
+        asyncio.create_task(request.app.state.orchestrator.retry_last_turn())
+        return Response(status_code=204)
 
     stage: str = request.app.state.state_manager.get_state().get("stage", "")
     if stage == "profiling":
@@ -452,6 +459,11 @@ async def post_section_accept(request: Request, section_id: str) -> Response:
     updated_plan[section_index]["status"] = "accepted"
     state_manager.update(plan=updated_plan)
 
+    # N3-S01: check whether all sections are now terminal and transition to
+    # done if so.  Fire-and-forget so the 204 response is not delayed.
+    orchestrator = request.app.state.orchestrator
+    asyncio.create_task(orchestrator._check_done_or_next(section_id))
+
     return Response(status_code=204)
 
 
@@ -510,6 +522,11 @@ async def post_section_drop(request: Request, section_id: str) -> Response:
     updated_plan = [dict(s) for s in plan]
     updated_plan[section_index]["status"] = "dropped"
     state_manager.update(plan=updated_plan)
+
+    # N3-S01: check whether all sections are now terminal and transition to
+    # done if so.  Fire-and-forget so the 204 response is not delayed.
+    orchestrator = request.app.state.orchestrator
+    asyncio.create_task(orchestrator._check_done_or_next(section_id))
 
     return Response(status_code=204)
 

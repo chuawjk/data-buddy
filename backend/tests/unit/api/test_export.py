@@ -92,7 +92,7 @@ def test_export_returns_zip_content_type(workspace):
     sm.load()
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
-            r = c.get("/export")
+            r = c.get("/api/export")
     assert r.status_code == 200
     assert "application/zip" in r.headers.get("content-type", "")
 
@@ -103,7 +103,7 @@ def test_export_content_disposition_brief_zip(workspace):
     sm.load()
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
-            r = c.get("/export")
+            r = c.get("/api/export")
     cd = r.headers.get("content-disposition", "")
     assert "attachment" in cd
     assert 'filename="brief.zip"' in cd
@@ -120,7 +120,7 @@ def test_export_zip_always_contains_report_md(workspace):
     sm.load()
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
-            r = c.get("/export")
+            r = c.get("/api/export")
     files = _read_zip(r.content)
     assert "report.md" in files
 
@@ -133,7 +133,7 @@ def test_export_no_accepted_sections_default_message(workspace):
     sm.update(plan=plan, stage="building")
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
-            r = c.get("/export")
+            r = c.get("/api/export")
     report = _read_zip(r.content)["report.md"].decode()
     assert "no accepted sections" in report.lower()
 
@@ -158,7 +158,7 @@ def test_export_accepted_section_body_in_report(workspace):
         }
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     report = _read_zip(r.content)["report.md"].decode()
     assert "Some analysis." in report
 
@@ -198,7 +198,7 @@ def test_export_plan_order_preserved(workspace):
         },
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     report = _read_zip(r.content)["report.md"].decode()
     assert report.index("Third section.") < report.index("First section.")
     assert report.index("First section.") < report.index("Second section.")
@@ -234,7 +234,7 @@ def test_export_dropped_sections_excluded(workspace):
         },
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     report = _read_zip(r.content)["report.md"].decode()
     assert "Kept body." in report
     assert "Dropped body." not in report
@@ -275,7 +275,7 @@ def test_export_proposed_and_building_sections_excluded(workspace):
         },
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     report = _read_zip(r.content)["report.md"].decode()
     assert "Accepted body." in report
     assert "Proposed body." not in report
@@ -303,7 +303,7 @@ def test_export_chart_included_in_zip(workspace):
         }
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     files = _read_zip(r.content)
     chart_files = [f for f in files if f.startswith("charts/")]
     assert len(chart_files) == 1
@@ -326,7 +326,7 @@ def test_export_report_md_references_chart(workspace):
         }
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     report = _read_zip(r.content)["report.md"].decode()
     # Image reference uses relative path into charts/ folder.
     assert "![Chart Section](charts/" in report
@@ -353,7 +353,7 @@ def test_export_py_file_included_in_zip(workspace):
         }
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     files = _read_zip(r.content)
     code_files = [f for f in files if f.startswith("code/")]
     assert len(code_files) == 1
@@ -376,7 +376,7 @@ def test_export_py_file_content_intact(workspace):
         }
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     files = _read_zip(r.content)
     code_files = [f for f in files if f.startswith("code/")]
     code_content = files[code_files[0]].decode()
@@ -412,7 +412,7 @@ def test_export_missing_md_skipped_gracefully(workspace):
         },
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     assert r.status_code == 200
     report = _read_zip(r.content)["report.md"].decode()
     assert "Present body." in report
@@ -433,7 +433,7 @@ def test_export_missing_png_does_not_error(workspace):
         }
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     assert r.status_code == 200
     files = _read_zip(r.content)
     assert not any(f.startswith("charts/") for f in files)
@@ -454,7 +454,7 @@ def test_export_md_path_in_state_used_when_present(workspace):
         }
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     report = _read_zip(r.content)["report.md"].decode()
     assert "Custom body via md_path." in report
 
@@ -480,7 +480,7 @@ def test_export_frontmatter_stripped_from_body(workspace):
         }
     ]
     with _client_with_plan(workspace, plan) as c:
-        r = c.get("/export")
+        r = c.get("/api/export")
     report = _read_zip(r.content)["report.md"].decode()
     assert "Body content only." in report
     assert "section_id: sec_01" not in report
@@ -511,6 +511,6 @@ def test_export_zero_opencode_calls(workspace):
     with patch("backend.main.StateManager", lambda: sm):
         with patch("httpx.AsyncClient") as mock_httpx:
             with TestClient(app) as c:
-                r = c.get("/export")
+                r = c.get("/api/export")
     assert r.status_code == 200
     mock_httpx.assert_not_called()

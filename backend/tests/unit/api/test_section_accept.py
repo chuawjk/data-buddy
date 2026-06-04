@@ -99,7 +99,7 @@ def test_section_accept_returns_204(tmp_path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_01/accept")
+            r = c.post("/api/section/sec_01/accept")
 
     assert r.status_code == 204
 
@@ -114,7 +114,7 @@ def test_section_accept_updates_status_in_state(tmp_path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            c.post("/section/sec_01/accept")
+            c.post("/api/section/sec_01/accept")
 
     plan = sm.get_state()["plan"]
     sec_01 = next(s for s in plan if s["id"] == "sec_01")
@@ -131,7 +131,7 @@ def test_section_accept_only_mutates_target_section(tmp_path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            c.post("/section/sec_01/accept")
+            c.post("/api/section/sec_01/accept")
 
     plan = sm.get_state()["plan"]
     sec_02 = next(s for s in plan if s["id"] == "sec_02")
@@ -150,7 +150,7 @@ def test_section_accept_second_section(tmp_path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_02/accept")
+            r = c.post("/api/section/sec_02/accept")
 
     assert r.status_code == 204
     plan = sm.get_state()["plan"]
@@ -173,7 +173,7 @@ def test_section_accept_unknown_id_returns_400(tmp_path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_99/accept")
+            r = c.post("/api/section/sec_99/accept")
 
     assert r.status_code == 400
     body = r.json()
@@ -191,7 +191,7 @@ def test_section_accept_unknown_id_error_envelope_shape(tmp_path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_99/accept")
+            r = c.post("/api/section/sec_99/accept")
 
     body = r.json()
     assert "error" in body
@@ -221,7 +221,7 @@ def test_section_accept_already_accepted_returns_400(tmp_path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_01/accept")
+            r = c.post("/api/section/sec_01/accept")
 
     assert r.status_code == 400
     body = r.json()
@@ -246,7 +246,7 @@ def test_section_accept_dropped_section_returns_400(tmp_path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_01/accept")
+            r = c.post("/api/section/sec_01/accept")
 
     assert r.status_code == 400
     body = r.json()
@@ -268,7 +268,7 @@ def test_section_accept_empty_plan_returns_400(tmp_path):
     with patch("backend.main.StateManager", lambda: sm):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
-            r = c.post("/section/sec_01/accept")
+            r = c.post("/api/section/sec_01/accept")
 
     assert r.status_code == 400
     body = r.json()
@@ -294,6 +294,6 @@ def test_section_accept_makes_zero_opencode_calls(tmp_path):
         with TestClient(app) as c:
             c.app.state.state_manager = sm
             c.app.state.orchestrator._client = mock_client
-            c.post("/section/sec_01/accept")
+            c.post("/api/section/sec_01/accept")
 
     mock_client.prompt.assert_not_awaited()

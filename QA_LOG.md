@@ -206,3 +206,227 @@ Three structural gaps identified after Night 2 QA passed despite real integratio
 | REG-POST-N2-03 | GET /state shape accessible for both variants | `qa/structural/test_post_n2_contract.py` | Both canonical and deviation profiles stored in state return non-None values for `shape.rows ?? shape.total_rows` and `shape.columns ?? shape.total_columns` |
 | REG-POST-N2-04 | per-section revision testids present; global bottom bar absent | `qa/structural/test_post_n2_contract.py` | `section-revise-input`, `section-revise-btn` in `SectionPane.tsx`; `build-bottom-bar` absent |
 | REG-POST-N2-05 | no stray e2e specs outside testDir | `qa/structural/test_post_n2_contract.py` | Zero `*.spec.ts` files outside `frontend/tests/e2e/`; all specs are in Playwright's configured `testDir` |
+
+---
+
+## Night 3 — QA Run — 2026-06-04
+
+### Night 1 + Night 2 regression recheck
+
+All REG-N1-01 through REG-N1-12 and REG-N2-01 through REG-N2-07 and REG-POST-N2-01 through REG-POST-N2-05 re-verified against the develop slice (SHA `5df011a` + Night 3 commits). 69 existing structural tests: all PASS.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| REG-N1-01 profile schema fields complete | PASS | `PROFILE_SCHEMA` still has all required fields |
+| REG-N1-02 orchestrator httpx boundary | PASS | AST walk — zero `import httpx` nodes |
+| REG-N1-03 opencode_client orchestrator boundary | PASS | AST walk — zero orchestrator imports |
+| REG-N1-04 single event subscription | PASS | Exactly one `start_event_subscription` in `main.py` |
+| REG-N1-05 data-testid completeness | PASS | 53 unique testids in production frontend (Night 3 adds retry-banner, section-failed-notice, done-view, etc.) |
+| REG-N1-06 test suite count | PASS | 563 tests (361 BE + 202 FE), all pass |
+| REG-N1-07 lint clean | PASS | ruff + eslint exit 0 with 0 warnings |
+| REG-N1-08 through REG-N2-07 | PASS | All 69 existing QA structural tests pass |
+| REG-POST-N2-01 through REG-POST-N2-05 | PASS | All post-Night-2 checks pass |
+
+### Night 3 structural gate
+
+#### Make targets
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| `make test` (563 tests) | PASS | 361 BE + 202 FE = 563 total, all pass |
+| `make lint` | PASS | ruff + eslint exit 0 with 0 warnings |
+| `make clean` removes artefacts | PASS | Removes `workspace/state.json`, `workspace/plan.json`, `workspace/profile.json`, `workspace/sections/`, `workspace/charts/`, `workspace/analyses/`, `frontend/dist/`, `frontend/.vite` |
+| `make clean` preserves `workspace/data/` | PASS | `workspace/data/customers_q3.csv` untouched after clean |
+
+#### Live fixture tests
+
+All workspace scenarios exercised via real HTTP backend with no API mocking.
+
+| Workspace | Tests | Result | Notes |
+|-----------|-------|--------|-------|
+| `profiling` | 6 | PASS | Shape strip renders "100" rows, "9" cols, "churned" target; column names visible; accept button enabled |
+| `profiling_deviation` | 6 | PASS | `total_rows`/`total_columns` fallback renders correctly via `??` operator |
+| `planning` | 5 | PASS | Plan list shows 3 sections; fixture titles visible; accept button enabled |
+| `building` | 7 | PASS | Section status badges correct; artefact content visible from real files; export enabled |
+| `done` (new) | 7 | PASS | DoneView renders; "Brief complete" heading; 2 accepted shown; dropped excluded; export button present |
+
+#### Night 3 structural assertions (new)
+
+New test file: `qa/structural/test_n3_structural.py` — 23 tests.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| REG-N3-01: GET /state returns stage=done | PASS | Done stage exposed correctly; plan included; opencode_session_id stripped |
+| REG-N3-02: POST /turn empty body → 204 | PASS | All three variants (empty JSON `{}`, no body, whitespace text) return 204 |
+| REG-N3-03: turn.error has reason:string + stage, no retryable | PASS | EventBus shape correct; reason is str; retryable absent |
+| REG-N3-04: QA_FORCE_TURN_ERROR fires turn.error | PASS | Raises before client.prompt(); event emitted; client not called |
+| REG-N3-05: done transition on last terminal section | PASS | Accept, Drop, mixed accept+drop all trigger done; partial accept does not |
+| REG-N3-06: Night 3 data-testid completeness | PASS | All 9 Night 3 required testids present; total >= 50 |
+| REG-N3-07: /api/* routing not intercepted by SPA catch-all | PASS | Fixed in commit `388b1d8`; re-verified in targeted re-gate 2026-06-04 |
+| REG-N3-08: architecture boundaries carry-forward | PASS | Orchestrator has no httpx import; client has no orchestrator import |
+
+### Defects found
+
+**QA-03 — `make run` production routing broken: `/api/*` intercepted by SPA catch-all (BLOCKING)**
+
+| Field | Value |
+|-------|-------|
+| ID | QA-03 |
+| Night | 3 |
+| Symptom | With the Vite bundle built (`make run`), `GET /api/state` returns `text/html` (the SPA index page) instead of `application/json`. All API calls from the built SPA fail — the frontend calls `/api/state`, `/api/setup`, `/api/turn`, etc. but the backend router has no routes at `/api/*`, so every request falls through to the SPA catch-all. The app is completely non-functional in `make run` mode. |
+| Area | N3-S09 (`backend/main.py` — static serving + SPA catch-all), `backend/api/router.py` |
+| Root cause | Vite dev proxy (`vite.config.ts`) rewrites `/api/*` → `/*` during development, so `GET /api/state` becomes `GET /state` before it reaches the backend. In `make run` mode there is no proxy — the built SPA calls `/api/state` directly and the backend router (registered via `app.include_router(router)` with no prefix) only knows about `/state`. The SPA catch-all at `GET /{full_path:path}` is registered after API routes and correctly matches all non-API paths — but because `/api/state` has no matching API route, it falls through to the catch-all and returns HTML. |
+| Fix reference | Commit `388b1d8` (TL, inline on develop). `app.include_router(router, prefix="/api")` added in `backend/main.py`; Vite dev proxy `rewrite` removed from `frontend/vite.config.ts` so both dev and prod paths use `/api/*`. 13 backend test files updated to use `/api/*` paths. See ADR-021. |
+| Regression check added | REG-N3-07: `qa/structural/test_n3_structural.py::TestApiRouteNotIntercepted` — two tests: `test_api_state_returns_json_not_html` asserts `GET /api/state` returns `application/json` when `frontend/dist/` exists; `test_api_state_route_is_registered` asserts both `/state` (bare) and `/api/state` return JSON. These tests skip when `frontend/dist/` is absent (no-build CI path). |
+| State | Closed — re-gate PASS 2026-06-04 |
+
+### Overall: **RED — FAIL** (initial run) / **GREEN — PASS** (re-gate after fix)
+
+Night 3 QA gate initial run: **FAIL** — QA-03 was a blocking defect. `make run` production serving was broken.
+
+**Re-gate result (2026-06-04, commit `388b1d8`):** All checks pass. Merge is unblocked.
+
+---
+
+## Regression suite — Night 3 standing checks
+
+| ID | Check | Location | Asserts |
+|----|-------|----------|---------|
+| REG-N3-01 | GET /state exposes stage=done | `qa/structural/test_n3_structural.py::TestDoneStageState` | `stage="done"` in response; plan included; `opencode_session_id` stripped |
+| REG-N3-02 | POST /turn empty body → 204 (retry path) | `qa/structural/test_n3_structural.py::TestRetryTurnEmptyBody` | `{}`, null body, whitespace text all return 204; text in setup stage returns 422 invalid_stage |
+| REG-N3-03 | turn.error has reason:string + stage; no retryable | `qa/structural/test_n3_structural.py::TestTurnErrorPayloadShape` | `reason` is str; `retryable` absent; building-stage errors include `section_id`; valid reason enum values accepted |
+| REG-N3-04 | QA_FORCE_TURN_ERROR seam fires turn.error deterministically | `qa/structural/test_n3_structural.py::TestForcedTurnErrorHook` | `QA_FORCE_TURN_ERROR=1` → `turn.error` emitted; `client.prompt` not called; seam off by default |
+| REG-N3-05 | done transition on all-terminal sections | `qa/structural/test_n3_structural.py::TestDoneTransition` | accept-all, drop-all, mixed accept+drop → `stage=done`; partial accept stays `building` |
+| REG-N3-06 | Night 3 data-testid completeness | `qa/structural/test_n3_structural.py::TestNight3DataTestids` | `retry-banner`, `retry-banner-btn`, `section-failed-notice`, `section-retry-btn`, `section-drop-failed-btn`, `watchdog-notice`, `done-view`, `done-export-button`, `done-section-list` present; total >= 50 testids |
+| REG-N3-07 | /api/* routing not intercepted by SPA catch-all | `qa/structural/test_n3_structural.py::TestApiRouteNotIntercepted` | `GET /api/state` returns `application/json` when `frontend/dist/` exists (skips if no build); regression check for QA-03 |
+| REG-N3-08 | architecture boundaries carry-forward Night 3 | `qa/structural/test_n3_structural.py::TestArchitectureBoundariesCarryForward` | orchestrator has no httpx import; opencode_client has no orchestrator import |
+| REG-N3-09 | done live fixture — DoneView renders from real HTTP | `frontend/tests/e2e/live/done.live.spec.ts` (QA_WORKSPACE=done) | done-view visible; "Brief complete" text; 2 accepted sections listed; dropped excluded; export button enabled |
+
+---
+
+## Night 3 — Targeted Re-gate — 2026-06-04 (QA-03 fix verification)
+
+TL applied commit `388b1d8` to `develop`: `prefix="/api"` added at `app.include_router` in `backend/main.py`; Vite dev proxy `rewrite` removed; 13 test files updated to `/api/*` paths. Re-gate run to confirm REG-N3-07 now passes and no regressions were introduced.
+
+### Re-gate results
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| `make test` (563 tests) | PASS | 361 BE + 202 FE = 563 total; all pass |
+| `make lint` | PASS | ruff + eslint exit 0, 0 warnings |
+| Structural suite `qa/structural/` (92 tests) | PASS | All 92 tests pass; no regressions |
+| REG-N3-07 `TestApiRouteNotIntercepted::test_api_state_returns_json_not_html` | PASS | `GET /api/state` returns `application/json` with `frontend/dist/` present |
+| REG-N3-07 `TestApiRouteNotIntercepted::test_api_state_route_is_registered` | PASS | Both `/api/state` paths respond correctly |
+| Static smoke: `GET /` returns 200 HTML | PASS | `SKIP_OPENCODE=1 uvicorn` + built dist; curl returns HTTP 200 with SPA content |
+| Static smoke: `GET /api/state` returns JSON | PASS | Returns `{"version":"1","stage":"setup",...}` — not intercepted by catch-all |
+| Live fixture `QA_WORKSPACE=profiling` (6 tests) | PASS | Shape strip renders "100" rows, "9" cols, "churned" target; controls present |
+| Live fixture `QA_WORKSPACE=building` (7 tests) | PASS | Section panes, status badges, artefact content, export button all correct |
+| Live fixture `QA_WORKSPACE=done` (7 tests) | PASS | DoneView renders; "Brief complete"; 2 accepted; dropped excluded; export enabled |
+
+### QA-03 status update
+
+QA-03 is now **Closed**. REG-N3-07 is in the standing regression suite and passes. The blocking defect is resolved.
+
+### Overall: **GREEN — PASS**
+
+Night 3 QA gate: **PASS** — all checks green, QA-03 resolved, merge to `develop` is unblocked.
+
+---
+
+## Night 3 — Layer 3 Live OpenCode Demo — 2026-06-04
+
+Layer 3 is the live end-to-end agent run with real OpenCode (v1.15.13, OAuth at `~/.local/share/opencode/auth.json`). Run against `develop` branch (post QA-03 fix). All three runs used `source .env` for `OPENAI_API_KEY`.
+
+### Run 1: Full brief on churn dataset (`customers_q3.csv`)
+
+**Aim:** "Identify key drivers of customer churn"
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| POST /api/setup → HTTP 204 | PASS | |
+| stage=profiling after setup | PASS | Immediate |
+| profile.json written and valid | PASS | Completed at t+56s |
+| profile.json validates against PROFILE_SCHEMA (jsonschema) | PASS | |
+| profile.shape.rows=100, columns=9 | PASS | |
+| 9 columns with name/type/summary | PASS | |
+| POST /api/profile/accept → HTTP 204 | PASS | |
+| stage=planning | PASS | |
+| plan.json written with 5 sections | PASS | Completed at t+10s after accept |
+| plan.json validates against PLAN_SCHEMA (jsonschema) | PASS | |
+| all sections have id/title/hypothesis | PASS | sec_01–sec_05 |
+| POST /api/plan/accept → HTTP 204 | PASS | |
+| stage=building | PASS | |
+| sec_01 proposed at ~60s | PASS | |
+| all 5 sections reached proposed | PASS | All proposed by t+120s |
+| all 5 .py artefacts: valid Python syntax | PASS | ast.parse clean |
+| all 5 .md artefacts: frontmatter present (starts with ---) | PASS | |
+| all 5 .png artefacts: valid non-empty PNG | PASS | 90–120KB each |
+| POST /api/section/sec_01/accept → HTTP 204 | PASS | |
+| sec_01.status=accepted | PASS | |
+| POST /api/section/sec_02..05/accept → all HTTP 204 | PASS | |
+| stage=done reached | PASS | Immediately after last accept |
+| all 5 sections status=accepted | PASS | |
+| GET /api/export → HTTP 200 | PASS | |
+| export is valid ZIP (brief.zip, 424KB) | PASS | |
+| report.md in ZIP with 6 headings (# Brief + 5 sections) | PASS | |
+| all 5 section titles in report.md | PASS | Churn Baseline, Engagement and Tenure, Spend and Plan Mix, Support Friction, Segment and Cohort Effects |
+| 5 chart PNGs in ZIP | PASS | |
+| 5 code .py files in ZIP | PASS | |
+| Content-Disposition: attachment; filename="brief.zip" | PASS | |
+
+**Timing:** profiling 56s, planning 10s, all 5 sections built in ~120s total. Stage reached `done` immediately after accepting all sections.
+
+**Run 1: 35/35 assertions PASS.**
+
+### Run 2: Generality check on students dataset (`students_sem1_2025.csv`)
+
+**Aim:** "Identify factors affecting student performance" — target: `plan.ready` (profile + plan only)
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| POST /api/setup → HTTP 204 | PASS | |
+| stage=profiling | PASS | |
+| profile.json written at t+41s | PASS | |
+| profile.json validates against PROFILE_SCHEMA | PASS | |
+| profile describes student data (target='passed') | PASS | Not 'churned' |
+| 9 student columns present (student_id, attendance_rate, prior_gpa, passed, etc.) | PASS | |
+| profile does NOT contain 'churned' column | PASS | Confirms no cross-dataset bleed |
+| POST /api/profile/accept → HTTP 204 | PASS | |
+| plan.json written with 5 sections at t+15s | PASS | |
+| plan.json validates against PLAN_SCHEMA | PASS | |
+| plan sections reference student domain (7/7 student terms) | PASS | |
+| plan sections contain zero churn domain terms | PASS | |
+
+**Run 2: 12/12 assertions PASS. Plan reached target stage `plan.ready`.**
+
+### Error recovery check (`QA_FORCE_TURN_ERROR=1`)
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| QA_FORCE_TURN_ERROR=1: turn.error emitted on profiling turn | PASS | Fires immediately, no OpenCode call |
+| turn.error.type='turn.error' | PASS | |
+| turn.error.reason='provider_error' (string, not bool) | PASS | ADR-020 contract |
+| turn.error.stage='profiling' (string) | PASS | |
+| turn.error.ts present | PASS | Unix ms timestamp |
+| turn.error.retryable field ABSENT | PASS | ADR-020 contract — `retryable` was removed in `ae99ecd` |
+| turn.error.reason is valid enum ('provider_error'/'timeout'/'structured_output_failed') | PASS | |
+| POST /api/turn {} → HTTP 204 (retry path reachable) | PASS | Fire-and-forget; 204 immediate |
+| retry_last_turn dispatches _run_profile_turn (confirmed in backend log) | PASS | Log shows QA_FORCE_TURN_ERROR firing again on retry |
+| second turn.error emitted on retry | PASS | QA_FORCE still active; both errors reach SSE |
+
+**Error recovery: 10/10 assertions PASS.**
+
+### Observations (not defects)
+
+- The `done` transition requires ALL sections to reach a terminal state (accepted/dropped/failed), not just the last build completing. When sec_02–sec_05 were all `proposed`, the stage stayed `building` until QA accepted them. This is by design per N3-S01 — the loop builds sections sequentially but the `done` state waits for user action on all remaining `proposed` sections.
+- `GET /api/export` now returns `application/zip` (not `text/markdown`). This is the N3 export format: a ZIP containing `report.md` + `charts/` + `code/`. The QA plan says "returns valid Markdown" — it does (the `report.md` inside the ZIP is Markdown with `# Brief` heading and section bodies). No defect; the format is richer than the plan described.
+- `retry_last_turn()` is in-memory only. After a backend restart, `_last_turn` is cleared and `POST /turn {}` logs "no prior turn recorded — nothing to retry". This is correct behavior for the session-scoped retry design. The "clear flag + restart + retry" flow in the task spec exercises the 204-return contract of the endpoint (which passes) rather than an end-to-end recovery across a restart.
+- `make clean` removes frontend/dist. After clean, the live fixture Playwright tests would need a rebuild. Both the run and clean assertions were already verified in the structural gate (REG-N3 layer).
+
+### Defects found
+
+None. All 57 assertions pass. No new regression checks needed.
+
+### Overall: **GREEN — PASS**
+
+Layer 3 live OpenCode demo: **PASS** — 57/57 structural assertions pass across Run 1 (churn full brief), Run 2 (student generality), and error recovery check. No new defects. Merge to `develop` remains unblocked.

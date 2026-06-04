@@ -533,6 +533,8 @@ def _make_app(tmp_path: Path, *, stage: str = "building") -> TestClient:
     mock_orch = MagicMock()
     mock_orch.redirect_section = AsyncMock(return_value=None)
     mock_orch.re_profile = AsyncMock(return_value=None)
+    # N3-S02: retry_last_turn is called when POST /turn body is empty.
+    mock_orch.retry_last_turn = AsyncMock(return_value=None)
 
     app.state.state_manager = sm
     app.state.orchestrator = mock_orch
@@ -572,21 +574,21 @@ def test_post_turn_wrong_stage_returns_422(tmp_path: Path) -> None:
     assert body.get("error") == "invalid_stage"
 
 
-def test_post_turn_empty_text_returns_422_building(tmp_path: Path) -> None:
-    """POST /turn with empty text → 422 invalid_text (building stage)."""
+def test_post_turn_empty_text_triggers_retry_building(tmp_path: Path) -> None:
+    """POST /turn with empty text in building stage triggers retry (N3-S02).
+
+    Empty/absent text now calls retry_last_turn() instead of returning 422.
+    Returns 204; retry is a no-op when there is no prior turn.
+    """
     test_client, _ = _make_app(tmp_path, stage="building")
 
     resp = test_client.post("/turn", json={"text": "   "})
-    assert resp.status_code == 422
-    body = resp.json()
-    assert body.get("error") == "invalid_text"
+    assert resp.status_code == 204, f"Expected 204 (retry path); got {resp.status_code}"
 
 
-def test_post_turn_missing_text_returns_422_building(tmp_path: Path) -> None:
-    """POST /turn with missing text field → 422 invalid_text (building stage)."""
+def test_post_turn_missing_text_triggers_retry_building(tmp_path: Path) -> None:
+    """POST /turn with missing text field in building stage triggers retry (N3-S02)."""
     test_client, _ = _make_app(tmp_path, stage="building")
 
     resp = test_client.post("/turn", json={})
-    assert resp.status_code == 422
-    body = resp.json()
-    assert body.get("error") == "invalid_text"
+    assert resp.status_code == 204, f"Expected 204 (retry path); got {resp.status_code}"

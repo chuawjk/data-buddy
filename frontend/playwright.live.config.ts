@@ -27,6 +27,7 @@ const TEST_MATCH: Record<string, string> = {
   profiling_deviation: "**/*profile*.live.spec.ts",
   planning: "**/*plan*.live.spec.ts",
   building: "**/*build*.live.spec.ts",
+  done: "**/*done*.live.spec.ts",
 };
 const testMatch = TEST_MATCH[workspace] ?? "**/*.live.spec.ts";
 

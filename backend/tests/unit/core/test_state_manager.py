@@ -288,7 +288,7 @@ def test_get_state_via_api(tmp_path):
         # test instance (which has the known persisted state).
         app.state.state_manager = sm
 
-        r = client.get("/state")
+        r = client.get("/api/state")
         assert r.status_code == 200
         body = r.json()
 
