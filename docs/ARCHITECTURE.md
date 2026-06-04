@@ -6,7 +6,7 @@ See [`docs/contracts/C4_ARCHITECTURE.html`](contracts/C4_ARCHITECTURE.html) for 
 
 ## 1. System overview
 
-Data Buddy is an agent-driven data-analysis tool. A user uploads a CSV and states an aim; the system profiles the data, proposes an analysis plan, and builds the brief section by section. Each section produces a Python analysis script, a chart PNG, and a Markdown write-up. The completed brief is exported as a ZIP archive containing the report, charts, and code.
+Data Buddy is an agent-driven data-analysis tool. A user uploads a CSV and states an aim; the system profiles the data, proposes an analysis plan, and builds the brief section by section. Each section produces a Python analysis script, a chart PNG, and a Markdown write-up. The completed brief is exported as a Markdown document containing all accepted sections in plan order.
 
 User journey: **upload** → **profiling** → **planning** → **building** (one section at a time) → **done / export**.
 
@@ -52,7 +52,7 @@ This split keeps the backend testable, recovery paths simple, and the demo relia
 
 ## 4. Structured output vs the file triplet (ADR-004, ADR-005)
 
-**Profile and plan** use OpenCode's native structured output (`format: { type: "json_schema", schema: ..., retryCount: 2 }`). The model is forced to call a hidden `StructuredOutput` tool whose output is validated against the schema and retried on failure. On final failure, `turn.error` is emitted with a retryable flag so the user can trigger a retry.
+**Profile and plan** use OpenCode's native structured output (`format: { type: "json_schema", schema: ..., retryCount: 2 }`). The model is forced to call a hidden `StructuredOutput` tool whose output is validated against the schema and retried on failure. On final failure, `turn.error` is emitted with a `reason` field (`"structured_output_failed"` or `"provider_error"`) so the user can trigger a retry via the inline retry banner.
 
 **Section builds** do not use structured output. The section's structure IS the file triplet: `analyses/sec_NN_<slug>.py`, `charts/sec_NN_<slug>.png`, `sections/sec_NN_<slug>.md`. The prompt instructs OpenCode to write these files via `apply_patch`; the backend watches for `file.edited` events and validates the triplet on `session.idle`. A missing `.md` after idle → `section.failed`; a missing chart is tolerated.
 
@@ -91,6 +91,6 @@ The architecture has clear seams for future work, none of which are implemented:
 
 - **Multi-user / auth**: each user would need their own `workspace/` directory (or a namespaced path) and their own OpenCode session. The session-ID-in-state-json pattern would become session-ID-in-user-session.
 - **Cross-session snapshots**: `state.json` + the workspace files are a complete snapshot of a brief. Saving and restoring a brief would be a matter of archiving and restoring those files, plus handling the stale OpenCode session gracefully (fresh session + re-supplied context from the restored files).
-- **Richer export formats**: `GET /export` currently produces a ZIP with Markdown and chart PNGs. Adding PDF or HTML would be a renderer layer on top of the same accepted-sections list — no changes to the agent or state machine.
+- **Richer export formats**: `GET /export` currently produces a Markdown file with the accepted sections concatenated in plan order. Adding a ZIP bundle (with charts and analysis scripts), PDF, or HTML would be a renderer layer on top of the same accepted-sections list — no changes to the agent or state machine.
 
 Docker / containerisation is noted as out of scope for this prototype (ADR-009). In a production deployment OpenCode would run as a sidecar container with a shared volume mount for `workspace/`.

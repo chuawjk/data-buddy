@@ -59,7 +59,7 @@ OpenCode is spawned automatically by the FastAPI backend on startup. Open `http:
 2. **Profile** — the agent reads the dataset and summarises each column: type, statistics, and flags like `nullable` or `high_cardinality`. Review the profile, then click Accept.
 3. **Plan** — the agent proposes 3–6 analysis sections. Edit titles, reorder, or drop sections before accepting.
 4. **Build** — the agent writes and runs a Python analysis for each section, producing a chart and a written interpretation. Accept, drop, or redirect each section.
-5. **Export** — download the completed brief as a ZIP archive containing the Markdown report, charts, and Python scripts.
+5. **Export** — download the completed brief as a Markdown document containing the accepted sections in plan order.
 
 ---
 
