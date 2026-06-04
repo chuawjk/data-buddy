@@ -1,4 +1,4 @@
-// RetryBanner tests — N3-S05
+// RetryBanner tests
 // TDD: tests written alongside implementation.
 // Contract: docs/contracts/SSE_CONTRACT.md turn.error shape (reason enum, no retryable bool).
 // Covers: happy path, timeout reason, unknown reason, callback, edge cases.

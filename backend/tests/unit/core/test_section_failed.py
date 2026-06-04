@@ -1,6 +1,6 @@
-"""Unit tests for N2-S08 — Detect failed section.
+"""Unit tests for failed section detection.
 
-Acceptance criteria (N2-S08):
+Acceptance criteria:
   AC1: Given ``session.idle`` WITHOUT expected ``.md`` (and/or ``.png``), when
        detected, then ``section.failed`` is emitted with the section ID.
   AC2: Given transient bash errors the agent recovers from mid-turn, when they

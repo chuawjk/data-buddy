@@ -1,4 +1,4 @@
-"""Unit tests for GET /file endpoint (N2-S14).
+"""Unit tests for GET /file endpoint.
 
 TDD: tests written before the real implementation.
 

@@ -1,8 +1,8 @@
-"""Unit tests for N2-S07 — Section build events.
+"""Unit tests for section build events.
 
 TDD: tests written before implementation.
 
-Acceptance criteria covered (N2-S07):
+Acceptance criteria covered:
 - Tool/file/message events during the turn surface as section.building activity:
   already handled by _normalise_and_publish (existing path); confirmed by
   test_section_building_activity_flows_via_normalise_and_publish.

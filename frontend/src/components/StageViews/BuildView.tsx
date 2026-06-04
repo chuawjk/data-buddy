@@ -1,4 +1,4 @@
-// BuildView — N2-S16, updated N3-S05/S06/S07
+// BuildView
 // Section-by-section build screen. Hydrates sections from GET /state on mount
 // and handles section.* SSE events to update state live.
 //
@@ -7,7 +7,7 @@
 //   ├── section list [data-testid="section-list"]
 //   │   └── section-row-{id}, section-status-{id} per section
 //   ├── SectionPane [data-testid="section-pane"] (sections that started/finished)
-//       ├── failed controls when isFailed=true — N3-S06/S07
+//       ├── failed controls when isFailed=true
 //
 // Coded against docs/contracts/API_CONTRACT.html — never backend internals.
 
@@ -24,7 +24,7 @@ interface BuildViewProps {
   /** Called whenever sections change locally (accept/drop) so App can update its plan state. */
   onSectionsChange?: (sections: Section[]) => void;
   /**
-   * N3-S06/S07: map of section id → section.failed reason for sections that failed.
+   * Map of section id → section.failed reason for sections that failed.
    * Each failed section shows Retry/Drop controls in its SectionPane.
    */
   failedSections?: Map<string, string>;
@@ -182,7 +182,6 @@ export default function BuildView({
     });
   }, [onSectionsChange]);
 
-  // N3-S06: retry a failed section — POST /turn with section_id (no text = retry)
   const handleSectionRetry = useCallback(async (id: string) => {
     setSections((prev) => {
       const next = prev.map((s) =>

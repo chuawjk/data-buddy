@@ -1,4 +1,4 @@
-"""Unit tests for POST /plan/update — N2-S04.
+"""Unit tests for POST /plan/update.
 
 TDD: tests written before the implementation.
 

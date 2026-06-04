@@ -1,6 +1,6 @@
 """Unit tests for watchdog.py -- Watchdog stuck-turn detection and recovery.
 
-TDD: tests written before implementation (N1-S11).
+TDD: tests written before implementation.
 
 Acceptance criteria covered:
 - test_timeout_triggers_abort: after WATCHDOG_TIMEOUT seconds of silence, client.abort() called.
@@ -10,7 +10,7 @@ Acceptance criteria covered:
 - test_heartbeat_resets_timer: heartbeat() before timeout means abort is NOT called.
 - test_cancel_stops_watch: cancel() before timeout means abort is NOT called.
 
-N1-S20 seam:
+WATCHDOG_TIMEOUT_SECONDS env var override:
 - test_timeout_env_var_override: WATCHDOG_TIMEOUT_SECONDS env var is respected.
 
 WATCHDOG_TIMEOUT_SECONDS=1 is set via monkeypatch (autouse) for fast test execution.
@@ -221,7 +221,7 @@ async def test_cancel_stops_watch() -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_timeout_env_var_override (N1-S20 seam)
+# test_timeout_env_var_override
 # ---------------------------------------------------------------------------
 
 
@@ -311,7 +311,7 @@ async def test_start_turn_default_timeout_uses_watchdog_timeout() -> None:
 
 
 # ---------------------------------------------------------------------------
-# N3-S04: heartbeat preserves the per-turn timeout
+# heartbeat preserves the per-turn timeout
 # ---------------------------------------------------------------------------
 
 
@@ -319,7 +319,7 @@ async def test_start_turn_default_timeout_uses_watchdog_timeout() -> None:
 async def test_heartbeat_preserves_timeout() -> None:
     """heartbeat() resets the timer using the same timeout that start_turn() was called with.
 
-    N3-S04 acceptance: a Watchdog started with timeout=180 stays at 180 after heartbeat,
+    A Watchdog started with timeout=180 stays at 180 after heartbeat,
     not reset to the default 60 (or 1 in test env).
 
     This verifies the fix for the bug where heartbeat() called start_turn() with no argument,

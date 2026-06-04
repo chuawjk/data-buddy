@@ -1,4 +1,4 @@
-"""Unit tests for backend/prompts/plan.py (N2-S02).
+"""Unit tests for backend/prompts/plan.py.
 
 TDD: tests written before the implementation.
 

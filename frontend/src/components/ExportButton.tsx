@@ -1,4 +1,4 @@
-// ExportButton — N2-S17
+// ExportButton
 // Renders in the App header for planning and building/done stages.
 // Calls GET /api/export and triggers a .zip file download.
 // Disabled when no sections have status "accepted".

@@ -1,4 +1,4 @@
-"""Stuck-turn watchdog and session recovery (N1-S11 + N1-S20 seams).
+"""Stuck-turn watchdog and session recovery.
 
 Per-turn async timer: if WATCHDOG_TIMEOUT seconds pass with no event, the watchdog:
   1. Calls client.abort(session_id) -- best-effort; the spike confirms abort does NOT
@@ -15,7 +15,7 @@ Usage (called by the orchestrator around every agent turn):
     watchdog.cancel()         # called when a turn completes normally
 
 WATCHDOG_TIMEOUT is read from the WATCHDOG_TIMEOUT_SECONDS environment variable so it can be
-overridden in tests (N1-S20 seam) and tuned in production (ADR-002).  Defaults to 60 seconds.
+overridden in tests and tuned in production (ADR-002).  Defaults to 60 seconds.
 
 Hard boundary: this module does not import the orchestrator.
 """
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Production default; overrideable via env var for tests (N1-S20) and production tuning (ADR-002).
+# Production default; overrideable via env var for tests and production tuning (ADR-002).
 WATCHDOG_TIMEOUT: int = int(os.environ.get("WATCHDOG_TIMEOUT_SECONDS", "60"))
 
 # Grace period between abort() and create_fresh_session().
@@ -64,14 +64,14 @@ class Watchdog:
         self._task: asyncio.Task[None] | None = None
         # Stores the timeout passed to the most recent start_turn() call so that
         # heartbeat() can re-arm the timer with the same per-turn budget rather than
-        # reverting to the global default (N3-S04).
+        # reverting to the global default.
         self._current_timeout: int = WATCHDOG_TIMEOUT
 
     def start_turn(self, timeout: int | None = None) -> None:
         """Call when a turn begins. Cancels any existing timer and starts a fresh one.
 
         Stores the resolved timeout so that subsequent ``heartbeat()`` calls
-        can re-arm the timer with the same per-turn budget (N3-S04).
+        can re-arm the timer with the same per-turn budget.
 
         Args:
             timeout: Silence threshold in seconds before recovery fires.  Defaults
@@ -88,7 +88,7 @@ class Watchdog:
         Re-arms the timer using the same timeout that was passed to the most
         recent ``start_turn()`` call.  This preserves the per-turn budget
         (e.g. 180 s for section builds) instead of reverting to the global
-        ``WATCHDOG_TIMEOUT`` default (N3-S04 fix).
+        ``WATCHDOG_TIMEOUT`` default.
         """
         self.start_turn(getattr(self, "_current_timeout", WATCHDOG_TIMEOUT))
 

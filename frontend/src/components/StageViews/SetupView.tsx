@@ -1,4 +1,4 @@
-// SetupView — N1-S15
+// SetupView
 // Entry screen: collect CSV + aim, POST to /setup.
 // Coded against docs/contracts/API_CONTRACT.html §1 · POST /setup.
 // Mockup reference: docs/mockups/DATA_BUDDY_MOCKUPS_STRIPPED.html · Stage 1.

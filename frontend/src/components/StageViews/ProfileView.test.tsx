@@ -1,7 +1,7 @@
 // Tests for ProfileView — TDD: tests written first against acceptance criteria.
 // Mocks useApi and useSSE so tests are fast and deterministic.
 //
-// Acceptance criteria (N1-S16):
+// Acceptance criteria:
 //   - shape strip ("Rows: N | Columns: N") — data-testid="shape-strip"
 //   - one column-row per column — data-testid="column-row"
 //   - column detail: name, type, summary visible per row

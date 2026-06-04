@@ -1,4 +1,4 @@
-"""Frontmatter parser for section markdown files (N2-S09).
+"""Frontmatter parser for section markdown files.
 
 Parses YAML frontmatter from ``sections/*.md`` files written by OpenCode.
 

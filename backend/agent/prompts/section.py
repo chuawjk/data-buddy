@@ -1,4 +1,4 @@
-"""Section build prompt template for the section-build turn (N2-S06).
+"""Section build prompt template for the section-build turn.
 
 Used by the orchestrator when it fires the section-build turn against OpenCode:
     client.prompt(session_id, build_section_prompt(...))
@@ -21,8 +21,8 @@ agent must not depend on its own conversational history.
 Per ADR-011: all file paths in the prompt are absolute so OpenCode can locate
 files even when workspace/ is gitignored and therefore invisible to glob tools.
 
-Out of scope (N2-S12): the redirect prompt for Stage 4b bottom-bar re-runs
-belongs in backend/prompts/redirect.py.
+The redirect prompt for Stage 4b bottom-bar re-runs belongs in
+backend/prompts/redirect.py.
 """
 
 from __future__ import annotations

@@ -8,7 +8,7 @@ from the stub.
 Route inventory (from API_CONTRACT.html):
     POST /setup
     GET  /state
-    GET  /events          (real impl N1-S10)
+    GET  /events
     POST /turn
     POST /plan/update
     POST /plan/accept
@@ -83,7 +83,7 @@ async def post_setup(
 ) -> Response:
     """Upload dataset and aim, start the brief.
 
-    Steps (N1-S05):
+    Steps:
     1. Validate aim is non-empty.
     2. Validate content-type (must be text/csv or filename ends .csv).
     3. Read file and validate size limit (10 MB).
@@ -162,7 +162,7 @@ async def post_setup(
 
 
 # ---------------------------------------------------------------------------
-# GET /events  (N1-S10: real SSE stream)
+# GET /events
 # ---------------------------------------------------------------------------
 
 
@@ -203,12 +203,12 @@ async def post_turn(request: Request, body: dict = Body(default=None)) -> Respon
     Context-aware: dispatches to the appropriate orchestrator method based on
     the current stage.  Returns 204 immediately; agent progress arrives via SSE.
 
-    Implemented stages (N1-S12, N2, N3-S02):
+    Implemented stages:
     - ``profiling``: calls ``orchestrator.re_profile(text)``
     - ``planning``: calls ``orchestrator.re_plan(text)``
     - ``building``: calls ``orchestrator.redirect_section(text)``
 
-    Empty body path (N3-S02 retry):
+    Empty body path (retry):
     - If the body is absent or ``text`` is missing/empty, calls
       ``orchestrator.retry_last_turn()`` to re-fire the last prompt.
 
@@ -224,7 +224,6 @@ async def post_turn(request: Request, body: dict = Body(default=None)) -> Respon
 
     text: str = (body.get("text") or "").strip()
     if not text:
-        # N3-S02: absent or empty text → retry the last turn.
         asyncio.create_task(request.app.state.orchestrator.retry_last_turn())
         return Response(status_code=204)
 
@@ -258,8 +257,6 @@ async def post_turn(request: Request, body: dict = Body(default=None)) -> Respon
 @router.post("/plan/update", response_model=None)
 async def post_plan_update(request: Request, body: dict = Body(...)) -> Any:
     """Inline plan edit (backend-only).
-
-    N2-S04 real implementation.
 
     Accepts a full replacement plan array from the SPA (used for inline edits,
     reorder, drop section, add section).  Writes atomically to both
@@ -393,8 +390,6 @@ async def post_profile_accept(request: Request) -> Response:
 async def post_plan_accept(request: Request) -> Response:
     """Accept plan and begin section build.
 
-    N2-S05 real implementation.
-
     Delegates to ``orchestrator.accept_plan()`` as a fire-and-forget task.
     Returns 204 immediately; stage transition and section build progress
     arrive via SSE.
@@ -413,8 +408,6 @@ async def post_plan_accept(request: Request) -> Response:
 @router.post("/section/{section_id}/accept", status_code=204)
 async def post_section_accept(request: Request, section_id: str) -> Response:
     """Accept a proposed section.
-
-    N2-S10 real implementation.
 
     Marks the section's status from ``"proposed"`` to ``"accepted"`` in
     ``state.json``.  Returns 204 No Content.  No OpenCode call is made.
@@ -459,8 +452,8 @@ async def post_section_accept(request: Request, section_id: str) -> Response:
     updated_plan[section_index]["status"] = "accepted"
     state_manager.update(plan=updated_plan)
 
-    # N3-S01: check whether all sections are now terminal and transition to
-    # done if so.  Fire-and-forget so the 204 response is not delayed.
+    # Check whether all sections are now terminal and transition to done if so.
+    # Fire-and-forget so the 204 response is not delayed.
     orchestrator = request.app.state.orchestrator
     asyncio.create_task(orchestrator._check_done_or_next(section_id))
 
@@ -475,8 +468,6 @@ async def post_section_accept(request: Request, section_id: str) -> Response:
 @router.post("/section/{section_id}/drop", status_code=204)
 async def post_section_drop(request: Request, section_id: str) -> Response:
     """Drop a proposed section.
-
-    N2-S11 real implementation.
 
     Marks the section's status from ``"proposed"`` to ``"dropped"`` in
     ``state.json``.  Returns 204 No Content.  No OpenCode call is made.
@@ -523,8 +514,8 @@ async def post_section_drop(request: Request, section_id: str) -> Response:
     updated_plan[section_index]["status"] = "dropped"
     state_manager.update(plan=updated_plan)
 
-    # N3-S01: check whether all sections are now terminal and transition to
-    # done if so.  Fire-and-forget so the 204 response is not delayed.
+    # Check whether all sections are now terminal and transition to done if so.
+    # Fire-and-forget so the 204 response is not delayed.
     orchestrator = request.app.state.orchestrator
     asyncio.create_task(orchestrator._check_done_or_next(section_id))
 
@@ -540,9 +531,8 @@ def _find_section_file(workspace_root: Path, section: dict[str, Any]) -> Path | 
     """Resolve the ``.md`` file path for a plan section.
 
     Resolution order:
-    1. If ``section`` has an ``md_path`` key (set by N2-S07 after building),
-       try ``workspace_root / section["md_path"]``.  Return it if the file
-       exists.
+    1. If ``section`` has an ``md_path`` key, try
+       ``workspace_root / section["md_path"]``.  Return it if the file exists.
     2. Otherwise, glob ``workspace_root/sections/<section_id>_*.md`` and
        return the first match.
     3. Return ``None`` if no file is found.
@@ -555,7 +545,7 @@ def _find_section_file(workspace_root: Path, section: dict[str, Any]) -> Path | 
     Returns:
         A ``Path`` to the first matching ``.md`` file, or ``None``.
     """
-    # Try stored md_path first (set by N2-S07).
+    # Try stored md_path first.
     stored_path = section.get("md_path")
     if stored_path:
         candidate = workspace_root / stored_path
@@ -657,7 +647,7 @@ async def get_export(request: Request) -> Response:
 # GET /file
 # ---------------------------------------------------------------------------
 
-# Explicit content-type overrides per the contract (TL note: N2-S14).
+# Explicit content-type overrides per the contract.
 _CONTENT_TYPE_OVERRIDES: dict[str, str] = {
     ".png": "image/png",
     ".py": "text/plain",
@@ -673,8 +663,6 @@ async def get_file(
     path: Annotated[str, Query(description="Relative path within workspace")],
 ) -> Response:
     """Serve a workspace file (code / chart).
-
-    N2-S14 real implementation.
 
     Path validation:
     - Resolves the candidate path within ``workspace/`` and verifies it does not

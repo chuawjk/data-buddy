@@ -1,4 +1,4 @@
-"""Unit tests for POST /section/:id/drop — N2-S11.
+"""Unit tests for POST /section/:id/drop.
 
 TDD: tests written before the implementation.
 

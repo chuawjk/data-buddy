@@ -1,14 +1,14 @@
-// SectionPane — N2-S16, updated N3-S06/S07
+// SectionPane
 // Renders the active section's artefacts: code block, chart image, interpretation.
 // Receives a Section prop and fetches text artefacts via api.getFile.
 // Chart is rendered as <img src="/api/file?path=..."> — the browser handles
 // the binary GET; api.getFile returns text and would produce a broken image.
 //
-// data-testid list (from docs/plans/2026-06-03-n2-s16.md + N3 additions):
+// data-testid list:
 //   section-pane, section-pane-title, section-building-spinner,
 //   section-code, section-chart, section-interpretation,
 //   section-file-error, section-accept-btn, section-drop-btn,
-//   section-failed-notice, section-retry-btn, section-drop-failed-btn, watchdog-notice (N3)
+//   section-failed-notice, section-retry-btn, section-drop-failed-btn, watchdog-notice
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "../hooks/useApi";
@@ -22,17 +22,17 @@ export interface SectionPaneProps {
   /** Optional: re-fetch trigger key from file.ready events */
   fileReadyPath?: string | null;
   /**
-   * N3-S06/S07: when true, show failed-section controls (Retry / Drop).
+   * When true, show failed-section controls (Retry / Drop).
    * Set by BuildView when section.failed is received for this section.
    */
   isFailed?: boolean;
   /**
-   * N3-S07: the failure reason from section.failed.
+   * The failure reason from section.failed.
    * "timeout" triggers the watchdog-notice variant (distinct copy + testid).
    */
   failedReason?: string;
   /**
-   * N3-S06: called when the user clicks Retry on a failed section.
+   * Called when the user clicks Retry on a failed section.
    * Re-queues the section build via POST /turn with section_id.
    */
   onRetry?: (id: string) => void;
@@ -164,7 +164,7 @@ export default function SectionPane({
         {section.title}
       </h3>
 
-      {/* Failed section controls — N3-S06/S07 */}
+      {/* Failed section controls */}
       {isFailed && (
         <>
           {failedReason === "timeout" ? (

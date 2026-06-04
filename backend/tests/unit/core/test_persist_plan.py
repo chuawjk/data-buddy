@@ -1,4 +1,4 @@
-"""Unit tests for N2-S03 — Persist plan & section statuses.
+"""Unit tests for plan persistence and section statuses.
 
 TDD: tests written before implementation.
 

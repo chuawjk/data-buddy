@@ -1,4 +1,4 @@
-// DoneView — N3-S08
+// DoneView
 // Rendered when stage.changed(done) is received.
 // Shows all accepted sections (in plan order) and a prominent export action.
 //

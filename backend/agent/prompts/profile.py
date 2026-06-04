@@ -1,4 +1,4 @@
-"""Profile prompt template and JSON Schema for the profiling turn (N1-S09).
+"""Profile prompt template and JSON Schema for the profiling turn.
 
 Used by the orchestrator when it fires the profiling turn against OpenCode:
     client.prompt(session_id, build_profile_prompt(dataset, aim), schema=PROFILE_SCHEMA)

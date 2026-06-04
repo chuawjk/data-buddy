@@ -1,6 +1,6 @@
-"""Unit tests for N2-S20 -- Forced section-failure test hook.
+"""Unit tests for the QA_FORCE_SECTION_FAIL test hook.
 
-Acceptance criteria (N2-S20):
+Acceptance criteria:
   AC1: Given ``QA_FORCE_SECTION_FAIL=1`` is set, when a section build turn
        idles, then no ``sections/<id>.md`` is present (or it is removed) and
        ``section.failed`` is emitted with the section ID.
@@ -8,14 +8,13 @@ Acceptance criteria (N2-S20):
        then behaviour is unchanged (triplet present -> ``section.proposed``).
 
 Architecture:
-  The seam sits at the top of ``_handle_section_idle()`` in ``orchestrator.py``
-  — the same method that N2-S08 tests exercise.  When ``QA_FORCE_SECTION_FAIL=1``
-  is set, the method deletes the ``.md`` file (if present) before the existing
-  triplet check runs, causing the normal ``section.failed`` path to fire.
+  The seam sits at the top of ``_handle_section_idle()`` in ``orchestrator.py``.
+  When ``QA_FORCE_SECTION_FAIL=1`` is set, the method deletes the ``.md`` file
+  (if present) before the existing triplet check runs, causing the normal
+  ``section.failed`` path to fire.
 
-  This is consistent with the ``QA_FORCE_STALL`` seam in ``opencode_client.py``
-  (N1-S20): an env-var that is off by default and has zero impact on any
-  production code path.
+  Consistent with the ``QA_FORCE_STALL`` seam in ``opencode_client.py``:
+  an env-var that is off by default and has zero impact on any production code path.
 
 Test coverage:
   - AC1: hook set, full triplet present -> section.failed emitted.

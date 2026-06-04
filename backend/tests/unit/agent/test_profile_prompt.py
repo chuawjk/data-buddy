@@ -1,4 +1,4 @@
-"""Unit tests for N1-S09 — profiling turn: profile prompt and prompt() method.
+"""Unit tests for the profiling turn: profile prompt and prompt() method.
 
 TDD: tests written before implementation.
 

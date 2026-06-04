@@ -1,16 +1,14 @@
-"""Unit tests for POST /turn endpoint and Orchestrator.re_profile() -- N1-S12.
+"""Unit tests for POST /turn endpoint and Orchestrator.re_profile().
 
 TDD: tests written before the implementation.
 
 Acceptance criteria covered:
 - Given the profiling stage, when POST /turn is called with bottom-bar text, then a
   re-profile prompt is dispatched and 204 returns immediately.
-- Given the dispatched turn, when it runs, then progress arrives via SSE (verified via
-  client.prompt call assertions; SSE routing is owned by N1-S10 / N1-S08).
-- Given a second consecutive turn on the same session, when it runs, then it completes or
-  recovers without hanging (watchdog owns recovery -- this story just fires the turn).
-- Given completion, when output lands, then profile.json is overwritten (owned by N1-S09
-  profiling-turn handler; re_profile re-uses the same prompt path).
+- Given the dispatched turn, when it runs, then progress arrives via SSE.
+- Given a second consecutive turn on the same session, when it runs, then it completes
+  or recovers without hanging (watchdog owns recovery).
+- Given completion, when output lands, then profile.json is overwritten.
 
 Architecture constraints verified:
 - The router delegates to orchestrator.re_profile() without doing OpenCode work itself.
@@ -98,7 +96,7 @@ def test_turn_dispatches_reprof_in_profiling_stage(tmp_path):
 
 
 def test_turn_whitespace_text_calls_retry(tmp_path):
-    """POST /turn with whitespace-only text triggers retry (N3-S02).
+    """POST /turn with whitespace-only text triggers retry.
 
     Per the API contract: an absent or empty text field re-fires the last
     prompt (retry path).  Returns 204, not 422.
@@ -116,7 +114,7 @@ def test_turn_whitespace_text_calls_retry(tmp_path):
 
 
 def test_turn_missing_text_calls_retry(tmp_path):
-    """POST /turn with no text field triggers retry (N3-S02).
+    """POST /turn with no text field triggers retry.
 
     Per the API contract: absent text means retry the last turn.
     """
@@ -391,16 +389,16 @@ async def test_replan_starts_watchdog(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# N3-S02: POST /turn with empty body calls retry_last_turn
+# POST /turn with empty body calls retry_last_turn
 # ---------------------------------------------------------------------------
 
 
 def test_turn_empty_body_calls_retry(tmp_path):
     """POST /turn with empty body (no text field) calls orchestrator.retry_last_turn().
 
-    Acceptance (N3-S02): the retry button POSTs with an empty body to re-fire the
-    last prompt.  The router must detect the absent/empty text and call retry instead
-    of returning 422 invalid_text.
+    The retry button POSTs with an empty body to re-fire the last prompt.
+    The router must detect the absent/empty text and call retry instead of
+    returning 422 invalid_text.
     """
     app = _make_app(tmp_path, stage="profiling")
 

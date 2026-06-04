@@ -1,4 +1,4 @@
-// RetryBanner — N3-S05
+// RetryBanner
 // Inline error banner rendered at the top of a stage view when turn.error arrives.
 // Every turn.error is retryable from the UI perspective (no retryable prop needed).
 // Copy varies by reason: "timeout" → "Agent timed out — retry?"

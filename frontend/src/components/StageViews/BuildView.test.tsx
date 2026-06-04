@@ -1,4 +1,4 @@
-// BuildView tests — N2-S16
+// BuildView tests
 // TDD: tests written alongside implementation.
 // Acceptance criteria from docs/plans/2026-06-03-n2-s16.md
 

@@ -2,7 +2,7 @@
 
 TDD: written before the implementation.
 
-Acceptance criteria (N1-S10):
+Acceptance criteria:
 - Given a connecting SPA, when it subscribes to GET /events, then it receives all bus events
   as SSE with contract-shaped payloads.
 - Given an active turn, when events flow, then both domain and activity events reach the SPA.

@@ -13,39 +13,14 @@ Architecture boundaries (from backlog):
 State transitions implemented here:
   setup → profiling   (via ``setup_complete``)
   profiling → planning  (via ``_handle_planning_transition``, triggered on ``profile.ready``)
+  planning → building  (via ``accept_plan``)
+  building → done     (via ``_check_done_or_next``)
 
-N2-S02: ``session.idle`` during planning stage reads ``plan.json`` from disk,
-validates it, injects ``status: "proposed"`` on each section, persists to
-state, and emits ``plan.ready``.  ``session.idle`` dispatch is now stage-aware.
-
-N2-S03: ``_handle_plan_idle`` now also writes the canonical ``plan.json`` to
-the workspace using atomic tmp+rename semantics, and uses status ``"proposed"``
-(sections are proposed to the user, awaiting plan acceptance).
-
-N2-S07: ``session.idle`` during building stage checks for the section file
-triplet (``analyses/*.py``, ``charts/*.png``, ``sections/*.md``) and emits
-either ``section.proposed`` (triplet present) or ``section.failed`` (files
-missing).  ``start_build_section`` emits ``section.building`` immediately
-after dispatching the section prompt and arms the watchdog.
-
-N2-S20: ``QA_FORCE_SECTION_FAIL=1`` env-var seam in ``_handle_section_idle``.
-When set, the ``.md`` artefact is removed before the triplet check so that
-``section.failed`` fires deterministically for QA without model misbehaviour.
-Off by default; zero production-path impact.
-
-N3-S02: ``_last_turn`` field on ``Orchestrator`` records the most recently
-dispatched turn (stage, prompt, section_id, retries).  ``retry_last_turn()``
-re-dispatches it against the current session ID, bounded to 3 attempts.
-``POST /turn`` with an empty body calls ``retry_last_turn()``.
-
-N3-S03: ``_run_profile_turn``, ``_run_plan_turn``, and ``_run_section_turn``
-emit ``turn.error`` payloads including ``stage``, ``reason`` (enum string),
-and (for building) ``section_id`` per the API contract.
-
-N3-S16: ``QA_FORCE_TURN_ERROR=1`` env-var seam in the ``_run_*_turn`` methods.
-When set, each method raises ``RuntimeError`` before calling ``client.prompt``,
-driving the ``turn.error`` path deterministically for QA without token spend.
-Off by default; zero production-path impact.
+QA env-var seams (off by default, zero production-path impact):
+  ``QA_FORCE_SECTION_FAIL=1`` -- removes the .md artefact before the triplet
+    check so ``section.failed`` fires deterministically.
+  ``QA_FORCE_TURN_ERROR=1`` -- raises before ``client.prompt`` in each
+    ``_run_*_turn`` method, driving ``turn.error`` for QA.
 """
 
 from __future__ import annotations
@@ -107,7 +82,7 @@ class Orchestrator:
         self._client = client
         self._workspace_root = Path(workspace_root)
         self._watchdog = watchdog
-        # N3-S02: last dispatched turn — used by retry_last_turn() to replay.
+        # Last dispatched turn — used by retry_last_turn() to replay.
         # Shape: {"stage": str, "prompt": str, "section_id": str|None, "retries": int}
         self._last_turn: dict | None = None
 
@@ -172,7 +147,6 @@ class Orchestrator:
         8. Arm the watchdog if wired.
         9. Schedule ``_run_section_turn`` as a fire-and-forget task.
 
-        N2-S05.
         """
         state = self._state_manager.get_state()
         current_stage: str = state.get("stage", "")
@@ -273,7 +247,6 @@ class Orchestrator:
         user_note = f"\n\nUser re-profile note: {text}" if text else ""
         prompt = self._build_profile_prompt(dataset, aim + user_note)
 
-        # Arm the watchdog before firing the turn (N1-S11 / N1-S20).
         if self._watchdog is not None:
             self._watchdog.start_turn()
 
@@ -359,7 +332,6 @@ class Orchestrator:
             ValueError: If no session ID is stored in state.
             ValueError: If the current stage is not ``"building"``.
 
-        N2-S12.
         """
         state = self._state_manager.get_state()
         session_id: str | None = state.get("opencode_session_id")
@@ -490,8 +462,6 @@ class Orchestrator:
           appropriate ``_run_*_turn`` as a fire-and-forget task.
 
         Returns immediately; the replayed turn runs asynchronously.
-
-        N3-S02.
         """
         if self._last_turn is None:
             logger.warning("retry_last_turn: no prior turn recorded — nothing to retry")
@@ -583,8 +553,8 @@ class Orchestrator:
 
         Currently handled:
           - ``session.idle`` in profiling stage → ``_handle_profile_idle``
-          - ``session.idle`` in planning stage → ``_handle_plan_idle``  (N2-S02)
-          - ``session.idle`` in building stage → ``_handle_section_idle``  (N2-S07)
+          - ``session.idle`` in planning stage → ``_handle_plan_idle``
+          - ``session.idle`` in building stage → ``_handle_section_idle``
 
         Note: ``profile.ready`` no longer auto-advances to planning.  The user
         must explicitly call ``POST /profile/accept`` to trigger the transition.
@@ -665,7 +635,6 @@ class Orchestrator:
         4. If client and session ID are present, arm the watchdog and schedule
            ``_run_plan_turn`` as a fire-and-forget task.
 
-        N2-S01.
         """
         state = self._state_manager.get_state()
         current_stage: str = state.get("stage", "")
@@ -717,7 +686,6 @@ class Orchestrator:
         If the file is absent or the output is invalid, emits ``turn.error``
         with ``stage="planning"`` and ``reason="structured_output_failed"``.
 
-        N2-S02.
         """
         state = self._state_manager.get_state()
         current_stage: str = state.get("stage", "")
@@ -769,10 +737,9 @@ class Orchestrator:
                 await _emit_error("structured_output_failed")
                 return
 
-        # Inject status: "proposed" on each section (N2-S03: the plan has been
-        # proposed to the user and is awaiting their review / acceptance).
-        # Status lives in state.json only; the canonical plan.json on disk stores
-        # raw sections without status.
+        # Inject status: "proposed" — the plan has been proposed to the user and is
+        # awaiting their review / acceptance.  Status lives in state.json only; the
+        # canonical plan.json on disk stores raw sections without status.
         sections_with_status = [
             {**s, "status": "proposed", "py_path": None, "png_path": None, "md_path": None}
             for s in sections
@@ -783,7 +750,6 @@ class Orchestrator:
 
         # Write canonical plan.json to workspace (raw sections, no status).
         # Uses atomic tmp+rename so a mid-write kill never corrupts the file.
-        # N2-S03.
         self._write_plan_json(plan_path, sections)
 
         # Emit plan.ready.
@@ -804,9 +770,9 @@ class Orchestrator:
     ) -> None:
         """Dispatch the section build prompt and emit ``section.building``.
 
-        Called by the accept-plan flow (N2-S05) or the sequential section loop
-        (N3-S01) when the next section should be built.  Returns immediately;
-        the turn runs as a fire-and-forget ``asyncio.Task``.
+        Called by the accept-plan flow or the sequential section loop when the
+        next section should be built.  Returns immediately; the turn runs as a
+        fire-and-forget ``asyncio.Task``.
 
         Steps:
         1. Validate: session ID must be set.
@@ -824,7 +790,6 @@ class Orchestrator:
         Raises:
             ValueError: If no session ID is stored (OpenCode not started).
 
-        N2-S07.
         """
         state = self._state_manager.get_state()
         session_id: str | None = state.get("opencode_session_id")
@@ -897,9 +862,7 @@ class Orchestrator:
 
         When ``QA_FORCE_SECTION_FAIL=1`` is set, the ``.md`` file is removed
         before the check so that the normal missing-artefact path fires and
-        ``section.failed`` is emitted deterministically (N2-S20 test seam).
-
-        N2-S07, N2-S20.
+        ``section.failed`` is emitted deterministically.
         """
         state = self._state_manager.get_state()
         current_stage: str = state.get("stage", "")
@@ -932,8 +895,8 @@ class Orchestrator:
         nn = str(section_index).zfill(2)
         base_name = f"sec_{nn}_{slug}"
 
-        # N2-S20: QA_FORCE_SECTION_FAIL -- delete the .md before the triplet check
-        # so the normal missing-artefact path fires and section.failed is emitted
+        # QA_FORCE_SECTION_FAIL -- delete the .md before the triplet check so the
+        # normal missing-artefact path fires and section.failed is emitted
         # deterministically.  Off by default; zero production-path impact.
         if os.environ.get("QA_FORCE_SECTION_FAIL") == "1":
             md_to_remove = self._workspace_root / "sections" / f"{base_name}.md"
@@ -1049,7 +1012,6 @@ class Orchestrator:
             section_id: The ID of the section that triggered this check
                 (informational; used only for logging).
 
-        N3-S01.
         """
         state = self._state_manager.get_state()
         if state.get("stage") != "building":
@@ -1089,9 +1051,9 @@ class Orchestrator:
         Called by ``_handle_section_idle`` after each section completes (success
         or failure).  Reads the current plan, finds the first section with
         ``status="queued"``, and delegates to ``start_build_section``.  If no
-        queued sections remain, delegates to ``_check_done_or_next`` (N3-S01
-        belt-and-suspenders: the auto-sequence path must also reach done when
-        all sections are terminal).
+        queued sections remain, delegates to ``_check_done_or_next`` as a
+        belt-and-suspenders check (the auto-sequence path must also reach done
+        when all sections are terminal).
         """
         state = self._state_manager.get_state()
         plan: list[dict[str, Any]] = state.get("plan") or []
@@ -1102,7 +1064,7 @@ class Orchestrator:
         if next_section is None:
             logger.info("_start_next_queued_section: no queued sections remain.")
             # Belt-and-suspenders: check if all sections are now terminal and
-            # transition to done if so (N3-S01).
+            # transition to done if so.
             await self._check_done_or_next("")
             return
 
@@ -1142,8 +1104,8 @@ class Orchestrator:
     ) -> str:
         """Return the text to send to OpenCode for the section build turn.
 
-        Tries to import ``build_section_prompt`` from ``backend.prompts.section``
-        (added by N2-S06).  Falls back to a minimal placeholder.
+        Tries to import ``build_section_prompt`` from ``backend.prompts.section``.
+        Falls back to a minimal placeholder.
 
         Args:
             section_id: Section identifier (e.g. ``"sec_01"``).
@@ -1226,10 +1188,8 @@ class Orchestrator:
     ) -> str:
         """Return the text to send to OpenCode for the section redirect turn.
 
-        Tries to import ``build_redirect_prompt`` from ``backend.prompts.redirect``
-        (added by N2-S12).  Falls back to a minimal placeholder.
-
-        N2-S12.
+        Tries to import ``build_redirect_prompt`` from ``backend.prompts.redirect``.
+        Falls back to a minimal placeholder.
         """
         try:
             from backend.agent.prompts.redirect import build_redirect_prompt  # noqa: PLC0415
@@ -1263,9 +1223,8 @@ class Orchestrator:
     def _build_profile_prompt(self, dataset: str, aim: str) -> str:
         """Return the text to send to OpenCode for the profiling turn.
 
-        Tries to import ``build_profile_prompt`` from ``backend.prompts.profile``
-        (added by N1-S09).  Falls back to a minimal placeholder so this story
-        (N1-S04) is independently deliverable.
+        Tries to import ``build_profile_prompt`` from ``backend.prompts.profile``.
+        Falls back to a minimal placeholder.
 
         Args:
             dataset: Dataset filename (e.g. ``"data.csv"``).
@@ -1280,8 +1239,8 @@ class Orchestrator:
             return build_profile_prompt(dataset, aim, self._workspace_root.resolve())
         except ImportError:
             logger.debug(
-                "_build_profile_prompt: backend.prompts.profile not yet available "
-                "(N1-S09 not merged); using placeholder."
+                "_build_profile_prompt: backend.prompts.profile not yet available; "
+                "using placeholder."
             )
             ws = self._workspace_root.resolve()
             return f"Profile the dataset at {ws / 'data' / dataset} with aim: {aim}"
@@ -1289,9 +1248,8 @@ class Orchestrator:
     def _build_plan_prompt(self, dataset: str, aim: str, profile: dict[str, Any]) -> str:
         """Return the text to send to OpenCode for the planning turn.
 
-        Tries to import ``build_plan_prompt`` from ``backend.prompts.plan``
-        (added by N2-S02).  Falls back to a minimal placeholder so this story
-        (N2-S01) is independently deliverable.
+        Tries to import ``build_plan_prompt`` from ``backend.prompts.plan``.
+        Falls back to a minimal placeholder.
 
         Args:
             dataset: Dataset filename (e.g. ``"data.csv"``).
@@ -1307,8 +1265,7 @@ class Orchestrator:
             return build_plan_prompt(dataset, aim, profile, self._workspace_root.resolve())
         except ImportError:
             logger.debug(
-                "_build_plan_prompt: backend.prompts.plan not yet available "
-                "(N2-S02 not merged); using placeholder."
+                "_build_plan_prompt: backend.prompts.plan not yet available; using placeholder."
             )
             ws = self._workspace_root.resolve()
             return (
@@ -1320,9 +1277,8 @@ class Orchestrator:
     def _load_plan_schema() -> Any:
         """Return the plan JSON schema for structured output, or ``None``.
 
-        Attempts to import ``PLAN_SCHEMA`` from ``backend.prompts.plan``
-        (N2-S02).  Returns ``None`` if the module is not yet available so that
-        N2-S01 remains independently deliverable.
+        Attempts to import ``PLAN_SCHEMA`` from ``backend.prompts.plan``.
+        Returns ``None`` if the module is not yet available.
         """
         try:
             from backend.agent.prompts.plan import PLAN_SCHEMA  # noqa: PLC0415
@@ -1352,7 +1308,6 @@ class Orchestrator:
                 ``hypothesis``.  Any ``status`` field is stripped before
                 writing.
 
-        N2-S03.
         """
         # Strip status from sections — plan.json stores raw schema only.
         raw_sections = [{k: v for k, v in s.items() if k != "status"} for s in sections]
@@ -1376,16 +1331,14 @@ class Orchestrator:
         converted into a ``turn.error`` bus event.
 
         The JSON schema for structured output is sourced from
-        ``backend.prompts.plan.PLAN_SCHEMA`` when available (N2-S02).
+        ``backend.prompts.plan.PLAN_SCHEMA`` when available.
         If that import fails, no schema is passed (``schema=None``).
 
         Args:
             session_id: The active OpenCode session ID.
             prompt: The plan prompt text to send.
-
-        N2-S01, N3-S02, N3-S03.
         """
-        # N3-S02: record this turn so retry_last_turn() can replay it.
+        # Record this turn so retry_last_turn() can replay it.
         self._last_turn = {
             "stage": "planning",
             "prompt": prompt,
@@ -1397,16 +1350,13 @@ class Orchestrator:
 
         assert self._client is not None  # guarded by caller  # noqa: S101
         try:
-            # N3-S16: QA_FORCE_TURN_ERROR seam.
             if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
                 raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
             await self._client.prompt(session_id, prompt, schema=schema)
-            # N3-S02: successful turn — reset retry counter.
             if self._last_turn is not None:
                 self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("Plan turn failed: %s", exc)
-            # N3-S03: include stage and reason in the turn.error payload.
             await self._bus.publish(
                 "turn.error",
                 {
@@ -1437,9 +1387,8 @@ class Orchestrator:
             section_id: Optional section identifier included in ``turn.error``
                 payloads so the SPA can locate the affected section.
 
-        N2-S07, N3-S02, N3-S03.
         """
-        # N3-S02: record this turn so retry_last_turn() can replay it.
+        # Record this turn so retry_last_turn() can replay it.
         self._last_turn = {
             "stage": "building",
             "prompt": prompt,
@@ -1449,17 +1398,14 @@ class Orchestrator:
 
         assert self._client is not None  # noqa: S101  # guarded by caller
         try:
-            # N3-S16: QA_FORCE_TURN_ERROR seam.
             if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
                 raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
             # schema=None — no structured output for section build (ADR-005).
             await self._client.prompt(session_id, prompt)
-            # N3-S02: successful turn — reset retry counter.
             if self._last_turn is not None:
                 self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("Section turn failed: %s", exc)
-            # N3-S03: include stage, section_id, and reason in the payload.
             error_payload: dict[str, Any] = {
                 "stage": "building",
                 "reason": "provider_error",
@@ -1478,16 +1424,14 @@ class Orchestrator:
         frontend is notified rather than the error silently disappearing.
 
         The JSON schema for structured output is sourced from
-        ``backend.prompts.profile.PROFILE_SCHEMA`` when available (N1-S09).
+        ``backend.prompts.profile.PROFILE_SCHEMA`` when available.
         If that import fails, no schema is passed (``schema=None``).
 
         Args:
             session_id: The active OpenCode session ID.
             prompt: The profile prompt text to send.
-
-        N3-S02, N3-S03.
         """
-        # N3-S02: record this turn so retry_last_turn() can replay it.
+        # Record this turn so retry_last_turn() can replay it.
         self._last_turn = {
             "stage": "profiling",
             "prompt": prompt,
@@ -1499,18 +1443,13 @@ class Orchestrator:
 
         assert self._client is not None  # guarded by caller
         try:
-            # N3-S16: QA_FORCE_TURN_ERROR seam — raise before any OpenCode call so the
-            # turn.error path fires deterministically for QA without token spend.
-            # Off by default; zero production-path impact.
             if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
                 raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
             await self._client.prompt(session_id, prompt, schema=schema)
-            # N3-S02: successful turn — reset retry counter.
             if self._last_turn is not None:
                 self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("Profile turn failed: %s", exc)
-            # N3-S03: include stage and reason in the turn.error payload.
             await self._bus.publish(
                 "turn.error",
                 {
@@ -1524,9 +1463,8 @@ class Orchestrator:
     def _load_profile_schema() -> Any:
         """Return the profile JSON schema for structured output, or ``None``.
 
-        Attempts to import ``PROFILE_SCHEMA`` from ``backend.prompts.profile``
-        (N1-S09).  Returns ``None`` if the module is not yet available so that
-        N1-S04 remains independently deliverable.
+        Attempts to import ``PROFILE_SCHEMA`` from ``backend.prompts.profile``.
+        Returns ``None`` if the module is not yet available.
         """
         try:
             from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415

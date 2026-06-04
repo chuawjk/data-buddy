@@ -1,4 +1,4 @@
-// ExportButton tests — N2-S17
+// ExportButton tests
 // TDD: tests written before implementation.
 // Acceptance criteria from docs/planning/02_STORY_BACKLOG.md and story brief.
 

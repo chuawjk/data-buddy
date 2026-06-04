@@ -1,4 +1,4 @@
-"""Unit tests for the persistent OpenCode event subscription (N1-S08).
+"""Unit tests for the persistent OpenCode event subscription.
 
 TDD: tests written before implementation.
 
