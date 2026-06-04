@@ -6,7 +6,7 @@
 
 ## Current Status
 
-**Night 3 is complete.** All lane stories, integration, and QA merged to `develop`. QA passed: 92 structural assertions, 563 total tests. `develop` is the submission candidate — awaiting morning human review for `develop → main` promotion.
+**Night 3 is complete.** All lane stories, integration, and all three QA layers merged to `develop`. QA passed: Layer 1 — 92 structural assertions; Layer 2 — 563 Playwright fixture tests; Layer 3 — 57/57 live OpenCode demo (commit `a8015eb`). `develop` is the submission candidate — awaiting morning human review for `develop → main` promotion.
 
 ---
 
@@ -23,7 +23,7 @@
 
 **Goal:** Production-quality close-out. `make run` from a clean checkout builds a full multi-section brief, section-loop completes to `done`, recoverable turn errors surface a retry banner, and the built SPA is served by FastAPI (no Vite in production).
 
-**Outcome:** Complete. All lane stories, TL integration, and QA merged to `develop`. QA passed: 92 structural assertions, 563 total tests (361 backend, 202 frontend).
+**Outcome:** Complete. All lane stories, TL integration, and all three QA layers merged to `develop`. QA passed: Layer 1 — 92 structural assertions; Layer 2 — 563 Playwright fixture tests (361 backend, 202 frontend); Layer 3 — 57/57 live OpenCode demo (`a8015eb`).
 
 ### Night 3 Story Status (all Merged)
 
@@ -47,6 +47,7 @@
 | QA-03 routing fix (TL inline) | — | `388b1d8` | `prefix="/api"` at `include_router`; Vite proxy rewrite removed; 13 test files updated |
 | N3-S14 Full regression | QA | — | 92 structural assertions green; all 563 tests pass |
 | N3-S15 Submission demo script | QA | — | `qa/DEMO_SCRIPT.md` written |
+| QA Layer 3 live OpenCode demo | QA | `a8015eb` | 57/57 PASS — full brief on customers_q3.csv (35/35), generality on students_sem1_2025.csv (12/12), error recovery (10/10) |
 
 ### Night 3 Proposed ADRs (pending human review)
 
@@ -244,6 +245,7 @@ Post-Night-2 fixes merged to `develop`:
 | N3-S13 Integration | — | `5df011a` | 15 integration tests: accept→done, retry-turn, turn.error shape, static serving |
 | QA-03 routing fix (TL inline) | — | `388b1d8` | `prefix="/api"` at `include_router`; Vite proxy rewrite removed; 13 test files updated |
 | N3-S14/S15 QA + demo script | — | — | 92 structural assertions; 563 total tests; `qa/DEMO_SCRIPT.md` |
+| QA Layer 3 live demo | — | `a8015eb` | 57/57 PASS; full brief + generality + error recovery confirmed |
 
 ### N3-S01/S04 — What landed
 
@@ -294,6 +296,7 @@ Post-Night-2 fixes merged to `develop`:
 
 ### Night 3 QA Outcomes (all passed)
 
+**Layer 1 — Structural (92/92):**
 - Multi-section churn run reaches `done`. PASS.
 - Second dataset run reaches `done` and exports. PASS.
 - Forced recoverable turn error shows retry banner and recovers. PASS.
@@ -302,6 +305,14 @@ Post-Night-2 fixes merged to `develop`:
 - Cold `make run` uses the built bundle, not Vite. PASS.
 - `make clean` resets runtime artefacts. PASS.
 - `/export` returns valid multi-section Markdown in plan order. PASS.
+
+**Layer 2 — Playwright fixture tests (563/563):** All backend and frontend tests green.
+
+**Layer 3 — Live OpenCode demo (57/57, commit `a8015eb`):**
+- Run 1 (`customers_q3.csv`): 35/35 — `profile.json` at t+56s (9 cols, validates against PROFILE_SCHEMA); 5-section plan validates against PLAN_SCHEMA; all 5 sections built with valid artefact triplets; `stage=done` reached; export ZIP (424 KB) valid with `report.md` + 5 charts + 5 code files.
+- Run 2 (`students_sem1_2025.csv`): 12/12 — student-domain profile with correct target (`passed`); no cross-dataset bleed; 5-section plan validates against PLAN_SCHEMA.
+- Error recovery (`QA_FORCE_TURN_ERROR=1`): 10/10 — `turn.error` shape correct: `reason="provider_error"` (string), no `retryable` field (ADR-020); `POST /api/turn {}` returns 204; `retry_last_turn` re-dispatches correctly.
+- No new defects. No new regression checks.
 
 ### Demo Script
 
