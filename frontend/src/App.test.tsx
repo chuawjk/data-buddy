@@ -330,7 +330,7 @@ describe("App stage routing", () => {
     expect(screen.queryByTestId("export-btn")).not.toBeInTheDocument();
   });
 
-  it("export-btn is disabled when GET /state returns plan=[] at building stage", async () => {
+  it("export-btn is absent at building stage", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -342,37 +342,13 @@ describe("App stage routing", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("export-btn")).toBeDisabled();
+      expect(screen.getByTestId("build-view")).toBeInTheDocument();
     });
+
+    expect(screen.queryByTestId("export-btn")).not.toBeInTheDocument();
   });
 
-  it("export-btn is enabled when GET /state returns plan with an accepted section at building stage", async () => {
-    const acceptedSection: Section = {
-      id: "sec_01",
-      title: "Overview",
-      hypothesis: "Revenue correlates with age",
-      status: "accepted" as SectionStatus,
-      py_path: "sections/sec_01.py",
-      png_path: "sections/sec_01.png",
-      md_path: "sections/sec_01.md",
-    };
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ stage: "building", profile: null, plan: [acceptedSection] }),
-      })
-    );
-
-    render(<App />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("export-btn")).not.toBeDisabled();
-    });
-  });
-
-  it("reacts to plan.ready — updates plan state and enables export-btn when sections are accepted", async () => {
+  it("reacts to plan.ready — updates plan state without error", async () => {
     const acceptedSection: Section = {
       id: "sec_01",
       title: "Overview",
@@ -393,12 +369,11 @@ describe("App stage routing", () => {
 
     render(<App />);
 
-    // Initially, no accepted sections → button disabled
     await waitFor(() => {
-      expect(screen.getByTestId("export-btn")).toBeDisabled();
+      expect(screen.getByTestId("build-view")).toBeInTheDocument();
     });
 
-    // Simulate plan.ready SSE event with an accepted section
+    // Simulate plan.ready SSE — should update plan state without crashing
     await act(async () => {
       capturedOnEvent!({
         type: "plan.ready",
@@ -407,9 +382,8 @@ describe("App stage routing", () => {
       });
     });
 
-    // Now plan has an accepted section → button enabled
-    await waitFor(() => {
-      expect(screen.getByTestId("export-btn")).not.toBeDisabled();
-    });
+    // Build view should still be rendered and no error banner
+    expect(screen.getByTestId("build-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("error-banner")).not.toBeInTheDocument();
   });
 });

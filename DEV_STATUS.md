@@ -6,14 +6,14 @@
 
 ## Current Status
 
-**Night 3 is complete.** All lane stories, integration, and all three QA layers merged to `develop`. QA passed: Layer 1 — 92 structural assertions; Layer 2 — 563 Playwright fixture tests; Layer 3 — 57/57 live OpenCode demo (commit `a8015eb`). `develop` is the submission candidate — awaiting morning human review for `develop → main` promotion.
+**Night 3 is complete.** All lane stories, integration, and all three QA layers merged to `develop`. QA passed: Layer 1 — 92 structural assertions; Layer 2 — 563 Playwright fixture tests; Layer 3 — 57/57 live OpenCode demo (commit `a8015eb`). Post-night cosmetic polish applied: retry banner moved to activity-rail column, export button removed from build stage, DoneView button label updated to "Export brief as ZIP", Mermaid diagrams restored to README. `develop` is the submission candidate.
 
 ---
 
 ## Morning Review Notes
 
 - `develop` is the submission candidate. Do not promote `develop → main` until after reviewing the diff.
-- Key overnight decisions to review: ADR-017 through ADR-021 (all Proposed — pending review).
+- ADR-014 through ADR-021 all accepted by human at morning review.
 - QA-03 fix (ADR-021) changes all `/api/*` test paths and the Vite proxy config — worth a quick scan of the diff.
 - Demo path: `make clean && make run`, then follow `qa/DEMO_SCRIPT.md`.
 

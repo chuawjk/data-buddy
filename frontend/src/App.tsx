@@ -5,7 +5,7 @@ import PlanView from "./components/StageViews/PlanView";
 import BuildView from "./components/StageViews/BuildView";
 import DoneView from "./components/StageViews/DoneView";
 import ActivityRail from "./components/ActivityRail";
-import ExportButton from "./components/ExportButton";
+import RetryBanner from "./components/RetryBanner";
 import { useSSE } from "./hooks/useSSE";
 import { api } from "./hooks/useApi";
 import type { Profile, Section } from "./types/api";
@@ -140,38 +140,19 @@ export default function App() {
     );
   }
 
-  const acceptedSectionCount = state.plan.filter((s) => s.status === "accepted").length;
-  // Export button only shown in the header at the building stage.
-  // DoneView has its own export button.
-  const showExport = state.stage === "building";
-
   function renderStageView(): JSX.Element {
     switch (state.stage) {
       case "setup":
         return <SetupView />;
       case "profiling":
-        return (
-          <ProfileView
-            profile={state.profile}
-            turnError={turnError}
-            onRetryTurn={() => void handleRetryTurn()}
-          />
-        );
+        return <ProfileView profile={state.profile} />;
       case "planning":
-        return (
-          <PlanView
-            initialSections={state.plan}
-            turnError={turnError}
-            onRetryTurn={() => void handleRetryTurn()}
-          />
-        );
+        return <PlanView initialSections={state.plan} />;
       case "building":
         return (
           <BuildView
             sections={state.plan}
             onSectionsChange={handleSectionsChange}
-            turnError={turnError}
-            onRetryTurn={() => void handleRetryTurn()}
             failedSections={failedSections}
           />
         );
@@ -191,17 +172,19 @@ export default function App() {
     <div className="min-h-screen bg-[#f6f2e9] text-[#1a1a17]">
       <header className="border-b border-[#ddd5c5] bg-[#faf7f0] px-8 py-4 flex items-center justify-between">
         <span className="font-serif text-[17.6px] font-medium tracking-tight text-[#1a1a17]">Data Buddy</span>
-        {showExport && <ExportButton disabled={acceptedSectionCount === 0} />}
       </header>
       <div className="max-w-6xl mx-auto px-8 py-10 flex gap-6">
         <div className="flex-1">
           {renderStageView()}
         </div>
         {state.stage !== "setup" && (
-          <div className="w-72 shrink-0">
+          <div className="w-72 shrink-0 flex flex-col gap-3">
             <div className="bg-white border border-[#ddd5c5] rounded p-4">
               <ActivityRail />
             </div>
+            {turnError != null && (
+              <RetryBanner reason={turnError.reason} onRetry={() => void handleRetryTurn()} />
+            )}
           </div>
         )}
       </div>

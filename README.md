@@ -38,21 +38,6 @@ Open `http://localhost:8000` in your browser, upload a CSV, type an aim, and fol
 
 ---
 
-## Development
-
-```bash
-make dev
-```
-
-Runs two servers in parallel:
-
-- **FastAPI** on `http://localhost:8000` — the backend API (with hot-reload)
-- **Vite** on `http://localhost:5173` — the frontend (with HMR)
-
-OpenCode is spawned automatically by the FastAPI backend on startup. Open `http://localhost:5173` during development. The Vite dev server proxies all `/api` requests to `:8000`.
-
----
-
 ## Workflow
 
 ```mermaid
@@ -71,15 +56,6 @@ graph LR
 
 ---
 
-## Testing and linting
-
-```bash
-make test    # runs pytest (backend) and Vitest (frontend)
-make lint    # runs ruff (backend) and ESLint (frontend)
-```
-
----
-
 ## Resetting between runs
 
 ```bash
@@ -87,6 +63,30 @@ make clean
 ```
 
 Removes `workspace/state.json`, `workspace/plan.json`, `workspace/profile.json`, `workspace/sections/`, `workspace/analyses/`, `workspace/charts/`, and `frontend/dist/`. Does NOT remove uploaded CSVs in `workspace/data/`. Run `make clean` before a fresh demo run.
+
+---
+
+## Development
+
+```bash
+make dev
+```
+
+Runs two servers in parallel:
+
+- **FastAPI** on `http://localhost:8000` — the backend API (with hot-reload)
+- **Vite** on `http://localhost:5173` — the frontend (with HMR)
+
+OpenCode is spawned automatically by the FastAPI backend on startup. Open `http://localhost:5173` during development. The Vite dev server proxies all `/api` requests to `:8000`.
+
+---
+
+## Testing and linting
+
+```bash
+make test    # runs pytest (backend) and Vitest (frontend)
+make lint    # runs ruff (backend) and ESLint (frontend)
+```
 
 ---
 

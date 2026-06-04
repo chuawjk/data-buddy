@@ -4,7 +4,6 @@
 //
 // Component hierarchy:
 //   BuildView [data-testid="build-view"]
-//   ├── RetryBanner (when turnError is set) — N3-S05
 //   ├── section list [data-testid="section-list"]
 //   │   └── section-row-{id}, section-status-{id} per section
 //   ├── SectionPane [data-testid="section-pane"] (sections that started/finished)
@@ -16,22 +15,14 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../../hooks/useApi";
 import { useSSE } from "../../hooks/useSSE";
 import SectionPane from "../SectionPane";
-import RetryBanner from "../RetryBanner";
 import type { Section } from "../../types/api";
-import type { SSEEvent, TurnErrorEvent } from "../../types/events";
+import type { SSEEvent } from "../../types/events";
 
 interface BuildViewProps {
   /** Sections injected from App.tsx (hydrated from GET /state). */
   sections?: Section[];
   /** Called whenever sections change locally (accept/drop) so App can update its plan state. */
   onSectionsChange?: (sections: Section[]) => void;
-  /**
-   * N3-S05: turn.error event passed from App.tsx.
-   * When set, renders a RetryBanner at the top of the view.
-   */
-  turnError?: TurnErrorEvent | null;
-  /** N3-S05: called when the user clicks Retry in the banner. */
-  onRetryTurn?: () => void;
   /**
    * N3-S06/S07: map of section id → section.failed reason for sections that failed.
    * Each failed section shows Retry/Drop controls in its SectionPane.
@@ -65,8 +56,6 @@ function getSectionPanes(sections: Section[]): Section[] {
 export default function BuildView({
   sections: initialSections = [],
   onSectionsChange,
-  turnError,
-  onRetryTurn,
   failedSections = new Map<string, string>(),
 }: BuildViewProps) {
   const [sections, setSections] = useState<Section[]>(initialSections);
@@ -220,11 +209,6 @@ export default function BuildView({
 
   return (
     <div data-testid="build-view" className="flex flex-col gap-6">
-      {/* Retry banner — N3-S05: shown when turn.error arrives for building stage */}
-      {turnError != null && (
-        <RetryBanner reason={turnError.reason} onRetry={() => onRetryTurn?.()} />
-      )}
-
       {/* Section list */}
       {sections.length > 0 && (
         <div

@@ -25,7 +25,7 @@ export default function DoneView({ sections, onExport }: DoneViewProps) {
         </p>
         <h2 className="text-2xl font-serif font-light text-[#1a1a17]">Brief complete</h2>
         <p className="text-sm text-[#5d5a52] mt-1">
-          Your brief has been built. Export it as a Markdown file below.
+          Your brief has been built. Download it as a ZIP below.
         </p>
       </div>
 
@@ -38,7 +38,7 @@ export default function DoneView({ sections, onExport }: DoneViewProps) {
           className="flex items-center gap-2 bg-[#4a7a76] hover:bg-[#3b6460] text-white rounded-sm px-6 py-3 text-sm font-medium transition-colors"
         >
           <span aria-hidden="true">↓</span>
-          <span>Export brief as Markdown</span>
+          <span>Export brief as ZIP</span>
         </button>
       </div>
 

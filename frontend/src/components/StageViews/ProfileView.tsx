@@ -13,20 +13,15 @@
 import { useCallback, useState } from "react";
 import { api } from "../../hooks/useApi";
 import { useSSE } from "../../hooks/useSSE";
-import RetryBanner from "../RetryBanner";
 import type { Profile } from "../../types/api";
-import type { SSEEvent, TurnErrorEvent } from "../../types/events";
+import type { SSEEvent } from "../../types/events";
 
 interface ProfileViewProps {
   /** Profile hydrated from GET /state on load (null until profiling completes). */
   profile: Profile | null;
-  /** N3-S05: when set, renders a RetryBanner at the top of the view. */
-  turnError?: TurnErrorEvent | null;
-  /** N3-S05: called when the user clicks Retry in the banner. */
-  onRetryTurn?: () => void;
 }
 
-export default function ProfileView({ profile: initialProfile, turnError, onRetryTurn }: ProfileViewProps) {
+export default function ProfileView({ profile: initialProfile }: ProfileViewProps) {
   const [profile, setProfile] = useState<Profile | null>(initialProfile);
   const [inputText, setInputText] = useState("");
   const [isTurnInFlight, setIsTurnInFlight] = useState(false);
@@ -89,11 +84,6 @@ export default function ProfileView({ profile: initialProfile, turnError, onRetr
 
   return (
     <div data-testid="profile-view" className="flex flex-col gap-4">
-      {/* Retry banner — N3-S05: shown when turn.error arrives */}
-      {turnError != null && (
-        <RetryBanner reason={turnError.reason} onRetry={() => onRetryTurn?.()} />
-      )}
-
       {showLoading && (
         <div
           data-testid="profile-loading-spinner"

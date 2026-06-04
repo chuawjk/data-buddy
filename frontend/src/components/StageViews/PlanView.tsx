@@ -19,17 +19,12 @@
 import { useCallback, useState } from "react";
 import { api } from "../../hooks/useApi";
 import { useSSE } from "../../hooks/useSSE";
-import RetryBanner from "../RetryBanner";
 import type { Section } from "../../types/api";
 import type { ApiError } from "../../types/api";
-import type { SSEEvent, TurnErrorEvent } from "../../types/events";
+import type { SSEEvent } from "../../types/events";
 
 export interface PlanViewProps {
   initialSections: Section[];
-  /** N3-S05: when set, renders a RetryBanner at the top of the view. */
-  turnError?: TurnErrorEvent | null;
-  /** N3-S05: called when the user clicks Retry in the banner. */
-  onRetryTurn?: () => void;
 }
 
 function getErrorMessage(err: unknown): string {
@@ -39,7 +34,7 @@ function getErrorMessage(err: unknown): string {
     : "An error occurred. Please try again.";
 }
 
-export default function PlanView({ initialSections, turnError, onRetryTurn }: PlanViewProps) {
+export default function PlanView({ initialSections }: PlanViewProps) {
   const [sections, setSections] = useState<Section[]>(initialSections);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -237,11 +232,6 @@ export default function PlanView({ initialSections, turnError, onRetryTurn }: Pl
 
   return (
     <div data-testid="plan-view" className="flex flex-col gap-6">
-      {/* Retry banner — N3-S05: shown when turn.error arrives */}
-      {turnError != null && (
-        <RetryBanner reason={turnError.reason} onRetry={() => onRetryTurn?.()} />
-      )}
-
       {/* Header */}
       <div>
         <p className="text-xs font-medium uppercase tracking-wider text-[#9b9489] mb-1">
