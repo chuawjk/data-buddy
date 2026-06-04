@@ -169,26 +169,44 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 
 **Night 3 goal:** via `make run` from a clean checkout, build a full multi-section brief on the churn CSV, repeat the core path on a second dataset, induce a failure and recover it through the UI, and export the final brief.
 
-### Startable Story Map
+### Story Status
 
-| Story | Role | Depends on | Notes for agents |
+| Story | Role | Status | Notes |
 |---|---|---|---|
-| N3-S01 Sequential section loop & done | BE | N2-S05, N2-S10 | Partially de-risked by post-N2 auto-sequencing; still verify last accept -> `done`, `stage.changed(done)`, dropped-section skip, rapid-accept safety |
-| N3-S02 Retry a turn | BE | N1-S11 | Retry should resend exact failed prompt against current/fresh session; retries bounded |
-| N3-S03 Map turn errors | BE | N1-S09, N2-S02 | Emit recoverable `turn.error` for structured/provider errors; distinguish from `section.failed` |
-| N3-S04 Harden watchdog for long runs | BE | N1-S11, N3-S01 | Verify multi-section timer reset and fresh-session persistence |
-| N3-S05 Retry banner | FE | N1-S14, N3-S02 | Inline banner on `turn.error`; Retry action; clear on success |
-| N3-S06 Failed-section controls | FE | N1-S14, N2-S08 | Section-level Retry/Drop on `section.failed`; Drop continues loop |
-| N3-S07 Watchdog-timeout surface | FE | N3-S06 | No silent hangs; surface watchdog-driven failure/recovery options |
-| N3-S08 Done screen | FE | N1-S14, N3-S01 | Render accepted sections and prominent export action on `done` |
-| N3-S09 `make run` | TL | N1-S01 | Build Vite bundle and serve from FastAPI on one port |
-| N3-S10 `make clean` & gitignore | TL | N1-S01 | Reset runtime workspace/build artefacts; verify clean -> run |
-| N3-S11 README | TL | N3-S09 | Document install/dev/run/clean and prerequisites |
-| N3-S12 Architecture write-up | TL | none | `docs/ARCHITECTURE.md` or README section; cite ADRs |
-| N3-S16 Forced turn-error hook | BE | N3-S03 | Opt-in `QA_FORCE_TURN_ERROR`; off by default |
-| N3-S13 Integration | TL | N3-S01-S12, N3-S16 | Full submission build handoff to QA |
-| N3-S14 Full regression | QA | N3-S13, N3-S16 | Multi-section churn + second dataset + forced failure/stall + cold `make run` |
-| N3-S15 Submission demo script | QA | N3-S14 | Rehearsed interview path |
+| N3-S01 Sequential section loop & done | BE | In Dev | |
+| N3-S02 Retry a turn | BE | In Dev | |
+| N3-S03 Map turn errors | BE | In Dev | |
+| N3-S04 Harden watchdog for long runs | BE | Backlog | Depends on N3-S01 |
+| N3-S05 Retry banner | FE | Backlog | Depends on N3-S02 |
+| N3-S06 Failed-section controls | FE | In Dev | |
+| N3-S07 Watchdog-timeout surface | FE | Backlog | Depends on N3-S06 |
+| N3-S08 Done screen | FE | In Dev | |
+| N3-S09 `make run` | TL | In Review | PR pushed: `feat/n3-tl-run-clean-readme-arch` |
+| N3-S10 `make clean` & gitignore | TL | In Review | Same PR |
+| N3-S11 README | TL | In Review | Same PR |
+| N3-S12 Architecture write-up | TL | In Review | Same PR — `docs/ARCHITECTURE.md` created |
+| N3-S16 Forced turn-error hook | BE | In Dev | Depends on N3-S03 |
+| N3-S13 Integration | TL | Backlog | Depends on N3-S01–S12, N3-S16 |
+| N3-S14 Full regression | QA | Backlog | Depends on N3-S13, N3-S16 |
+| N3-S15 Submission demo script | QA | Backlog | Depends on N3-S14 |
+
+### N3-S09/S10/S11/S12 — PR ready for review
+
+Branch: `feat/n3-tl-run-clean-readme-arch` (commit `03a4944`)
+Target: `develop`
+
+What landed:
+- `make run`: `pnpm --prefix frontend run build` then `uv run --project backend uvicorn backend.main:app --host 0.0.0.0 --port 8000`
+- `make clean`: removes workspace runtime artefacts and `frontend/dist`; does not touch `workspace/data/`
+- `backend/main.py`: static file serving via `StaticFiles` + SPA catch-all fallback, both conditional on `frontend/dist` existing; registered after all 10 API routes
+- `backend/pyproject.toml` + `uv.lock`: `aiofiles>=25.1.0` added (required by FastAPI `StaticFiles`)
+- `README.md`: prerequisites table, quick-start (`make run`), dev (`make dev`), test, clean, env vars
+- `docs/ARCHITECTURE.md`: ~500-word architecture write-up citing ADR-002/003/004/005/008/009
+
+Verified: 327 backend tests pass, 180 frontend tests pass, ruff clean, `make clean` exits 0, `pnpm --prefix frontend run build` succeeds, `backend.main:app` imports cleanly both with and without `frontend/dist`.
+
+Note: `gh pr create` blocked by expired GH token — PR must be opened via GitHub web UI at:
+https://github.com/chuawjk/data-buddy/compare/develop...feat/n3-tl-run-clean-readme-arch
 
 ### Night 3 QA Expectations
 
