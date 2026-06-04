@@ -15,13 +15,23 @@
 
 import { defineConfig } from "@playwright/test";
 import path from "path";
+import { fileURLToPath } from "url";
 
-const REPO_ROOT = path.resolve(__dirname, "..");
+const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), "../..");
 const workspace = process.env.QA_WORKSPACE ?? "profiling";
+
+// Each workspace only exercises the spec files relevant to its stage —
+// profiling and profiling_deviation run profile specs; planning runs plan specs.
+const TEST_MATCH: Record<string, string> = {
+  profiling: "**/*profile*.live.spec.ts",
+  profiling_deviation: "**/*profile*.live.spec.ts",
+  planning: "**/*plan*.live.spec.ts",
+};
+const testMatch = TEST_MATCH[workspace] ?? "**/*.live.spec.ts";
 
 export default defineConfig({
   testDir: "./tests/e2e/live",
-  testMatch: "**/*.live.spec.ts",
+  testMatch,
   use: {
     baseURL: "http://localhost:5173",
     // Give real HTTP calls more time than mocked tests need
