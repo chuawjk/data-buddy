@@ -262,7 +262,7 @@ New test file: `qa/structural/test_n3_structural.py` — 23 tests.
 | REG-N3-04: QA_FORCE_TURN_ERROR fires turn.error | PASS | Raises before client.prompt(); event emitted; client not called |
 | REG-N3-05: done transition on last terminal section | PASS | Accept, Drop, mixed accept+drop all trigger done; partial accept does not |
 | REG-N3-06: Night 3 data-testid completeness | PASS | All 9 Night 3 required testids present; total >= 50 |
-| REG-N3-07: /api/* routing not intercepted by SPA catch-all | **FAIL** | See QA-03 below |
+| REG-N3-07: /api/* routing not intercepted by SPA catch-all | PASS | Fixed in commit `388b1d8`; re-verified in targeted re-gate 2026-06-04 |
 | REG-N3-08: architecture boundaries carry-forward | PASS | Orchestrator has no httpx import; client has no orchestrator import |
 
 ### Defects found
@@ -276,19 +276,15 @@ New test file: `qa/structural/test_n3_structural.py` — 23 tests.
 | Symptom | With the Vite bundle built (`make run`), `GET /api/state` returns `text/html` (the SPA index page) instead of `application/json`. All API calls from the built SPA fail — the frontend calls `/api/state`, `/api/setup`, `/api/turn`, etc. but the backend router has no routes at `/api/*`, so every request falls through to the SPA catch-all. The app is completely non-functional in `make run` mode. |
 | Area | N3-S09 (`backend/main.py` — static serving + SPA catch-all), `backend/api/router.py` |
 | Root cause | Vite dev proxy (`vite.config.ts`) rewrites `/api/*` → `/*` during development, so `GET /api/state` becomes `GET /state` before it reaches the backend. In `make run` mode there is no proxy — the built SPA calls `/api/state` directly and the backend router (registered via `app.include_router(router)` with no prefix) only knows about `/state`. The SPA catch-all at `GET /{full_path:path}` is registered after API routes and correctly matches all non-API paths — but because `/api/state` has no matching API route, it falls through to the catch-all and returns HTML. |
-| Fix | Add `prefix="/api"` to the `APIRouter` in `backend/api/router.py`: `router = APIRouter(prefix="/api")`. Then update `backend/main.py` SPA catch-all to explicitly exclude `/api/` paths: `if full_path.startswith("api/") or full_path.startswith("api"): return JSONResponse(...)`. Or simpler: the router prefix alone is sufficient since FastAPI routes with prefix are matched before the path-param catch-all. |
+| Fix reference | Commit `388b1d8` (TL, inline on develop). `app.include_router(router, prefix="/api")` added in `backend/main.py`; Vite dev proxy `rewrite` removed from `frontend/vite.config.ts` so both dev and prod paths use `/api/*`. 13 backend test files updated to use `/api/*` paths. See ADR-021. |
 | Regression check added | REG-N3-07: `qa/structural/test_n3_structural.py::TestApiRouteNotIntercepted` — two tests: `test_api_state_returns_json_not_html` asserts `GET /api/state` returns `application/json` when `frontend/dist/` exists; `test_api_state_route_is_registered` asserts both `/state` (bare) and `/api/state` return JSON. These tests skip when `frontend/dist/` is absent (no-build CI path). |
-| State | Open — blocks merge |
+| State | Closed — re-gate PASS 2026-06-04 |
 
-### Overall: **RED — FAIL**
+### Overall: **RED — FAIL** (initial run) / **GREEN — PASS** (re-gate after fix)
 
-Night 3 QA gate: **FAIL** — QA-03 is a blocking defect. `make run` production serving is broken.
+Night 3 QA gate initial run: **FAIL** — QA-03 was a blocking defect. `make run` production serving was broken.
 
-The full slice has 563 tests passing, lint clean, all previous regression checks and Night 3 contract assertions pass (21 of 23 new structural tests pass), and all live fixture tests including the new `done` workspace pass. The single blocking defect is the `/api/` routing mismatch that makes the built bundle non-functional.
-
-**Merge is blocked until QA-03 is fixed and the gate is re-run.**
-
-Next action for TL: route QA-03 to BE lane. Fix: add `prefix="/api"` to `router = APIRouter()` in `backend/api/router.py`. Update `include_router` call if needed. All 563 existing unit tests use bare paths (`/state`, `/setup`) — these will need updating to `/api/state`, `/api/setup` after the prefix change, or the tests can use the `TestClient` base URL approach. Once fixed, re-run REG-N3-07 tests and the `make run` smoke test before re-gating.
+**Re-gate result (2026-06-04, commit `388b1d8`):** All checks pass. Merge is unblocked.
 
 ---
 
@@ -305,3 +301,32 @@ Next action for TL: route QA-03 to BE lane. Fix: add `prefix="/api"` to `router 
 | REG-N3-07 | /api/* routing not intercepted by SPA catch-all | `qa/structural/test_n3_structural.py::TestApiRouteNotIntercepted` | `GET /api/state` returns `application/json` when `frontend/dist/` exists (skips if no build); regression check for QA-03 |
 | REG-N3-08 | architecture boundaries carry-forward Night 3 | `qa/structural/test_n3_structural.py::TestArchitectureBoundariesCarryForward` | orchestrator has no httpx import; opencode_client has no orchestrator import |
 | REG-N3-09 | done live fixture — DoneView renders from real HTTP | `frontend/tests/e2e/live/done.live.spec.ts` (QA_WORKSPACE=done) | done-view visible; "Brief complete" text; 2 accepted sections listed; dropped excluded; export button enabled |
+
+---
+
+## Night 3 — Targeted Re-gate — 2026-06-04 (QA-03 fix verification)
+
+TL applied commit `388b1d8` to `develop`: `prefix="/api"` added at `app.include_router` in `backend/main.py`; Vite dev proxy `rewrite` removed; 13 test files updated to `/api/*` paths. Re-gate run to confirm REG-N3-07 now passes and no regressions were introduced.
+
+### Re-gate results
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| `make test` (563 tests) | PASS | 361 BE + 202 FE = 563 total; all pass |
+| `make lint` | PASS | ruff + eslint exit 0, 0 warnings |
+| Structural suite `qa/structural/` (92 tests) | PASS | All 92 tests pass; no regressions |
+| REG-N3-07 `TestApiRouteNotIntercepted::test_api_state_returns_json_not_html` | PASS | `GET /api/state` returns `application/json` with `frontend/dist/` present |
+| REG-N3-07 `TestApiRouteNotIntercepted::test_api_state_route_is_registered` | PASS | Both `/api/state` paths respond correctly |
+| Static smoke: `GET /` returns 200 HTML | PASS | `SKIP_OPENCODE=1 uvicorn` + built dist; curl returns HTTP 200 with SPA content |
+| Static smoke: `GET /api/state` returns JSON | PASS | Returns `{"version":"1","stage":"setup",...}` — not intercepted by catch-all |
+| Live fixture `QA_WORKSPACE=profiling` (6 tests) | PASS | Shape strip renders "100" rows, "9" cols, "churned" target; controls present |
+| Live fixture `QA_WORKSPACE=building` (7 tests) | PASS | Section panes, status badges, artefact content, export button all correct |
+| Live fixture `QA_WORKSPACE=done` (7 tests) | PASS | DoneView renders; "Brief complete"; 2 accepted; dropped excluded; export enabled |
+
+### QA-03 status update
+
+QA-03 is now **Closed**. REG-N3-07 is in the standing regression suite and passes. The blocking defect is resolved.
+
+### Overall: **GREEN — PASS**
+
+Night 3 QA gate: **PASS** — all checks green, QA-03 resolved, merge to `develop` is unblocked.
