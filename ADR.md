@@ -25,6 +25,8 @@
 | ADR-014 | N2-S15: POST /plan/update accepts new section IDs (full replacement) | Proposed — pending review |
 | ADR-015 | N2-S17: plan.ready SSE handler updates state directly from event, no API refresh | Proposed — pending review |
 | ADR-016 | N2-S18: build_section_prompt() plan parameter corrected to list\|dict | Proposed — pending review |
+| ADR-017 | N3-S02/S03/S16: BE-2 proceeded to implementation without waiting for plan approval | Proposed — pending review |
+| ADR-018 | N3-S16: QA_FORCE_TURN_ERROR seam placed in orchestrator._run_*_turn, not opencode_client.prompt | Proposed — pending review |
 
 ---
 
@@ -421,4 +423,53 @@ N2-S15 added `plan.ready` to the `api.getState()` trigger block in App.tsx. When
 - App.tsx SSE handler: `plan.ready` → `setState((s) => ({ ...s, plan: event.sections }))` only; no `api.getState()` call.
 - `stage.changed` and `profile.ready` still trigger full `api.getState()` refresh.
 - 154 FE tests pass with this design.
+
+---
+
+## ADR-017 · N3-S02/S03/S16: BE-2 proceeded to implementation without waiting for plan approval
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-04
+
+### Decision
+Accept the N3-S02/S03/S16 implementation as merged (PR #58, `b5501db`) notwithstanding that the BE-2 agent proceeded to full implementation without waiting for TL plan approval. PR #55 (plan-only draft) was opened and the implementation commit was pushed to the same remote branch without a TL comment approving the plan.
+
+### Context
+CONTRIBUTING.md §3 requires that implementation begins only after TL approves the plan. The BE-2 agent opened a draft plan PR (#55) and immediately pushed the implementation commit (`c473ea1`) to the same feature branch (`feat/n3-s02-s03-s16-retry-turn-errors`). TL was not consulted before coding began.
+
+### Rationale for accepting
+- The implementation is correct — it satisfies all three stories' acceptance criteria exactly.
+- The plan document (`docs/plans/2026-06-04-n3-s02-s03-s16.md`) accurately described what was built; no structural deviation from the plan was found (one minor placement difference handled by ADR-018 below).
+- 337 tests pass; ruff clean; CI green on the rebased branch.
+- Reverting or rejecting the work would delay the night without any quality benefit.
+- The plan-only PR #55 was closed as redundant; the implementation PR #58 carried the full audit trail.
+
+### Prevention
+The plan-first protocol in CONTRIBUTING.md §3 exists to catch risky approaches before code is written. For stories as self-contained as N3-S02/S03/S16 the risk materialised as zero, but the protocol should still be followed. Future BE invocations must not open a draft PR and immediately push implementation commits before TL has commented on the plan.
+
+### Consequences
+- PR #55 is closed; PR #58 is the authoritative merge record.
+- The plan-approval step was effectively skipped for this story set.
+- Human to decide at morning review whether to reinforce the plan-first gate in agent prompts.
+
+---
+
+## ADR-018 · N3-S16: QA_FORCE_TURN_ERROR seam placed in orchestrator, not opencode_client
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-04
+
+### Decision
+The `QA_FORCE_TURN_ERROR=1` env-var seam is placed in each `_run_*_turn` method in `orchestrator.py` (before the `client.prompt()` call), rather than inside `OpenCodeClient.prompt()` as the plan specified.
+
+### Context
+The plan (`docs/plans/2026-06-04-n3-s02-s03-s16.md`) specified placing the seam in `opencode_client.py`'s `prompt()` method. The implementation placed it in `_run_profile_turn`, `_run_plan_turn`, and `_run_section_turn` in `orchestrator.py`.
+
+### Rationale
+Placing a QA seam in the client layer pollutes the narrow-interface boundary (`opencode_client.py` should not know about QA concerns). The orchestrator layer is the right place: it is the consumer of the client, owns the turn lifecycle, and already has QA seams for `QA_FORCE_STALL` and `QA_FORCE_SECTION_FAIL`. Seam placement in `_run_*_turn` is consistent with the established seam pattern and keeps the client clean.
+
+### Consequences
+- `opencode_client.py` has no QA seam for `turn.error` — consistent with its narrow interface.
+- `orchestrator.py` has three seam checks (one per `_run_*_turn`), consistent with the `QA_FORCE_SECTION_FAIL` pattern.
+- `QA_FORCE_TURN_ERROR=1` fires before `client.prompt()` in all three turn methods — correct for the acceptance criterion "simulated turn error without token spend".
 

@@ -8,19 +8,17 @@
 
 **Branch:** `develop`
 
-**Night 2 is complete.** All lane stories, integration, and QA are merged. QA passed with 63 structural assertions, 0 blocking defects, and 486 total tests at the Night 2 gate. The branch is awaiting morning human review for `develop` -> `main` promotion before Night 3 starts.
+**Night 3 is in progress.** Night 2 is complete and merged; Night 3 lane plans have been approved and implementation is underway. TL packaging stories (N3-S09/S10/S11/S12) are merged to `develop`. BE retry/error stories (N3-S02/S03/S16) are merged to `develop` (PR #58). Three implementation PRs are in flight for the remaining lane stories.
 
-**Post-Night-2 UX fixes are recorded and should be treated as current handoff context:**
+**What is on `develop` from Night 3 so far:**
+- N3-S02, N3-S03, N3-S16 (retry, turn.error mapping, QA_FORCE_TURN_ERROR) — merged via PR #58
+- N3-S09, N3-S10, N3-S11, N3-S12 (make run, make clean, README, architecture doc) — merged via PR #57
 
-- Building-stage revision is section-targeted: `POST /turn` accepts optional `section_id`; `orchestrator.redirect_section(text, section_id)` rebuilds only that section, clears stale artefact paths, and emits `section.building`.
-- The building-stage global bottom bar was removed; each proposed section owns its own revision input/button.
-- Profiling and planning now show loading spinners while initial/revision turns are in flight.
-- `Accept profile` and `Accept plan & start building` sit below their revision controls and use the teal primary action style.
-- Header `Export` is hidden until `building` / `done`.
-- Frontend SSE types include `session.idle`; Vite config uses Vitest's typed `defineConfig`.
-- Latest recorded verification:
-  - Targeted section revision branch: `make test` passed (327 backend + 175 frontend tests); `make lint` passed.
-  - Stage controls branch: `pnpm --prefix frontend run lint`, `pnpm --prefix frontend run test` (180 tests), and `pnpm --prefix frontend run build` passed.
+**Active implementation branches:**
+- `feat/n3-s01-section-loop-done` (PR #53, draft) — BE: N3-S01 + N3-S04 (section loop → done, watchdog heartbeat fix)
+- `feat/n3-fe-error-done` (PR #54, draft) — FE: N3-S05/S06/S07/S08 (retry banner, failed-section, watchdog surface, done screen)
+
+PR #55 (plan-only draft for N3-S02/S03/S16) has been closed as redundant. See ADR-017.
 
 ---
 
@@ -173,40 +171,46 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 
 | Story | Role | Status | Notes |
 |---|---|---|---|
-| N3-S01 Sequential section loop & done | BE | In Dev | |
-| N3-S02 Retry a turn | BE | In Dev | |
-| N3-S03 Map turn errors | BE | In Dev | |
-| N3-S04 Harden watchdog for long runs | BE | Backlog | Depends on N3-S01 |
-| N3-S05 Retry banner | FE | Backlog | Depends on N3-S02 |
-| N3-S06 Failed-section controls | FE | In Dev | |
-| N3-S07 Watchdog-timeout surface | FE | Backlog | Depends on N3-S06 |
-| N3-S08 Done screen | FE | In Dev | |
-| N3-S09 `make run` | TL | In Review | PR pushed: `feat/n3-tl-run-clean-readme-arch` |
-| N3-S10 `make clean` & gitignore | TL | In Review | Same PR |
-| N3-S11 README | TL | In Review | Same PR |
-| N3-S12 Architecture write-up | TL | In Review | Same PR — `docs/ARCHITECTURE.md` created |
-| N3-S16 Forced turn-error hook | BE | In Dev | Depends on N3-S03 |
-| N3-S13 Integration | TL | Backlog | Depends on N3-S01–S12, N3-S16 |
-| N3-S14 Full regression | QA | Backlog | Depends on N3-S13, N3-S16 |
+| N3-S01 Sequential section loop & done | BE | In Dev — plan approved | PR #53 draft; plan approved |
+| N3-S02 Retry a turn | BE | Merged | PR #58 squashed to develop |
+| N3-S03 Map turn errors | BE | Merged | PR #58 squashed to develop |
+| N3-S04 Harden watchdog for long runs | BE | In Dev — plan approved | PR #53 draft; plan approved (bundled with N3-S01) |
+| N3-S05 Retry banner | FE | In Dev — plan approved | PR #54 draft; plan approved |
+| N3-S06 Failed-section controls | FE | In Dev — plan approved | PR #54 draft; plan approved |
+| N3-S07 Watchdog-timeout surface | FE | In Dev — plan approved | PR #54 draft; plan approved |
+| N3-S08 Done screen | FE | In Dev — plan approved | PR #54 draft; plan approved |
+| N3-S09 `make run` | TL | Merged | PR #57 squashed to develop |
+| N3-S10 `make clean` & gitignore | TL | Merged | PR #57 squashed to develop |
+| N3-S11 README | TL | Merged | PR #57 squashed to develop |
+| N3-S12 Architecture write-up | TL | Merged | PR #57 squashed to develop — `docs/ARCHITECTURE.md` |
+| N3-S16 Forced turn-error hook | BE | Merged | PR #58 squashed to develop |
+| N3-S13 Integration | TL | Backlog | Blocked on N3-S01, N3-S04, N3-S05–S08 |
+| N3-S14 Full regression | QA | Backlog | Depends on N3-S13 |
 | N3-S15 Submission demo script | QA | Backlog | Depends on N3-S14 |
 
-### N3-S09/S10/S11/S12 — PR ready for review
+### Night 3 Merge Ledger (in-progress)
 
-Branch: `feat/n3-tl-run-clean-readme-arch` (commit `03a4944`)
-Target: `develop`
+| Story | PR | SHA | What mattered |
+|---|---:|---|---|
+| N3-S02/S03/S16 Retry + turn.error + forced hook | #58 | `b5501db` | `retry_last_turn()`, `turn.error { stage, reason }`, `QA_FORCE_TURN_ERROR` |
+| N3-S09/S10/S11/S12 Packaging | #57 | `428c669` | `make run`, `make clean`, README, `docs/ARCHITECTURE.md` |
 
-What landed:
+### N3-S09/S10/S11/S12 — What landed
+
 - `make run`: `pnpm --prefix frontend run build` then `uv run --project backend uvicorn backend.main:app --host 0.0.0.0 --port 8000`
-- `make clean`: removes workspace runtime artefacts and `frontend/dist`; does not touch `workspace/data/`
-- `backend/main.py`: static file serving via `StaticFiles` + SPA catch-all fallback, both conditional on `frontend/dist` existing; registered after all 10 API routes
+- `make clean`: removes `workspace/state.json`, `workspace/plan.json`, `workspace/profile.json`, `workspace/sections/`, `workspace/analyses/`, `workspace/charts/`, `frontend/dist/`, `frontend/.vite`; does NOT touch `workspace/data/`
+- `backend/main.py`: `StaticFiles` for `/assets/` + SPA catch-all fallback, both conditional on `frontend/dist/` existing; registered after all 10 API routes; catch-all returns 503 if dist disappears post-startup
 - `backend/pyproject.toml` + `uv.lock`: `aiofiles>=25.1.0` added (required by FastAPI `StaticFiles`)
-- `README.md`: prerequisites table, quick-start (`make run`), dev (`make dev`), test, clean, env vars
-- `docs/ARCHITECTURE.md`: ~500-word architecture write-up citing ADR-002/003/004/005/008/009
+- `README.md`: prerequisites table, quick-start, dev, test/lint, clean, env vars table
+- `docs/ARCHITECTURE.md`: orchestration model, files-as-contract, BE vs agent split, structured output vs file triplet, session recovery, SSE transport, extension path; cites ADR-002/003/004/005/006/008/009
 
-Verified: 327 backend tests pass, 180 frontend tests pass, ruff clean, `make clean` exits 0, `pnpm --prefix frontend run build` succeeds, `backend.main:app` imports cleanly both with and without `frontend/dist`.
+### N3-S02/S03/S16 — What landed
 
-Note: `gh pr create` blocked by expired GH token — PR must be opened via GitHub web UI at:
-https://github.com/chuawjk/data-buddy/compare/develop...feat/n3-tl-run-clean-readme-arch
+- `orchestrator._last_turn`: records last-dispatched stage/prompt/section_id; `retry_last_turn()` replays it, capped at 3 retries; 4th attempt emits `turn.error` with `retryable=False`
+- `turn.error` payloads now carry `{ stage, message, section_id (building only), retryable }` — `retryable` and `section_id` are additions beyond the API contract minimum; FE reads `message` for error text
+- `QA_FORCE_TURN_ERROR=1`: raises `RuntimeError` in each `_run_*_turn` before `client.prompt()` call (placed in orchestrator, not opencode_client — see ADR-018)
+- `POST /turn` with empty/absent body now routes to `retry_last_turn()` rather than returning 422
+- Plan-approval step was bypassed for this story set (ADR-017 — Proposed, pending human review)
 
 ### Night 3 QA Expectations
 
@@ -233,4 +237,9 @@ https://github.com/chuawjk/data-buddy/compare/develop...feat/n3-tl-run-clean-rea
 
 ## Blockers
 
-None recorded. Night 3 should not begin until Night 2 is promoted to `main` at morning review.
+None blocking progress. Night 2 is on `develop` (pending human promotion to `main`); Night 3 is proceeding in parallel at human direction.
+
+## Overnight ADR Decisions (Night 3)
+
+- **ADR-017 (Proposed):** BE-2 proceeded to implementation of N3-S02/S03/S16 without waiting for TL plan approval. Implementation was correct and merged via PR #58. Plan-only PR #55 closed. Human to decide at morning review whether agent prompts need reinforcement.
+- **ADR-018 (Proposed):** `QA_FORCE_TURN_ERROR` seam placed in `orchestrator._run_*_turn` methods (not in `opencode_client.prompt()`). Better placement — keeps QA concerns in the orchestrator layer, consistent with `QA_FORCE_STALL` / `QA_FORCE_SECTION_FAIL` pattern.
