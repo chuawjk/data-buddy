@@ -230,7 +230,7 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 3. Accept profile; revise/edit the plan; accept plan.
 4. Build multiple sections; accept at least one; redirect/revise one section if demo time allows.
 5. Exercise one failure path with QA hook and recover through Retry or Drop.
-6. Reach `done`, export zip, and open the brief.
+6. Reach `done`, export the brief as Markdown, and open it.
 7. Repeat the core path on a second dataset to prove generality.
 
 ---
