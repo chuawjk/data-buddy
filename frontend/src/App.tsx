@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import SetupView from "./components/StageViews/SetupView";
 import ProfileView from "./components/StageViews/ProfileView";
 import PlanView from "./components/StageViews/PlanView";
 import BuildView from "./components/StageViews/BuildView";
+import DoneView from "./components/StageViews/DoneView";
 import ActivityRail from "./components/ActivityRail";
 import ExportButton from "./components/ExportButton";
 import { useSSE } from "./hooks/useSSE";
 import { api } from "./hooks/useApi";
 import type { Profile, Section } from "./types/api";
-import type { SSEEvent } from "./types/events";
+import type { SSEEvent, TurnErrorEvent } from "./types/events";
 
 type Stage = "setup" | "profiling" | "planning" | "building" | "done";
 
@@ -20,25 +21,6 @@ interface AppState {
   error: string | null;
 }
 
-function renderStageView(
-  stage: Stage,
-  profile: Profile | null,
-  plan: Section[],
-  onSectionsChange: (sections: Section[]) => void
-): JSX.Element {
-  switch (stage) {
-    case "setup":
-      return <SetupView />;
-    case "profiling":
-      return <ProfileView profile={profile} />;
-    case "planning":
-      return <PlanView initialSections={plan} />;
-    case "building":
-    case "done":
-      return <BuildView sections={plan} onSectionsChange={onSectionsChange} />;
-  }
-}
-
 export default function App() {
   const [state, setState] = useState<AppState>({
     stage: null,
@@ -47,6 +29,8 @@ export default function App() {
     loading: true,
     error: null,
   });
+  const [turnError, setTurnError] = useState<TurnErrorEvent | null>(null);
+  const [failedSections, setFailedSections] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     fetch("/api/state")
@@ -73,6 +57,9 @@ export default function App() {
 
   useSSE((event: SSEEvent) => {
     if (event.type === "stage.changed" || event.type === "profile.ready") {
+      // Clear turn error and failed sections on stage transition
+      setTurnError(null);
+      setFailedSections(new Map());
       api
         .getState()
         .then((data) => {
@@ -90,8 +77,46 @@ export default function App() {
     }
     if (event.type === "plan.ready") {
       setState((s) => ({ ...s, plan: event.sections }));
+      setTurnError(null);
+    }
+    if (event.type === "turn.error") {
+      setTurnError(event);
+    }
+    if (event.type === "section.failed") {
+      setFailedSections((prev) => {
+        const next = new Map(prev);
+        next.set(event.section_id, event.reason);
+        return next;
+      });
     }
   });
+
+  const handleSectionsChange = useCallback((sections: Section[]) => {
+    setState((s) => ({ ...s, plan: sections }));
+  }, []);
+
+  const handleRetryTurn = useCallback(async () => {
+    setTurnError(null);
+    try {
+      await api.postTurnRetry();
+    } catch {
+      // Retry failed silently — banner was already dismissed
+    }
+  }, []);
+
+  const handleExport = useCallback(async () => {
+    try {
+      const blob = await api.getExport();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "data-buddy-export.zip";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Export error is silent — user can retry via the export button
+    }
+  }, []);
 
   if (state.loading) {
     return (
@@ -116,11 +141,51 @@ export default function App() {
   }
 
   const acceptedSectionCount = state.plan.filter((s) => s.status === "accepted").length;
-  const showExport = state.stage === "building" || state.stage === "done";
+  // Export button only shown in the header at the building stage.
+  // DoneView has its own export button.
+  const showExport = state.stage === "building";
 
-  const handleSectionsChange = (sections: Section[]) => {
-    setState((s) => ({ ...s, plan: sections }));
-  };
+  function renderStageView(): JSX.Element {
+    switch (state.stage) {
+      case "setup":
+        return <SetupView />;
+      case "profiling":
+        return (
+          <ProfileView
+            profile={state.profile}
+            turnError={turnError}
+            onRetryTurn={() => void handleRetryTurn()}
+          />
+        );
+      case "planning":
+        return (
+          <PlanView
+            initialSections={state.plan}
+            turnError={turnError}
+            onRetryTurn={() => void handleRetryTurn()}
+          />
+        );
+      case "building":
+        return (
+          <BuildView
+            sections={state.plan}
+            onSectionsChange={handleSectionsChange}
+            turnError={turnError}
+            onRetryTurn={() => void handleRetryTurn()}
+            failedSections={failedSections}
+          />
+        );
+      case "done":
+        return (
+          <DoneView
+            sections={state.plan}
+            onExport={() => void handleExport()}
+          />
+        );
+      default:
+        return <SetupView />;
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#f6f2e9] text-[#1a1a17]">
@@ -130,7 +195,7 @@ export default function App() {
       </header>
       <div className="max-w-6xl mx-auto px-8 py-10 flex gap-6">
         <div className="flex-1">
-          {renderStageView(state.stage, state.profile, state.plan, handleSectionsChange)}
+          {renderStageView()}
         </div>
         {state.stage !== "setup" && (
           <div className="w-72 shrink-0">

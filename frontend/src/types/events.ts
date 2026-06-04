@@ -52,7 +52,9 @@ export interface SectionFailedEvent {
 export interface TurnErrorEvent {
   type: "turn.error";
   stage: string;
-  reason: "structured_output_failed" | "timeout" | "provider_error";
+  reason: "structured_output_failed" | "provider_error" | "timeout" | string;
+  /** Present when the error is scoped to a specific building-stage section. */
+  section_id?: string;
   ts: number;
 }
 
