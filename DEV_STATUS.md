@@ -8,22 +8,21 @@
 
 **Branch:** `develop`
 
-**Night 3 is in progress.** Night 2 is complete and merged. All BE stories are now merged to `develop`. The `turn.error` contract violation (retryable bool → reason enum) has been corrected on develop (SHA `ae99ecd`). The FE lane (N3-S05/S06/S07/S08) is in development and is the remaining blocker before integration (N3-S13).
+**Night 3 integration is complete.** All lane stories for Night 3 are merged and the N3-S13 integration story is done. 563 total tests pass (361 backend, 202 frontend). QA is now startable.
 
 **What is on `develop` from Night 3:**
 - `ae99ecd` — turn.error payload contract fix: `retryable` bool replaced with `reason` enum string (`"provider_error"` / `"timeout"`) across orchestrator + watchdog
 - N3-S01, N3-S04 (section loop → done, watchdog heartbeat fix) — merged via PR #60 (SHA `492b422`)
 - N3-S02, N3-S03, N3-S16 (retry, turn.error mapping, QA_FORCE_TURN_ERROR) — merged via PR #58
 - N3-S09, N3-S10, N3-S11, N3-S12 (make run, make clean, README, architecture doc) — merged via PR #57
+- N3-S05/S06/S07/S08 (retry banner, failed-section controls, watchdog surface, done screen) — merged via PR #54 (SHA `39a2791`)
+- N3-S13 integration tests — committed directly to develop (SHA `5df011a`): 15 new integration tests covering section-accept→done, retry-turn empty-body, turn.error payload shape, static serving
 
-**Active implementation branches:**
-- `feat/n3-fe-error-done` (PR #54, draft) — FE: N3-S05/S06/S07/S08 (retry banner, failed-section, watchdog surface, done screen)
+**Active implementation branches:** none.
 
 **Startable now:**
-- N3-S05 Retry banner (FE) — was blocked on N3-S02, now merged. Covered under PR #54.
-- N3-S06 Failed-section controls (FE) — in dev under PR #54.
-- N3-S07 Watchdog-timeout surface (FE) — depends on N3-S06, covered under PR #54.
-- N3-S08 Done screen (FE) — was blocked on N3-S01, now merged. Covered under PR #54.
+- N3-S14 Full regression (QA) — all dependencies merged; QA gate is open
+- N3-S15 Submission demo script (QA) — depends on N3-S14
 
 PR #55 (plan-only draft for N3-S02/S03/S16) has been closed as redundant. See ADR-017.
 PR #53 (original BE-1 branch) closed; content committed directly to develop (`d3c7754`) and also via PR #60 rebase (`492b422`).
@@ -166,7 +165,7 @@ Post-Night-2 fixes merged to `develop`:
 - `SKIP_OPENCODE=1` - start backend without launching OpenCode.
 - `QA_FORCE_STALL=1` - suppresses events after the first to exercise watchdog recovery.
 - `QA_FORCE_SECTION_FAIL=1` - removes the section Markdown artefact before triplet validation, forcing `section.failed`.
-- Night 3 still needs `QA_FORCE_TURN_ERROR` (N3-S16) to drive recoverable `turn.error` deterministically.
+- `QA_FORCE_TURN_ERROR=1` (N3-S16, now merged) — raises in `_run_*_turn` before `client.prompt()`, emitting `turn.error` with `reason="provider_error"`. Off by default.
 
 ---
 
@@ -184,20 +183,20 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 | N3-S02 Retry a turn | BE | Merged | PR #58 squashed to develop |
 | N3-S03 Map turn errors | BE | Merged | PR #58 squashed to develop |
 | N3-S04 Harden watchdog for long runs | BE | Merged | PR #60 squashed to develop (bundled with N3-S01) |
-| N3-S05 Retry banner | FE | In Dev — plan approved | PR #54 draft; unblocked (N3-S02 merged) |
-| N3-S06 Failed-section controls | FE | In Dev — plan approved | PR #54 draft; plan approved |
-| N3-S07 Watchdog-timeout surface | FE | In Dev — plan approved | PR #54 draft; plan approved |
-| N3-S08 Done screen | FE | In Dev — plan approved | PR #54 draft; unblocked (N3-S01 merged) |
+| N3-S05 Retry banner | FE | Merged | PR #54 squashed to develop (`39a2791`) |
+| N3-S06 Failed-section controls | FE | Merged | PR #54 squashed to develop (`39a2791`) |
+| N3-S07 Watchdog-timeout surface | FE | Merged | PR #54 squashed to develop (`39a2791`) |
+| N3-S08 Done screen | FE | Merged | PR #54 squashed to develop (`39a2791`) |
 | N3-S09 `make run` | TL | Merged | PR #57 squashed to develop |
 | N3-S10 `make clean` & gitignore | TL | Merged | PR #57 squashed to develop |
 | N3-S11 README | TL | Merged | PR #57 squashed to develop |
 | N3-S12 Architecture write-up | TL | Merged | PR #57 squashed to develop — `docs/ARCHITECTURE.md` |
 | N3-S16 Forced turn-error hook | BE | Merged | PR #58 squashed to develop |
-| N3-S13 Integration | TL | Backlog | Blocked on N3-S05–S08 (all BE stories now merged) |
-| N3-S14 Full regression | QA | Backlog | Depends on N3-S13 |
+| N3-S13 Integration | TL | Integrated | `5df011a` — 15 integration tests; 563 total tests green |
+| N3-S14 Full regression | QA | Startable | QA gate open — all dependencies merged |
 | N3-S15 Submission demo script | QA | Backlog | Depends on N3-S14 |
 
-### Night 3 Merge Ledger (in-progress)
+### Night 3 Merge Ledger
 
 | Story | PR | SHA | What mattered |
 |---|---:|---|---|
@@ -205,6 +204,8 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 | N3-S02/S03/S16 Retry + turn.error + forced hook | #58 | `b5501db` | `retry_last_turn()`, `turn.error { stage, reason }`, `QA_FORCE_TURN_ERROR` |
 | N3-S01/S04 Section loop → done + watchdog heartbeat | #60 | `492b422` | `_check_done_or_next()`, `stage.changed(done)`, `_current_timeout` watchdog fix |
 | turn.error contract fix (TL inline) | — | `ae99ecd` | `retryable` bool → `reason` enum; `"provider_error"` / `"timeout"` |
+| N3-S05/S06/S07/S08 FE error UIs + done screen | #54 | `39a2791` | `RetryBanner`, `SectionPane` failed controls, `DoneView`, `TurnErrorEvent { reason }` |
+| N3-S13 Integration | — | `5df011a` | 15 integration tests: accept→done, retry-turn, turn.error shape, static serving |
 
 ### N3-S01/S04 — What landed
 
@@ -233,6 +234,26 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 - Plan-approval step was bypassed for this story set (ADR-017 — Proposed, pending human review)
 - Contract correction (`ae99ecd`): PR #58 shipped `retryable` bool — corrected to `reason` enum on develop by TL inline fix before QA
 
+### N3-S05/S06/S07/S08 — What landed (FE PR #54)
+
+- `RetryBanner` component: renders on `turn.error` with `reason` string; `reason="timeout"` shows timeout copy; clears on retry action or `stage.changed`; data-testids `retry-banner` and `retry-banner-btn`
+- `SectionPane` failure controls: `isFailed=true` shows Retry+Drop buttons; `failedReason="timeout"` uses watchdog-notice variant (data-testid `watchdog-notice`); otherwise `section-failed-notice`; data-testids `section-retry-btn`, `section-drop-failed-btn`
+- `DoneView`: renders when `stage === "done"` with accepted sections in plan order + prominent Export button; data-testids `done-view`, `done-export-button`, `done-section-list`, `done-section-item-{id}`
+- `App.tsx`: `turnError` state cleared on `stage.changed`, `profile.ready`, `plan.ready`, and explicit retry action; `failedSections: Map<string, string>` tracks failed section IDs → reasons; cleared on stage transition; Retry calls `api.postTurnRetry()` (POSTs `{}` to `/turn`)
+- `TurnErrorEvent` type uses `reason: string` (not `retryable: bool`) — correct ADR-020 shape
+- `api.postTurnRetry(sectionId?)` posts `{}` or `{ section_id }` to `POST /turn`
+- 202 tests (13 test files), all passing
+
+### N3-S13 — What landed (integration)
+
+- 15 new integration tests in `backend/tests/integration/test_n3_integration.py`
+- Happy path: single accept/drop → done, all-accept → done, partial accept stays building, accept+drop → done
+- Edge cases: double-accept returns 400, unknown section returns 400, done stage persisted to disk
+- Retry path: POST /turn with `{}`, null body, and whitespace text all return 204
+- Contract shape: turn.error has `reason` (string) + `stage`; `retryable` absent
+- Static serving: GET / returns HTML when dist/index.html exists
+- 561 total tests before + 15 new = 563 backend; 202 FE = 563 total green
+
 ### Night 3 QA Expectations
 
 - Multi-section churn run reaches `done`.
@@ -260,7 +281,9 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 
 **Resolved (this run):** PR #58 (N3-S02/S03/S16) shipped `turn.error` with `retryable: bool` instead of `reason: string`. Contract violation. Fixed inline on develop (`ae99ecd`) before QA gate. See Overnight ADR Decisions below.
 
-No other blockers. FE lane (PR #54) is the last pending work before N3-S13 integration.
+**Resolved (this run):** PR #54 had out-of-lane edits to `.claude/agents/` and BE plan docs in the FE branch. TL removed them in a cleanup commit (`edc6952`) before merge. The agent file improvements were already on develop from a prior commit (`3238f21`); no net change.
+
+No other blockers. All Night 3 stories are merged. QA is the next gate.
 
 ## Overnight ADR Decisions (Night 3)
 
