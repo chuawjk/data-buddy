@@ -1255,3 +1255,235 @@ async def test_accept_plan_transitions_sections_to_queued(tmp_path):
     # sec_02 remains queued until sec_01 completes.
     sec2 = next(s for s in state["plan"] if s["id"] == "sec_02")
     assert sec2["status"] == "queued"
+
+
+# ---------------------------------------------------------------------------
+# N3-S02: retry_last_turn
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_retry_last_turn_replays_profile_prompt(tmp_path):
+    """retry_last_turn() replays the last profiling prompt to the same session.
+
+    After _run_profile_turn records _last_turn, retry_last_turn() must call
+    client.prompt with the same prompt text.
+    """
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+
+    # Simulate a prior profile turn by directly setting _last_turn.
+    orch._last_turn = {
+        "stage": "profiling",
+        "prompt": "Profile the dataset",
+        "section_id": None,
+        "retries": 0,
+    }
+
+    client.prompt.reset_mock()
+    await orch.retry_last_turn()
+    await asyncio.sleep(0)
+
+    client.prompt.assert_awaited_once()
+    args, _ = client.prompt.call_args
+    assert args[0] == "sess-abc", f"Expected session_id 'sess-abc', got {args[0]!r}"
+    assert args[1] == "Profile the dataset"
+
+
+@pytest.mark.asyncio
+async def test_retry_last_turn_uses_fresh_session(tmp_path):
+    """retry_last_turn() reads the session ID fresh from state after a watchdog swap.
+
+    After a watchdog session swap, the session ID in state.json changes.
+    retry_last_turn() must target the new session, not a stale reference.
+    """
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+
+    orch._last_turn = {
+        "stage": "profiling",
+        "prompt": "Profile the dataset",
+        "section_id": None,
+        "retries": 0,
+    }
+
+    # Simulate watchdog session swap: new session ID persisted to state.
+    sm.update(opencode_session_id="sess-new-456")
+    client.prompt.reset_mock()
+
+    await orch.retry_last_turn()
+    await asyncio.sleep(0)
+
+    client.prompt.assert_awaited_once()
+    args, _ = client.prompt.call_args
+    assert args[0] == "sess-new-456", f"Expected fresh session_id 'sess-new-456', got {args[0]!r}"
+
+
+@pytest.mark.asyncio
+async def test_retry_bounded_at_three(tmp_path):
+    """retry_last_turn() emits turn.error with retryable=False after 3 retries.
+
+    On the 4th retry attempt (retries >= 3), no further client.prompt is called;
+    turn.error is emitted with retryable=False.
+    """
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+
+    orch._last_turn = {
+        "stage": "profiling",
+        "prompt": "Profile the dataset",
+        "section_id": None,
+        "retries": 3,  # Already at the limit.
+    }
+
+    sub = bus.subscribe()
+    client.prompt.reset_mock()
+
+    await orch.retry_last_turn()
+    await asyncio.sleep(0)
+
+    # No further prompt call.
+    client.prompt.assert_not_awaited()
+
+    # turn.error must be emitted with retryable=False.
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
+    assert event.get("retryable") is False, (
+        f"Expected retryable=False; got {event.get('retryable')!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_retry_without_prior_turn(tmp_path):
+    """retry_last_turn() with no prior turn is a no-op — no error, no crash, no prompt.
+
+    When _last_turn is None, retry silently returns without emitting anything or
+    calling client.prompt.
+    """
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+
+    # Ensure _last_turn is None.
+    orch._last_turn = None
+    client.prompt.reset_mock()
+
+    sub = bus.subscribe()
+    await orch.retry_last_turn()
+    await asyncio.sleep(0)
+
+    client.prompt.assert_not_awaited()
+    assert sub._queue.empty(), "No events should be emitted when there is no last turn"
+
+
+# ---------------------------------------------------------------------------
+# N3-S03: turn.error payload includes stage and retryable
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_turn_error_has_stage_and_retryable(tmp_path):
+    """_run_profile_turn emits turn.error with stage='profiling' and retryable=True on failure.
+
+    Acceptance (N3-S03): structured-output failures and provider errors emit
+    turn.error with stage/section_id/retryable fields per the API contract.
+    """
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(side_effect=RuntimeError("provider error"))
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    sub = bus.subscribe()
+
+    await orch._run_profile_turn("sess-abc", "Profile the data")
+    await asyncio.sleep(0)
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
+    assert event.get("stage") == "profiling", (
+        f"Expected stage='profiling'; got {event.get('stage')!r}"
+    )
+    assert event.get("retryable") is True, (
+        f"Expected retryable=True; got {event.get('retryable')!r}"
+    )
+    assert "message" in event, "turn.error must include message field"
+
+
+@pytest.mark.asyncio
+async def test_turn_error_planning_has_stage(tmp_path):
+    """_run_plan_turn emits turn.error with stage='planning' on failure."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="planning")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(side_effect=RuntimeError("plan error"))
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    sub = bus.subscribe()
+
+    await orch._run_plan_turn("sess-abc", "Draft the plan")
+    await asyncio.sleep(0)
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    assert event.get("stage") == "planning"
+    assert event.get("retryable") is True
+
+
+@pytest.mark.asyncio
+async def test_turn_error_building_has_stage_and_section_id(tmp_path):
+    """_run_section_turn emits turn.error with stage='building' and section_id on failure."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(side_effect=RuntimeError("section build error"))
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    sub = bus.subscribe()
+
+    await orch._run_section_turn("sess-abc", "Build the section", section_id="sec_01")
+    await asyncio.sleep(0)
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    assert event.get("stage") == "building"
+    assert event.get("section_id") == "sec_01"
+    assert event.get("retryable") is True
+
+
+# ---------------------------------------------------------------------------
+# N3-S16: QA_FORCE_TURN_ERROR seam
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_qa_force_turn_error(tmp_path, monkeypatch):
+    """With QA_FORCE_TURN_ERROR=1, client.prompt raises and turn.error is emitted.
+
+    Acceptance (N3-S16): when the env var is set, the prompt raises before any
+    OpenCode traffic occurs, and turn.error fires via the existing exception handler.
+    """
+    monkeypatch.setenv("QA_FORCE_TURN_ERROR", "1")
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    # prompt should NOT be called because the seam raises first
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    sub = bus.subscribe()
+
+    await orch._run_profile_turn("sess-abc", "Profile the data")
+    await asyncio.sleep(0)
+
+    # turn.error must be emitted.
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
+    assert event.get("stage") == "profiling"
+    assert event.get("retryable") is True
+    # The seam fires before client.prompt — so prompt should not have been awaited.
+    mock_client.prompt.assert_not_awaited()

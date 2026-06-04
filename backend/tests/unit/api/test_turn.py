@@ -97,33 +97,39 @@ def test_turn_dispatches_reprof_in_profiling_stage(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_turn_rejected_with_empty_text(tmp_path):
-    """POST /turn with whitespace-only text returns 422 with invalid_text error.
+def test_turn_whitespace_text_calls_retry(tmp_path):
+    """POST /turn with whitespace-only text triggers retry (N3-S02).
 
-    Acceptance: Given the dispatched turn is prevented because of empty text,
-    when POST /turn is called with {"text": "   "}, then 422 is returned.
+    Per the API contract: an absent or empty text field re-fires the last
+    prompt (retry path).  Returns 204, not 422.
     """
     app = _make_app(tmp_path, stage="profiling")
 
     with TestClient(app) as client:
+        orchestrator = app.state.orchestrator
+        orchestrator.retry_last_turn = AsyncMock(return_value=None)
+
         r = client.post("/turn", json={"text": "   "})
 
-    assert r.status_code == 422, f"Expected 422, got {r.status_code}: {r.text}"
-    body = r.json()
-    assert body.get("error") == "invalid_text", f"Unexpected error key: {body}"
-    assert "message" in body
+    assert r.status_code == 204, f"Expected 204 (retry path), got {r.status_code}: {r.text}"
+    orchestrator.retry_last_turn.assert_awaited_once()
 
 
-def test_turn_rejected_with_missing_text(tmp_path):
-    """POST /turn with no text field returns 422 with invalid_text error."""
+def test_turn_missing_text_calls_retry(tmp_path):
+    """POST /turn with no text field triggers retry (N3-S02).
+
+    Per the API contract: absent text means retry the last turn.
+    """
     app = _make_app(tmp_path, stage="profiling")
 
     with TestClient(app) as client:
+        orchestrator = app.state.orchestrator
+        orchestrator.retry_last_turn = AsyncMock(return_value=None)
+
         r = client.post("/turn", json={})
 
-    assert r.status_code == 422, f"Expected 422, got {r.status_code}: {r.text}"
-    body = r.json()
-    assert body.get("error") == "invalid_text", f"Unexpected error key: {body}"
+    assert r.status_code == 204, f"Expected 204 (retry path), got {r.status_code}: {r.text}"
+    orchestrator.retry_last_turn.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -382,3 +388,42 @@ async def test_replan_starts_watchdog(tmp_path):
     await asyncio.sleep(0)
 
     mock_watchdog.start_turn.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# N3-S02: POST /turn with empty body calls retry_last_turn
+# ---------------------------------------------------------------------------
+
+
+def test_turn_empty_body_calls_retry(tmp_path):
+    """POST /turn with empty body (no text field) calls orchestrator.retry_last_turn().
+
+    Acceptance (N3-S02): the retry button POSTs with an empty body to re-fire the
+    last prompt.  The router must detect the absent/empty text and call retry instead
+    of returning 422 invalid_text.
+    """
+    app = _make_app(tmp_path, stage="profiling")
+
+    with TestClient(app) as client:
+        orchestrator = app.state.orchestrator
+        orchestrator.retry_last_turn = AsyncMock(return_value=None)
+
+        r = client.post("/turn", json={})
+
+    assert r.status_code == 204, f"Expected 204, got {r.status_code}: {r.text}"
+    orchestrator.retry_last_turn.assert_awaited_once()
+
+
+def test_turn_null_body_calls_retry(tmp_path):
+    """POST /turn with no body at all calls orchestrator.retry_last_turn()."""
+    app = _make_app(tmp_path, stage="profiling")
+
+    with TestClient(app) as client:
+        orchestrator = app.state.orchestrator
+        orchestrator.retry_last_turn = AsyncMock(return_value=None)
+
+        # Send POST with no JSON body.
+        r = client.post("/turn")
+
+    assert r.status_code == 204, f"Expected 204, got {r.status_code}: {r.text}"
+    orchestrator.retry_last_turn.assert_awaited_once()
