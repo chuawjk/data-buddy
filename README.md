@@ -55,6 +55,14 @@ OpenCode is spawned automatically by the FastAPI backend on startup. Open `http:
 
 ## Workflow
 
+```mermaid
+graph LR
+    Setup -->|"CSV + aim submitted"| Profiling
+    Profiling -->|"profile accepted"| Planning
+    Planning -->|"plan accepted"| Building
+    Building -->|"all sections done"| Export
+```
+
 1. **Upload** a CSV file and type an aim — what you want to learn from the data.
 2. **Profile** — the agent reads the dataset and summarises each column: type, statistics, and flags like `nullable` or `high_cardinality`. Review the profile, then click Accept.
 3. **Plan** — the agent proposes 3–6 analysis sections. Edit titles, reorder, or drop sections before accepting.
@@ -117,18 +125,19 @@ data-buddy/
 
 The **backend** is the orchestrator — it decides when to prompt the AI and what to say. The **frontend** never talks to OpenCode directly. The **workspace** is the durable record of everything the AI produces.
 
-```
-Browser  <──REST + SSE──>  Backend (FastAPI)  <──HTTP──>  OpenCode
-                                 │
-                           reads/writes
-                                 │
-                           workspace/ (files on disk)
+```mermaid
+graph LR
+    Browser["Browser\n(React SPA)"]
+    Backend["Backend\n(FastAPI)"]
+    OpenCode["OpenCode\n(AI agent)"]
+    Workspace[("workspace/\nfiles on disk")]
+
+    Browser <-->|"REST + SSE"| Backend
+    Backend <-->|"HTTP"| OpenCode
+    OpenCode -->|"writes"| Workspace
+    Backend -->|"reads"| Workspace
 ```
 
 For the full architecture including the state machine, session recovery model, and the backend-vs-agent split, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
-
-### Note on Docker
-
-Docker is not used for this prototype. OpenCode's filesystem coupling (it writes session state to `~/.local/share/opencode/`) makes containerisation awkward without bind-mounts and additional setup steps. `make run` gives a clean single-command path without that complexity. See ADR-009 for the rationale.
