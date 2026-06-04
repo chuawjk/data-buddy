@@ -1,0 +1,54 @@
+{
+  "version": "1",
+  "stage": "done",
+  "aim": "understand drivers of customer churn",
+  "dataset_path": "data/customers_q3.csv",
+  "last_saved": "2026-06-04T02:00:00Z",
+  "opencode_session_id": null,
+  "profile": {
+    "shape": {
+      "rows": 100,
+      "columns": 9,
+      "target": "churned"
+    },
+    "columns": [
+      {
+        "name": "churned",
+        "type": "categorical",
+        "flags": ["low_cardinality"],
+        "summary": "Binary churn indicator."
+      }
+    ],
+    "flags": ["small_dataset", "binary_target_present"]
+  },
+  "plan": [
+    {
+      "id": "sec_01",
+      "title": "Churn Baseline",
+      "hypothesis": "What is the overall churn rate?",
+      "status": "accepted",
+      "py_path": null,
+      "png_path": null,
+      "md_path": null
+    },
+    {
+      "id": "sec_02",
+      "title": "Plan and Spend",
+      "hypothesis": "Are churn rates different across plan tiers?",
+      "status": "accepted",
+      "py_path": null,
+      "png_path": null,
+      "md_path": null
+    },
+    {
+      "id": "sec_03",
+      "title": "Engagement and Tenure",
+      "hypothesis": "Do customers with shorter tenure churn at higher rates?",
+      "status": "dropped",
+      "py_path": null,
+      "png_path": null,
+      "md_path": null
+    }
+  ],
+  "error": null
+}

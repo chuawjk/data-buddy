@@ -1,60 +1,104 @@
 # Data Buddy
 
-Data Buddy is an agent-driven data analysis tool. Upload a CSV, state what you want to learn, and the system profiles your data, drafts a structured analysis plan, and builds it section by section — each section producing a Python analysis, a chart, and a written interpretation.
+Data Buddy is an agent-driven data analysis tool. Upload a CSV, state what you want to learn, and the system profiles your data, drafts a structured analysis plan, and builds it section by section — each section producing a Python analysis script, a chart, and a written interpretation.
 
-```
-TODO: add a GIF showing the app in action
-```
-
-The analysis is done by [OpenCode](https://opencode.ai), an AI coding agent that calls to external LLM APIs. The backend orchestrates what OpenCode does and when; the frontend shows it happening in real time.
+The analysis is done by [OpenCode](https://opencode.ai), an AI coding agent. The backend orchestrates what OpenCode does and when; the frontend shows it happening in real time.
 
 ---
 
 ## Prerequisites
 
-The recommended path is a **dev container** — it provides Python, Node, and all tooling automatically. On your host machine you need:
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | 3.12 | Required by the backend |
+| [uv](https://docs.astral.sh/uv/) | latest | Python package manager |
+| Node.js | ≥ 18 | Required by the frontend |
+| [pnpm](https://pnpm.io) | ≥ 8 | Frontend package manager |
+| [OpenCode CLI](https://opencode.ai) | v1.15.10 | The AI agent runtime |
+| OpenAI API key | — | Provider authentication for OpenCode |
 
-- **Docker** (or a compatible runtime)
-- **VS Code** with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-- **OpenCode** installed and authenticated on your host — see [opencode.ai](https://opencode.ai) for installation and OAuth setup
-
-If running outside the dev container you will also need Python 3.12, [uv](https://docs.astral.sh/uv/), Node 22, and pnpm installed locally.
-
-See [SETUP.md](SETUP.md) for the full environment checklist, including GitHub credential setup for the overnight agent workflow.
+**OpenCode authentication:** after installing OpenCode, run `opencode auth login openai` and follow the OAuth prompts. Your API key must be accessible to the OpenCode process — the simplest path is setting `OPENAI_API_KEY` in your shell environment before running `make run` or `make dev`.
 
 ---
 
-## Installation
-
-Open the repo in the dev container, then run:
+## Quick start
 
 ```bash
+# 1. Install all dependencies
 make install
+
+# 2. Set required environment variables
+export OPENAI_API_KEY=sk-...
+
+# 3. Build and run (single port: http://localhost:8000)
+make run
 ```
 
-This installs backend dependencies (via uv), frontend dependencies (via pnpm), pre-commit hooks, and Playwright browsers.
+Open `http://localhost:8000` in your browser, upload a CSV, type an aim, and follow the workflow.
 
 ---
 
-## Usage
+## Workflow
+
+```mermaid
+graph LR
+    Setup -->|"CSV + aim submitted"| Profiling
+    Profiling -->|"profile accepted"| Planning
+    Planning -->|"plan accepted"| Building
+    Building -->|"all sections done"| Export
+```
+
+1. **Upload** a CSV file and type an aim — what you want to learn from the data.
+2. **Profile** — the agent reads the dataset and summarises each column: type, statistics, and flags like `nullable` or `high_cardinality`. Review the profile, then click Accept.
+3. **Plan** — the agent proposes 3–6 analysis sections. Edit titles, reorder, or drop sections before accepting.
+4. **Build** — the agent writes and runs a Python analysis for each section, producing a chart and a written interpretation. Accept, drop, or redirect each section.
+5. **Export** — download the completed brief as a Markdown document containing the accepted sections in plan order.
+
+---
+
+## Resetting between runs
+
+```bash
+make clean
+```
+
+Removes `workspace/state.json`, `workspace/plan.json`, `workspace/profile.json`, `workspace/sections/`, `workspace/analyses/`, `workspace/charts/`, and `frontend/dist/`. Does NOT remove uploaded CSVs in `workspace/data/`. Run `make clean` before a fresh demo run.
+
+---
+
+## Development
 
 ```bash
 make dev
 ```
 
-This starts three servers:
+Runs two servers in parallel:
 
-- **FastAPI** on `http://localhost:8000` — the backend API
-- **Vite** on `http://localhost:5173` — the frontend
-- **OpenCode** on `http://localhost:4096` — the AI agent, spawned automatically by the backend on startup
+- **FastAPI** on `http://localhost:8000` — the backend API (with hot-reload)
+- **Vite** on `http://localhost:5173` — the frontend (with HMR)
 
-Open `http://localhost:5173` in your browser and follow the five-stage workflow:
+OpenCode is spawned automatically by the FastAPI backend on startup. Open `http://localhost:5173` during development. The Vite dev server proxies all `/api` requests to `:8000`.
 
-1. **Upload** a CSV file and type an aim — what you want to learn from the data.
-2. **Profile** — the agent reads the dataset and summarises each column: type, statistics, and flags like `nullable` or `high_cardinality`.
-3. **Plan** — the agent proposes 3–6 analysis sections. Edit titles, reorder, or drop sections before accepting.
-4. **Build** — the agent writes and runs a Python analysis for each section, producing a chart and a written interpretation.
-5. **Export** — download the completed brief as a Markdown document.
+---
+
+## Testing and linting
+
+```bash
+make test    # runs pytest (backend) and Vitest (frontend)
+make lint    # runs ruff (backend) and ESLint (frontend)
+```
+
+---
+
+## Environment variables
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `OPENAI_API_KEY` | Yes | — | OpenAI API key; passed to OpenCode for provider authentication |
+| `WATCHDOG_TIMEOUT_SECONDS` | No | `60` | Seconds without an SSE event before a stuck turn is aborted and a fresh session is created |
+| `SKIP_OPENCODE` | No | unset | Set to `1` to start the backend without launching OpenCode (useful for UI development and CI) |
+| `QA_FORCE_STALL` | No | unset | Set to `1` to simulate a stuck turn after the first event, for testing watchdog recovery |
+| `QA_FORCE_SECTION_FAIL` | No | unset | Set to `1` to force a section build to fail (for testing the retry/drop flow) |
 
 ---
 
@@ -64,22 +108,22 @@ Open `http://localhost:5173` in your browser and follow the five-stage workflow:
 data-buddy/
 ├── backend/               Python backend — FastAPI app, orchestrator, OpenCode client
 ├── frontend/              React SPA — stage views, hooks, types
-├── workspace/             Runtime artefacts written by OpenCode (gitignored at runtime)
-├── docs/                  Reference docs to provide context for dev agents
+├── workspace/             Runtime artefacts written by OpenCode (gitignored)
+├── docs/                  Architecture, contracts, planning docs
+│   ├── ARCHITECTURE.md    Architecture overview and key design decisions
+│   ├── contracts/         API and SSE contracts the backend and frontend integrate through
+│   └── planning/          Story backlog and operating model (static spec)
+├── Makefile               install / dev / run / test / lint / format / clean
 ├── CLAUDE.md              Auto-loaded into every dev agent session — codebase orientation
-├── CONTRIBUTING.md        The overnight agent workflow — branching, review, merge, security rules
-├── DEV_STATUS.md          Live progress board — what is merged, in flight, or blocked
-├── ADR.md                 Architecture decisions, including overnight calls
-├── QA_LOG.md              QA defect ledger — each defect becomes a standing regression check
-├── SETUP.md               One-time environment setup (dev container, credentials, branch protection)
-└── .claude/               Dev agent role definitions and nightly dev orchestration commands
+├── ADR.md                 Architecture decisions
+└── DEV_STATUS.md          Live progress board
 ```
 
 ---
 
 ## How it works
 
-### Components
+The **backend** is the orchestrator — it decides when to prompt the AI and what to say. The **frontend** never talks to OpenCode directly. The **workspace** is the durable record of everything the AI produces.
 
 ```mermaid
 graph LR
@@ -94,67 +138,6 @@ graph LR
     Backend -->|"reads"| Workspace
 ```
 
-The **backend** is the orchestrator — it decides when to prompt the AI and what to say. The **frontend** never talks to OpenCode directly. The **workspace** is the durable record of everything the AI produces: `profile.json`, `plan.json`, analysis scripts, charts, and section write-ups.
-
-### The pipeline
-
-```mermaid
-graph LR
-    Setup -->|"CSV + aim submitted"| Profiling
-    Profiling -->|"profile.json written"| Planning
-    Planning -->|"plan accepted"| Building
-    Building -->|"all sections built"| Done
-```
-
-| Stage | What the agent does |
-|---|---|
-| **Profiling** | Reads the CSV and writes `workspace/profile.json` — column types, value distributions, and dataset-level flags |
-| **Planning** | Drafts 3–6 analysis sections, each with a title and hypothesis, written to `workspace/plan.json` |
-| **Building** | For each section: writes a Python analysis script, runs it to produce a chart, then writes a Markdown interpretation |
-| **Done** | All accepted sections are ready; `/export` assembles them into a single Markdown brief |
-
-### How the frontend stays in sync
-
-The frontend uses two communication channels, each suited to a different job:
-
-| Channel | Used for | Why |
-|---|---|---|
-| **SSE stream** (`GET /events`) | Real-time notifications while a turn is running | Low latency; fires as soon as something happens |
-| **REST** (`GET /state`) | The authoritative current state | Reliable; persists across page reloads and reconnects |
-
-SSE events are signals — they tell the browser "something changed, go check." The browser always re-fetches `GET /state` for the ground truth rather than trusting the event payload alone. This means a dropped connection or a missed event never leaves the UI permanently out of sync — the next page load always recovers from `state.json`.
-
-### The workspace as contract
-
-The backend reads OpenCode's output from files on disk, not from the AI's conversational memory. Every prompt re-supplies full context from workspace files. This has two practical benefits:
-
-- **Recovery** — if OpenCode stalls or crashes, a fresh session picks up exactly where it left off, because all context comes from files.
-- **Testability** — the backend can be tested without a live AI by placing fixture files in `workspace/`.
+For the full architecture including the state machine, session recovery model, and the backend-vs-agent split, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
-
-### Agent-specific files
-
-If you are here to run or extend the app, the files you need are `backend/`, `frontend/`, `workspace/`, and `Makefile`. The rest of the root-level files support the **overnight agent development workflow** — a multi-agent system where BE, FE, TL, and QA roles build and review the project autonomously:
-
-| File / directory | Purpose |
-|---|---|
-| `CLAUDE.md` | Auto-loaded into every agent's context window; orients agents to the codebase |
-| `CONTRIBUTING.md` | The agents' operating manual — branching model, review gate, security rules |
-| `DEV_STATUS.md` | The TL agent's live progress board; updated each night |
-| `ADR.md` | Architecture decisions; overnight calls are appended as `Proposed — pending review` |
-| `QA_LOG.md` | QA's defect ledger; each entry includes a regression check |
-| `.claude/agents/` | Role definitions for BE, FE, TL, and QA subagents |
-| `.claude/commands/night.md` | The `/night` slash command that kicks off a run |
-| `docs/planning/` | The static spec the agents work from — story backlog, operating model, QA plan |
-| `docs/contracts/` | The interface contracts lanes code against; neither lane reads the other's internals |
-
----
-
-## Configuration
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `WATCHDOG_TIMEOUT_SECONDS` | `60` | Seconds without an event before a stuck turn is aborted and a fresh session is created |
-| `SKIP_OPENCODE` | unset | Set to `1` to start the backend without launching OpenCode (useful for UI development and CI) |
-| `QA_FORCE_STALL` | unset | Set to `1` to simulate a stuck turn after the first event, for testing watchdog recovery |

@@ -150,7 +150,7 @@ async def test_state_updated_with_new_session() -> None:
 
 @pytest.mark.asyncio
 async def test_turn_error_emitted() -> None:
-    """After recovery, bus.publish('turn.error', ...) is called."""
+    """After recovery, turn.error is published with reason='timeout' and stage."""
     wmod = _load_watchdog()
     client = _make_client()
     sm = _make_state_manager()
@@ -163,7 +163,11 @@ async def test_turn_error_emitted() -> None:
     event_type = bus.publish.call_args[0][0]
     payload = bus.publish.call_args[0][1]
     assert event_type == "turn.error"
-    assert "message" in payload
+    assert payload.get("reason") == "timeout", (
+        f"Expected reason='timeout'; got {payload.get('reason')!r}"
+    )
+    assert "stage" in payload, "turn.error from watchdog must include stage"
+    assert "retryable" not in payload, "turn.error must not include legacy retryable field"
 
 
 # ---------------------------------------------------------------------------
@@ -304,3 +308,83 @@ async def test_start_turn_default_timeout_uses_watchdog_timeout() -> None:
         await original_sleep(0.1)
 
     assert seen_timeouts[0] == wmod.WATCHDOG_TIMEOUT
+
+
+# ---------------------------------------------------------------------------
+# N3-S04: heartbeat preserves the per-turn timeout
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_preserves_timeout() -> None:
+    """heartbeat() resets the timer using the same timeout that start_turn() was called with.
+
+    N3-S04 acceptance: a Watchdog started with timeout=180 stays at 180 after heartbeat,
+    not reset to the default 60 (or 1 in test env).
+
+    This verifies the fix for the bug where heartbeat() called start_turn() with no argument,
+    silently reverting to WATCHDOG_TIMEOUT even during a 180s section build.
+    """
+    wmod = _load_watchdog()
+    client = _make_client()
+    sm = _make_state_manager()
+    bus = _make_bus()
+    watchdog = wmod.Watchdog(client=client, state_manager=sm, bus=bus)
+
+    seen_timeouts: list[float] = []
+    original_sleep = asyncio.sleep
+    call_count = 0
+
+    async def recording_sleep(seconds: float) -> None:
+        nonlocal call_count
+        seen_timeouts.append(seconds)
+        call_count += 1
+        # Only yield for the first sleep so we can observe the timeout passed.
+        await original_sleep(0)
+
+    with unittest.mock.patch("backend.core.watchdog.asyncio.sleep", side_effect=recording_sleep):
+        # Start with a 180s section-build timeout.
+        watchdog.start_turn(timeout=180)
+        await original_sleep(0)
+        # heartbeat should re-arm using 180, not WATCHDOG_TIMEOUT (1 in test env).
+        watchdog.heartbeat()
+        await original_sleep(0.1)
+
+    # The first timeout recorded for the heartbeat's _watch call must be 180.
+    # seen_timeouts[0] = first start_turn(180) call
+    # seen_timeouts[1] = heartbeat's restart — must also be 180, not WATCHDOG_TIMEOUT
+    assert len(seen_timeouts) >= 2, f"Expected at least 2 sleep calls; got {seen_timeouts}"
+    assert seen_timeouts[1] == 180, (
+        f"heartbeat() must preserve the 180s timeout, not reset to {wmod.WATCHDOG_TIMEOUT}. "
+        f"Got: {seen_timeouts[1]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_uses_default_when_no_prior_start_turn() -> None:
+    """heartbeat() without prior start_turn() falls back to WATCHDOG_TIMEOUT (not crash).
+
+    Edge case: heartbeat() called before start_turn() — must not raise AttributeError.
+    """
+    wmod = _load_watchdog()
+    client = _make_client()
+    sm = _make_state_manager()
+    bus = _make_bus()
+    watchdog = wmod.Watchdog(client=client, state_manager=sm, bus=bus)
+
+    # Should not raise even though _current_timeout has never been set.
+    seen_timeouts: list[float] = []
+    original_sleep = asyncio.sleep
+
+    async def recording_sleep(seconds: float) -> None:
+        seen_timeouts.append(seconds)
+        await original_sleep(0)
+
+    with unittest.mock.patch("backend.core.watchdog.asyncio.sleep", side_effect=recording_sleep):
+        watchdog.heartbeat()
+        await original_sleep(0.1)
+
+    # Should have used WATCHDOG_TIMEOUT as the fallback.
+    assert seen_timeouts[0] == wmod.WATCHDOG_TIMEOUT, (
+        f"heartbeat() without prior start_turn must use WATCHDOG_TIMEOUT; got {seen_timeouts[0]}"
+    )

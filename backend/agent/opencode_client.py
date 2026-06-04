@@ -30,6 +30,7 @@ Normalisation rules (from docs/contracts/SSE_CONTRACT.md):
   server.heartbeat                → reset timer only; nothing published
   file.edited                     → file.ready   (global — no sessionID filter)
   all others                      → drop silently
+
 """
 
 from __future__ import annotations

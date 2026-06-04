@@ -1,13 +1,14 @@
-// SectionPane — N2-S16
+// SectionPane — N2-S16, updated N3-S06/S07
 // Renders the active section's artefacts: code block, chart image, interpretation.
 // Receives a Section prop and fetches text artefacts via api.getFile.
 // Chart is rendered as <img src="/api/file?path=..."> — the browser handles
 // the binary GET; api.getFile returns text and would produce a broken image.
 //
-// data-testid list (from docs/plans/2026-06-03-n2-s16.md):
+// data-testid list (from docs/plans/2026-06-03-n2-s16.md + N3 additions):
 //   section-pane, section-pane-title, section-building-spinner,
 //   section-code, section-chart, section-interpretation,
-//   section-file-error, section-accept-btn, section-drop-btn
+//   section-file-error, section-accept-btn, section-drop-btn,
+//   section-failed-notice, section-retry-btn, section-drop-failed-btn, watchdog-notice (N3)
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "../hooks/useApi";
@@ -20,6 +21,21 @@ export interface SectionPaneProps {
   onRevise?: (id: string, text: string) => Promise<void> | void;
   /** Optional: re-fetch trigger key from file.ready events */
   fileReadyPath?: string | null;
+  /**
+   * N3-S06/S07: when true, show failed-section controls (Retry / Drop).
+   * Set by BuildView when section.failed is received for this section.
+   */
+  isFailed?: boolean;
+  /**
+   * N3-S07: the failure reason from section.failed.
+   * "timeout" triggers the watchdog-notice variant (distinct copy + testid).
+   */
+  failedReason?: string;
+  /**
+   * N3-S06: called when the user clicks Retry on a failed section.
+   * Re-queues the section build via POST /turn with section_id.
+   */
+  onRetry?: (id: string) => void;
 }
 
 interface ArtefactState {
@@ -34,6 +50,9 @@ export default function SectionPane({
   onDrop,
   onRevise,
   fileReadyPath,
+  isFailed = false,
+  failedReason,
+  onRetry,
 }: SectionPaneProps) {
   const [artefacts, setArtefacts] = useState<ArtefactState>({
     pyContent: null,
@@ -144,6 +163,63 @@ export default function SectionPane({
       <h3 data-testid="section-pane-title" className="text-lg font-semibold text-[#1a1a17] mb-4">
         {section.title}
       </h3>
+
+      {/* Failed section controls — N3-S06/S07 */}
+      {isFailed && (
+        <>
+          {failedReason === "timeout" ? (
+            <div
+              data-testid="watchdog-notice"
+              className="mt-3 bg-[#fdf0ed] border border-[#e8c4bb] rounded px-4 py-3 text-sm text-[#a85c4a]"
+            >
+              <p className="font-medium mb-2">Agent timed out on this section.</p>
+              <div className="flex gap-2">
+                <button
+                  data-testid="section-retry-btn"
+                  type="button"
+                  onClick={() => onRetry?.(section.id)}
+                  className="bg-[#a85c4a] text-white rounded-sm px-3 py-1 text-xs font-medium hover:bg-[#8f4e3e] transition-colors"
+                >
+                  Retry
+                </button>
+                <button
+                  data-testid="section-drop-failed-btn"
+                  type="button"
+                  onClick={() => onDrop(section.id)}
+                  className="border border-[#c8563d] text-[#c8563d] rounded-sm px-3 py-1 text-xs font-medium hover:bg-[#c8563d]/5 transition-colors"
+                >
+                  Drop section
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              data-testid="section-failed-notice"
+              className="mt-3 bg-[#fdf0ed] border border-[#e8c4bb] rounded px-4 py-3 text-sm text-[#a85c4a]"
+            >
+              <p className="font-medium mb-2">Build failed for this section.</p>
+              <div className="flex gap-2">
+                <button
+                  data-testid="section-retry-btn"
+                  type="button"
+                  onClick={() => onRetry?.(section.id)}
+                  className="bg-[#a85c4a] text-white rounded-sm px-3 py-1 text-xs font-medium hover:bg-[#8f4e3e] transition-colors"
+                >
+                  Retry
+                </button>
+                <button
+                  data-testid="section-drop-failed-btn"
+                  type="button"
+                  onClick={() => onDrop(section.id)}
+                  className="border border-[#c8563d] text-[#c8563d] rounded-sm px-3 py-1 text-xs font-medium hover:bg-[#c8563d]/5 transition-colors"
+                >
+                  Drop section
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Building spinner */}
       {isBuilding && (

@@ -72,6 +72,21 @@ export const api = {
   },
 
   /**
+   * POST /api/turn — retry with no text (re-runs the current or named section).
+   * API_CONTRACT.html §1 · POST /turn
+   * Posts {} (plain retry) or { section_id } (retry specific section).
+   * Returns 204 No Content; resolves void on success.
+   */
+  async postTurnRetry(sectionId?: string): Promise<void> {
+    const res = await fetch("/api/turn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sectionId ? { section_id: sectionId } : {}),
+    });
+    await throwIfError(res);
+  },
+
+  /**
    * POST /api/plan/update — inline plan edit.
    * API_CONTRACT.html §1 · POST /plan/update
    */
