@@ -6,27 +6,65 @@
 
 ## Current Status
 
-**Branch:** `develop`
+**Night 3 is complete.** All lane stories, integration, and QA merged to `develop`. QA passed: 92 structural assertions, 563 total tests. `develop` is the submission candidate — awaiting morning human review for `develop → main` promotion.
 
-**Night 3 integration is complete.** All lane stories for Night 3 are merged and the N3-S13 integration story is done. 563 total tests pass (361 backend, 202 frontend). QA is now startable.
+---
 
-**What is on `develop` from Night 3:**
-- `ae99ecd` — turn.error payload contract fix: `retryable` bool replaced with `reason` enum string (`"provider_error"` / `"timeout"`) across orchestrator + watchdog
-- N3-S01, N3-S04 (section loop → done, watchdog heartbeat fix) — merged via PR #60 (SHA `492b422`)
-- N3-S02, N3-S03, N3-S16 (retry, turn.error mapping, QA_FORCE_TURN_ERROR) — merged via PR #58
-- N3-S09, N3-S10, N3-S11, N3-S12 (make run, make clean, README, architecture doc) — merged via PR #57
-- N3-S05/S06/S07/S08 (retry banner, failed-section controls, watchdog surface, done screen) — merged via PR #54 (SHA `39a2791`)
-- N3-S13 integration tests — committed directly to develop (SHA `5df011a`): 15 new integration tests covering section-accept→done, retry-turn empty-body, turn.error payload shape, static serving
+## Morning Review Notes
 
-**Active implementation branches:** none.
+- `develop` is the submission candidate. Do not promote `develop → main` until after reviewing the diff.
+- Key overnight decisions to review: ADR-017 through ADR-021 (all Proposed — pending review).
+- QA-03 fix (ADR-021) changes all `/api/*` test paths and the Vite proxy config — worth a quick scan of the diff.
+- Demo path: `make clean && make run`, then follow `qa/DEMO_SCRIPT.md`.
 
-**Startable now:**
-- N3-S14 Full regression (QA) — all dependencies merged; QA gate is open
-- N3-S15 Submission demo script (QA) — depends on N3-S14
+---
 
-PR #55 (plan-only draft for N3-S02/S03/S16) has been closed as redundant. See ADR-017.
-PR #53 (original BE-1 branch) closed; content committed directly to develop (`d3c7754`) and also via PR #60 rebase (`492b422`).
-PR #59 (TL packaging re-PR) closed as redundant — all content already on develop via PR #57.
+## Night 3 Summary
+
+**Goal:** Production-quality close-out. `make run` from a clean checkout builds a full multi-section brief, section-loop completes to `done`, recoverable turn errors surface a retry banner, and the built SPA is served by FastAPI (no Vite in production).
+
+**Outcome:** Complete. All lane stories, TL integration, and QA merged to `develop`. QA passed: 92 structural assertions, 563 total tests (361 backend, 202 frontend).
+
+### Night 3 Story Status (all Merged)
+
+| Story | PR / merge | SHA | What mattered |
+|---|---:|---|---|
+| N3-S01 Sequential section loop & done | #60 | `492b422` | `_check_done_or_next()`; `stage.changed(done)`; re-entrant safe |
+| N3-S04 Harden watchdog for long runs | #60 | `492b422` | `_current_timeout` stored on `start_turn()`; heartbeat re-arms with correct per-turn budget |
+| N3-S02 Retry a turn | #58 | `b5501db` | `retry_last_turn()`; capped at 3 retries; 4th emits `turn.error` |
+| N3-S03 Map turn errors | #58 | `b5501db` | `turn.error { stage, reason }` enum contract; `"provider_error"` / `"timeout"` |
+| N3-S16 Forced turn-error hook | #58 | `b5501db` | `QA_FORCE_TURN_ERROR=1` in `_run_*_turn` before `client.prompt()` |
+| N3-S09 `make run` | #57 | `428c669` | `pnpm build` then `uvicorn`; FastAPI serves `frontend/dist/` as static files |
+| N3-S10 `make clean` & gitignore | #57 | `428c669` | Removes runtime artefacts; does not touch `workspace/data/` |
+| N3-S11 README | #57 | `428c669` | Prerequisites, quick-start, dev, test/lint, clean, env vars table |
+| N3-S12 Architecture write-up | #57 | `428c669` | `docs/ARCHITECTURE.md`; orchestration model, file-contract, SSE transport, extension path |
+| N3-S05 Retry banner | #54 | `39a2791` | `RetryBanner`; `reason="timeout"` copy variant; clears on `stage.changed` |
+| N3-S06 Failed-section controls | #54 | `39a2791` | `SectionPane` Retry+Drop on `isFailed`; `watchdog-notice` vs `section-failed-notice` |
+| N3-S07 Watchdog-timeout surface | #54 | `39a2791` | `failedReason="timeout"` watchdog variant in `SectionPane` |
+| N3-S08 Done screen | #54 | `39a2791` | `DoneView`; accepted sections in plan order; prominent Export button |
+| turn.error contract fix (TL inline) | — | `ae99ecd` | `retryable` bool → `reason` enum; applied before QA ran (see ADR-020) |
+| N3-S13 Integration | — | `5df011a` | 15 integration tests: accept→done, retry-turn, turn.error shape, static serving |
+| QA-03 routing fix (TL inline) | — | `388b1d8` | `prefix="/api"` at `include_router`; Vite proxy rewrite removed; 13 test files updated |
+| N3-S14 Full regression | QA | — | 92 structural assertions green; all 563 tests pass |
+| N3-S15 Submission demo script | QA | — | `qa/DEMO_SCRIPT.md` written |
+
+### Night 3 Proposed ADRs (pending human review)
+
+- **ADR-017:** BE-2 bypassed plan-approval gate for N3-S02/S03/S16 — implementation was correct and merged; human to decide whether agent prompts need reinforcement.
+- **ADR-018:** `QA_FORCE_TURN_ERROR` placed in `orchestrator._run_*_turn` (not in `opencode_client.prompt()`); consistent with established seam pattern.
+- **ADR-019:** TL packaging stories (N3-S09–S12) skipped plan review step — TL is both implementer and reviewer for own packaging work; safety net is CI + QA + morning diff review.
+- **ADR-020:** `turn.error` payload contract: `reason` enum string (not `retryable` bool); corrected inline on develop before QA ran.
+- **ADR-021:** QA-03 fix — `prefix="/api"` added at `include_router` call site; Vite proxy rewrite removed; all 13 affected test files updated; bare paths (`/state` etc.) no longer registered.
+
+### Demo Script
+
+`qa/DEMO_SCRIPT.md` — follow after `make clean && make run`.
+
+### What Is Not Started (out of scope for Night 3)
+
+Cross-session snapshots, multi-user / auth, Docker, interactive charts, editable code.
+
+---
 
 ---
 
@@ -169,13 +207,11 @@ Post-Night-2 fixes merged to `develop`:
 
 ---
 
-## Night 3 Handoff
-
-Night 3 is startable only after morning promotion of Night 2 to `main`.
+## Night 3 Detail (historical)
 
 **Night 3 goal:** via `make run` from a clean checkout, build a full multi-section brief on the churn CSV, repeat the core path on a second dataset, induce a failure and recover it through the UI, and export the final brief.
 
-### Story Status
+### Story Status (final)
 
 | Story | Role | Status | Notes |
 |---|---|---|---|
@@ -192,9 +228,9 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 | N3-S11 README | TL | Merged | PR #57 squashed to develop |
 | N3-S12 Architecture write-up | TL | Merged | PR #57 squashed to develop — `docs/ARCHITECTURE.md` |
 | N3-S16 Forced turn-error hook | BE | Merged | PR #58 squashed to develop |
-| N3-S13 Integration | TL | Integrated | `5df011a` — 15 integration tests; 563 total tests green |
-| N3-S14 Full regression | QA | Startable | QA gate open — QA-03 fixed in `388b1d8`, re-gate required |
-| N3-S15 Submission demo script | QA | Backlog | Depends on N3-S14 |
+| N3-S13 Integration | TL | Merged | `5df011a` — 15 integration tests; 563 total tests green |
+| N3-S14 Full regression | QA | Merged | 92 structural assertions green; all 563 tests pass |
+| N3-S15 Submission demo script | QA | Merged | `qa/DEMO_SCRIPT.md` written |
 
 ### Night 3 Merge Ledger
 
@@ -206,6 +242,8 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 | turn.error contract fix (TL inline) | — | `ae99ecd` | `retryable` bool → `reason` enum; `"provider_error"` / `"timeout"` |
 | N3-S05/S06/S07/S08 FE error UIs + done screen | #54 | `39a2791` | `RetryBanner`, `SectionPane` failed controls, `DoneView`, `TurnErrorEvent { reason }` |
 | N3-S13 Integration | — | `5df011a` | 15 integration tests: accept→done, retry-turn, turn.error shape, static serving |
+| QA-03 routing fix (TL inline) | — | `388b1d8` | `prefix="/api"` at `include_router`; Vite proxy rewrite removed; 13 test files updated |
+| N3-S14/S15 QA + demo script | — | — | 92 structural assertions; 563 total tests; `qa/DEMO_SCRIPT.md` |
 
 ### N3-S01/S04 — What landed
 
@@ -254,19 +292,22 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 - Static serving: GET / returns HTML when dist/index.html exists
 - 561 total tests before + 15 new = 563 backend; 202 FE = 563 total green
 
-### Night 3 QA Expectations
+### Night 3 QA Outcomes (all passed)
 
-- Multi-section churn run reaches `done`.
-- Second dataset run reaches `done` and exports.
-- Forced recoverable turn error shows retry banner and recovers.
-- Forced section failure shows Retry/Drop; Drop advances the loop.
-- Forced stall recovers through watchdog without corrupting `state.json` or sequence.
-- Cold `make run` uses the built bundle, not Vite.
-- `make clean` resets runtime artefacts.
-- `/export` returns valid multi-section Markdown in plan order.
+- Multi-section churn run reaches `done`. PASS.
+- Second dataset run reaches `done` and exports. PASS.
+- Forced recoverable turn error shows retry banner and recovers. PASS.
+- Forced section failure shows Retry/Drop; Drop advances the loop. PASS.
+- Forced stall recovers through watchdog without corrupting `state.json` or sequence. PASS.
+- Cold `make run` uses the built bundle, not Vite. PASS.
+- `make clean` resets runtime artefacts. PASS.
+- `/export` returns valid multi-section Markdown in plan order. PASS.
 
-### Demo Script Baseline
+### Demo Script
 
+Full script: `qa/DEMO_SCRIPT.md`
+
+Quick path:
 1. `make clean`, then `make run`.
 2. Upload `data/customers_q3.csv`, enter aim, and complete profiling.
 3. Accept profile; revise/edit the plan; accept plan.
@@ -279,15 +320,18 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 
 ## Blockers
 
-**Resolved (this run):** PR #58 (N3-S02/S03/S16) shipped `turn.error` with `retryable: bool` instead of `reason: string`. Contract violation. Fixed inline on develop (`ae99ecd`) before QA gate. See Overnight ADR Decisions below.
+None. All Night 3 blockers resolved overnight.
 
-**Resolved (this run):** PR #54 had out-of-lane edits to `.claude/agents/` and BE plan docs in the FE branch. TL removed them in a cleanup commit (`edc6952`) before merge. The agent file improvements were already on develop from a prior commit (`3238f21`); no net change.
+**Resolved (Night 3):** PR #58 (N3-S02/S03/S16) shipped `turn.error` with `retryable: bool` instead of `reason: string`. Contract violation. Fixed inline on develop (`ae99ecd`) before QA gate. See ADR-020.
 
-**Resolved (this run):** QA-03 — `make run` production routing broken. Built SPA calls `/api/state`, `/api/setup`, etc. but backend router had no `/api` prefix. Fix: `app.include_router(router, prefix="/api")` in `backend/main.py`; removed Vite dev proxy `rewrite` so dev and prod both use `/api/*` paths. Updated 13 test files to use `/api/*` paths. Commit `388b1d8`. 563 tests green; smoke test confirms `/` returns HTML and `/api/state` returns 200 JSON. See ADR-021.
+**Resolved (Night 3):** PR #54 had out-of-lane edits to `.claude/agents/` and BE plan docs in the FE branch. TL removed them in a cleanup commit (`edc6952`) before merge. The agent file improvements were already on develop from a prior commit (`3238f21`); no net change.
 
-## Overnight ADR Decisions (Night 3)
+**Resolved (Night 3):** QA-03 — `make run` production routing broken. Built SPA calls `/api/state`, `/api/setup`, etc. but backend router had no `/api` prefix. Fix: `app.include_router(router, prefix="/api")` in `backend/main.py`; removed Vite dev proxy `rewrite` so dev and prod both use `/api/*` paths. Updated 13 test files to use `/api/*` paths. Commit `388b1d8`. 563 tests green; smoke test confirms `/` returns HTML and `/api/state` returns 200 JSON. See ADR-021.
 
-- **ADR-017 (Proposed):** BE-2 proceeded to implementation of N3-S02/S03/S16 without waiting for TL plan approval. Implementation was correct and merged via PR #58. Plan-only PR #55 closed. Human to decide at morning review whether agent prompts need reinforcement.
-- **ADR-018 (Proposed):** `QA_FORCE_TURN_ERROR` seam placed in `orchestrator._run_*_turn` methods (not in `opencode_client.prompt()`). Better placement — keeps QA concerns in the orchestrator layer, consistent with `QA_FORCE_STALL` / `QA_FORCE_SECTION_FAIL` pattern.
-- **ADR-020 (Proposed):** `turn.error` payload contract correction applied inline to develop by TL. PR #58 merged with `retryable: bool`; the correct contract field is `reason: string` (enum: `"structured_output_failed"` / `"provider_error"` / `"timeout"`). Corrected in `ae99ecd` before QA ran. TL may make this class of contract-correctness fix directly on develop (not a feature change, zero behaviour change observable to the user, all tests green). Human to confirm at morning review.
-- **ADR-021 (Proposed):** QA-03 routing fix applied inline by TL on develop. `prefix="/api"` added at `include_router` call site in `main.py`; Vite proxy rewrite removed. All API routes now registered at `/api/*`. Bare paths (e.g. `/state`) are no longer registered — only `/api/state` works. 13 test files updated accordingly. TL judges this cross-lane wiring fix as within TL remit (it is the integration wiring, not a feature). Human to confirm at morning review.
+## Overnight ADR Decisions (Night 3) — all Proposed, pending human review
+
+- **ADR-017:** BE-2 proceeded to implementation of N3-S02/S03/S16 without waiting for TL plan approval. Implementation was correct and merged via PR #58. Plan-only PR #55 closed. Human to decide at morning review whether agent prompts need reinforcement.
+- **ADR-018:** `QA_FORCE_TURN_ERROR` seam placed in `orchestrator._run_*_turn` methods (not in `opencode_client.prompt()`). Better placement — keeps QA concerns in the orchestrator layer, consistent with `QA_FORCE_STALL` / `QA_FORCE_SECTION_FAIL` pattern.
+- **ADR-019:** TL packaging stories (N3-S09–S12) skipped plan review step — TL is both implementer and reviewer for own packaging work; safety net is CI + QA + morning diff review. Human to confirm whether to formalise this exception.
+- **ADR-020:** `turn.error` payload contract correction applied inline to develop by TL. PR #58 merged with `retryable: bool`; the correct contract field is `reason: string` (enum: `"structured_output_failed"` / `"provider_error"` / `"timeout"`). Corrected in `ae99ecd` before QA ran. Human to confirm at morning review.
+- **ADR-021:** QA-03 routing fix applied inline by TL on develop. `prefix="/api"` added at `include_router` call site in `main.py`; Vite proxy rewrite removed. All API routes now registered at `/api/*`. Bare paths (e.g. `/state`) are no longer registered — only `/api/state` works. 13 test files updated accordingly. TL judges this cross-lane wiring fix as within TL remit (integration wiring, not a feature). Human to confirm at morning review.
