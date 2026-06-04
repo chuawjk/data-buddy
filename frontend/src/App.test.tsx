@@ -87,7 +87,7 @@ describe("App stage routing", () => {
     });
   });
 
-  it("renders build-view when stage is 'done'", async () => {
+  it("renders done-view when stage is 'done'", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -99,7 +99,7 @@ describe("App stage routing", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("build-view")).toBeInTheDocument();
+      expect(screen.getByTestId("done-view")).toBeInTheDocument();
     });
   });
 

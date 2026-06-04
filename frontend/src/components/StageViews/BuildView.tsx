@@ -1,12 +1,14 @@
-// BuildView — N2-S16
+// BuildView — N2-S16, updated N3-S05/S06/S07
 // Section-by-section build screen. Hydrates sections from GET /state on mount
 // and handles section.* SSE events to update state live.
 //
 // Component hierarchy:
 //   BuildView [data-testid="build-view"]
+//   ├── RetryBanner (when turnError is set) — N3-S05
 //   ├── section list [data-testid="section-list"]
 //   │   └── section-row-{id}, section-status-{id} per section
-//   ├── SectionPane [data-testid="section-pane"] (active section only)
+//   ├── SectionPane [data-testid="section-pane"] (sections that started/finished)
+//       ├── failed controls when isFailed=true — N3-S06/S07
 //
 // Coded against docs/contracts/API_CONTRACT.html — never backend internals.
 
@@ -14,14 +16,27 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../../hooks/useApi";
 import { useSSE } from "../../hooks/useSSE";
 import SectionPane from "../SectionPane";
+import RetryBanner from "../RetryBanner";
 import type { Section } from "../../types/api";
-import type { SSEEvent } from "../../types/events";
+import type { SSEEvent, TurnErrorEvent } from "../../types/events";
 
 interface BuildViewProps {
   /** Sections injected from App.tsx (hydrated from GET /state). */
   sections?: Section[];
   /** Called whenever sections change locally (accept/drop) so App can update its plan state. */
   onSectionsChange?: (sections: Section[]) => void;
+  /**
+   * N3-S05: turn.error event passed from App.tsx.
+   * When set, renders a RetryBanner at the top of the view.
+   */
+  turnError?: TurnErrorEvent | null;
+  /** N3-S05: called when the user clicks Retry in the banner. */
+  onRetryTurn?: () => void;
+  /**
+   * N3-S06/S07: map of section id → section.failed reason for sections that failed.
+   * Each failed section shows Retry/Drop controls in its SectionPane.
+   */
+  failedSections?: Map<string, string>;
 }
 
 const STATUS_LABEL: Record<Section["status"], string> = {
@@ -47,7 +62,13 @@ function getSectionPanes(sections: Section[]): Section[] {
   return sections.filter((s) => s.status !== "queued");
 }
 
-export default function BuildView({ sections: initialSections = [], onSectionsChange }: BuildViewProps) {
+export default function BuildView({
+  sections: initialSections = [],
+  onSectionsChange,
+  turnError,
+  onRetryTurn,
+  failedSections = new Map<string, string>(),
+}: BuildViewProps) {
   const [sections, setSections] = useState<Section[]>(initialSections);
   const [fileReadyPath, setFileReadyPath] = useState<string | null>(null);
 
@@ -172,10 +193,38 @@ export default function BuildView({ sections: initialSections = [], onSectionsCh
     });
   }, [onSectionsChange]);
 
+  // N3-S06: retry a failed section — POST /turn with section_id (no text = retry)
+  const handleSectionRetry = useCallback(async (id: string) => {
+    setSections((prev) => {
+      const next = prev.map((s) =>
+        s.id === id
+          ? { ...s, status: "building" as const, py_path: null, png_path: null, md_path: null }
+          : s
+      );
+      onSectionsChange?.(next);
+      return next;
+    });
+    try {
+      await api.postTurnRetry(id);
+    } catch {
+      // On failure, keep the failed state so the user can retry again
+      setSections((prev) => {
+        const reverted = prev.map((s) => (s.id === id ? { ...s, status: "failed" as const } : s));
+        onSectionsChange?.(reverted);
+        return reverted;
+      });
+    }
+  }, [onSectionsChange]);
+
   const sectionPanes = getSectionPanes(sections);
 
   return (
     <div data-testid="build-view" className="flex flex-col gap-6">
+      {/* Retry banner — N3-S05: shown when turn.error arrives for building stage */}
+      {turnError != null && (
+        <RetryBanner reason={turnError.reason} onRetry={() => onRetryTurn?.()} />
+      )}
+
       {/* Section list */}
       {sections.length > 0 && (
         <div
@@ -212,6 +261,9 @@ export default function BuildView({ sections: initialSections = [], onSectionsCh
           onDrop={(id) => void handleDrop(id)}
           onRevise={(id, text) => handleRevise(id, text)}
           fileReadyPath={fileReadyPath}
+          isFailed={failedSections.has(section.id)}
+          failedReason={failedSections.get(section.id)}
+          onRetry={(id) => void handleSectionRetry(id)}
         />
       ))}
     </div>
