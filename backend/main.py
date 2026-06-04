@@ -19,6 +19,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.agent.opencode_client import OpenCodeClient
 from backend.api.router import router
@@ -26,6 +28,11 @@ from backend.core.event_bus import EventBus
 from backend.core.orchestrator import Orchestrator
 from backend.core.state_manager import StateManager
 from backend.core.watchdog import Watchdog
+
+# Absolute path to the compiled Vite bundle.  Resolved at module load time so
+# it is consistent regardless of the working directory uvicorn is invoked from.
+_REPO_ROOT = Path(__file__).parent.parent
+FRONTEND_DIST = _REPO_ROOT / "frontend" / "dist"
 
 logger = logging.getLogger(__name__)
 
@@ -160,3 +167,42 @@ async def health() -> dict[str, str]:
     startup checks can confirm the process is alive.
     """
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Static file serving for the built Vite bundle (N3-S09 / ADR-008).
+#
+# Only mounted when ``frontend/dist/`` exists -- i.e. after ``make run`` has
+# built the bundle.  In ``make dev`` mode the dist directory is absent and
+# FastAPI never mounts static files, so the Vite dev server on :5173 handles
+# the SPA without interference.
+#
+# Ordering is critical:
+#   1. API routes (registered above via include_router) are matched first.
+#   2. /assets/ static mount handles Vite's hashed JS/CSS/image files.
+#   3. The catch-all SPA fallback is registered last so it only fires for
+#      paths that didn't match any API route.  This prevents the fallback from
+#      swallowing /api/* calls, /health, or any SSE stream.
+# ---------------------------------------------------------------------------
+
+if FRONTEND_DIST.exists():
+    _assets_dir = FRONTEND_DIST / "assets"
+    if _assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+    async def spa_fallback(full_path: str) -> FileResponse | JSONResponse:
+        """Serve index.html for all non-API paths (client-side routing).
+
+        This catch-all is registered after all API routes so it never
+        intercepts ``/api/*``, ``/health``, ``/events``, ``/state``, etc.
+        If the dist directory somehow disappears between startup and the
+        request, return a 503 rather than a hard crash.
+        """
+        index = FRONTEND_DIST / "index.html"
+        if index.exists():
+            return FileResponse(str(index))
+        return JSONResponse(
+            {"error": "frontend not built", "message": "Run 'make run' to build the frontend."},
+            status_code=503,
+        )

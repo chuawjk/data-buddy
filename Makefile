@@ -1,4 +1,4 @@
-.PHONY: install dev test lint format
+.PHONY: install dev test lint format clean run
 
 # ── install ────────────────────────────────────────────────────────────────────
 install:
@@ -31,6 +31,13 @@ dev:
 	trap 'kill "$$BE_PID" "$$FE_PID" 2>/dev/null; wait "$$BE_PID" "$$FE_PID" 2>/dev/null' INT TERM EXIT; \
 	wait "$$BE_PID" "$$FE_PID"
 
+# ── run (production: build frontend bundle, serve from FastAPI on :8000) ───────
+run:
+	@echo "==> Building frontend bundle"
+	pnpm --prefix frontend run build
+	@echo "==> Starting FastAPI (serving built bundle on http://localhost:8000)"
+	uv run --project backend uvicorn backend.main:app --host 0.0.0.0 --port 8000
+
 # ── test ──────────────────────────────────────────────────────────────────────
 test:
 	uv run --project backend pytest backend/tests
@@ -45,3 +52,10 @@ lint:
 format:
 	uv run --project backend ruff format backend
 	pnpm --prefix frontend run format
+
+# ── clean ─────────────────────────────────────────────────────────────────────
+clean:
+	rm -rf workspace/state.json workspace/plan.json workspace/profile.json \
+	       workspace/sections workspace/analyses workspace/charts \
+	       frontend/dist frontend/.vite
+	@echo "Workspace and build artefacts removed."
