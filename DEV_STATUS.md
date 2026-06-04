@@ -8,17 +8,25 @@
 
 **Branch:** `develop`
 
-**Night 3 is in progress.** Night 2 is complete and merged; Night 3 lane plans have been approved and implementation is underway. TL packaging stories (N3-S09/S10/S11/S12) are merged to `develop`. BE retry/error stories (N3-S02/S03/S16) are merged to `develop` (PR #58). Three implementation PRs are in flight for the remaining lane stories.
+**Night 3 is in progress.** Night 2 is complete and merged. All BE stories are now merged to `develop`. The FE lane (N3-S05/S06/S07/S08) is in development and is the remaining blocker before integration (N3-S13).
 
-**What is on `develop` from Night 3 so far:**
+**What is on `develop` from Night 3:**
+- N3-S01, N3-S04 (section loop → done, watchdog heartbeat fix) — merged via PR #60 (SHA `492b422`)
 - N3-S02, N3-S03, N3-S16 (retry, turn.error mapping, QA_FORCE_TURN_ERROR) — merged via PR #58
 - N3-S09, N3-S10, N3-S11, N3-S12 (make run, make clean, README, architecture doc) — merged via PR #57
 
 **Active implementation branches:**
-- `feat/n3-s01-section-loop-done` (PR #53, draft) — BE: N3-S01 + N3-S04 (section loop → done, watchdog heartbeat fix)
 - `feat/n3-fe-error-done` (PR #54, draft) — FE: N3-S05/S06/S07/S08 (retry banner, failed-section, watchdog surface, done screen)
 
+**Startable now:**
+- N3-S05 Retry banner (FE) — was blocked on N3-S02, now merged. Covered under PR #54.
+- N3-S06 Failed-section controls (FE) — in dev under PR #54.
+- N3-S07 Watchdog-timeout surface (FE) — depends on N3-S06, covered under PR #54.
+- N3-S08 Done screen (FE) — was blocked on N3-S01, now merged. Covered under PR #54.
+
 PR #55 (plan-only draft for N3-S02/S03/S16) has been closed as redundant. See ADR-017.
+PR #53 (original BE-1 branch) closed; content committed directly to develop (`d3c7754`) and also via PR #60 rebase (`492b422`).
+PR #59 (TL packaging re-PR) closed as redundant — all content already on develop via PR #57.
 
 ---
 
@@ -171,20 +179,20 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 
 | Story | Role | Status | Notes |
 |---|---|---|---|
-| N3-S01 Sequential section loop & done | BE | In Dev — plan approved | PR #53 draft; plan approved |
+| N3-S01 Sequential section loop & done | BE | Merged | PR #60 squashed to develop (`492b422`) |
 | N3-S02 Retry a turn | BE | Merged | PR #58 squashed to develop |
 | N3-S03 Map turn errors | BE | Merged | PR #58 squashed to develop |
-| N3-S04 Harden watchdog for long runs | BE | In Dev — plan approved | PR #53 draft; plan approved (bundled with N3-S01) |
-| N3-S05 Retry banner | FE | In Dev — plan approved | PR #54 draft; plan approved |
+| N3-S04 Harden watchdog for long runs | BE | Merged | PR #60 squashed to develop (bundled with N3-S01) |
+| N3-S05 Retry banner | FE | In Dev — plan approved | PR #54 draft; unblocked (N3-S02 merged) |
 | N3-S06 Failed-section controls | FE | In Dev — plan approved | PR #54 draft; plan approved |
 | N3-S07 Watchdog-timeout surface | FE | In Dev — plan approved | PR #54 draft; plan approved |
-| N3-S08 Done screen | FE | In Dev — plan approved | PR #54 draft; plan approved |
+| N3-S08 Done screen | FE | In Dev — plan approved | PR #54 draft; unblocked (N3-S01 merged) |
 | N3-S09 `make run` | TL | Merged | PR #57 squashed to develop |
 | N3-S10 `make clean` & gitignore | TL | Merged | PR #57 squashed to develop |
 | N3-S11 README | TL | Merged | PR #57 squashed to develop |
 | N3-S12 Architecture write-up | TL | Merged | PR #57 squashed to develop — `docs/ARCHITECTURE.md` |
 | N3-S16 Forced turn-error hook | BE | Merged | PR #58 squashed to develop |
-| N3-S13 Integration | TL | Backlog | Blocked on N3-S01, N3-S04, N3-S05–S08 |
+| N3-S13 Integration | TL | Backlog | Blocked on N3-S05–S08 (all BE stories now merged) |
 | N3-S14 Full regression | QA | Backlog | Depends on N3-S13 |
 | N3-S15 Submission demo script | QA | Backlog | Depends on N3-S14 |
 
@@ -192,8 +200,18 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 
 | Story | PR | SHA | What mattered |
 |---|---:|---|---|
-| N3-S02/S03/S16 Retry + turn.error + forced hook | #58 | `b5501db` | `retry_last_turn()`, `turn.error { stage, reason }`, `QA_FORCE_TURN_ERROR` |
 | N3-S09/S10/S11/S12 Packaging | #57 | `428c669` | `make run`, `make clean`, README, `docs/ARCHITECTURE.md` |
+| N3-S02/S03/S16 Retry + turn.error + forced hook | #58 | `b5501db` | `retry_last_turn()`, `turn.error { stage, reason }`, `QA_FORCE_TURN_ERROR` |
+| N3-S01/S04 Section loop → done + watchdog heartbeat | #60 | `492b422` | `_check_done_or_next()`, `stage.changed(done)`, `_current_timeout` watchdog fix |
+
+### N3-S01/S04 — What landed
+
+- `orchestrator._check_done_or_next(section_id)`: checks all sections for terminal status (accepted/dropped/failed); if all terminal and stage is still `building`, persists `stage="done"` and emits `stage.changed(done)`
+- Called from `POST /section/:id/accept` and `POST /section/:id/drop` via `asyncio.create_task` after persisting status (fire-and-forget, 204 not delayed)
+- Also called from `_start_next_queued_section` as a belt-and-suspenders fallback on the auto-sequence path
+- Re-entrant safe: stage guard (`stage != "building"` → return early) prevents double-emit after first done transition
+- `watchdog._current_timeout`: stored on every `start_turn()` call; `heartbeat()` re-arms with the stored value rather than the global 60s default — preserves 180s section-build budget across heartbeats
+- 9 new tests covering happy path, mixed terminal statuses, premature-done guards, rapid-accept re-entrancy, wrong-stage no-op, belt-and-suspenders, heartbeat timeout preservation, heartbeat edge case
 
 ### N3-S09/S10/S11/S12 — What landed
 
