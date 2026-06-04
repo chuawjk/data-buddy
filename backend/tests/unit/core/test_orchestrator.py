@@ -1255,3 +1255,266 @@ async def test_accept_plan_transitions_sections_to_queued(tmp_path):
     # sec_02 remains queued until sec_01 completes.
     sec2 = next(s for s in state["plan"] if s["id"] == "sec_02")
     assert sec2["status"] == "queued"
+
+
+# ---------------------------------------------------------------------------
+# N3-S01: _check_done_or_next — done transition and sequencing
+# ---------------------------------------------------------------------------
+
+
+def _make_building_orchestrator(
+    tmp_path: Path,
+    *,
+    plan: list[dict],
+    session_id: str | None = "sess-abc",
+) -> tuple[Orchestrator, StateManager, EventBus, AsyncMock]:
+    """Return an Orchestrator pre-set to building stage with the given plan."""
+    sm = _make_state_manager(tmp_path, session_id=session_id)
+    sm.update(stage="building", dataset="d.csv", aim="a", plan=plan)
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    return orch, sm, bus, mock_client
+
+
+def _all_accepted_plan() -> list[dict]:
+    return [
+        {
+            "id": "sec_01",
+            "title": "S1",
+            "hypothesis": "H1",
+            "status": "accepted",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+        {
+            "id": "sec_02",
+            "title": "S2",
+            "hypothesis": "H2",
+            "status": "accepted",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_done_transition_when_all_accepted(tmp_path):
+    """_check_done_or_next: all sections accepted → stage=done, stage.changed(done) emitted.
+
+    N3-S01 acceptance: Given the last section is accepted, when the loop runs,
+    then stage transitions to done and stage.changed(done) is emitted.
+    """
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=_all_accepted_plan())
+    sub = bus.subscribe()
+
+    await orch._check_done_or_next("sec_02")
+
+    # Stage persisted as done.
+    assert sm.get_state()["stage"] == "done", "Stage must be 'done' when all sections accepted"
+
+    # stage.changed(done) emitted.
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "stage.changed", f"Expected stage.changed; got {event['type']!r}"
+    assert event.get("stage") == "done", f"Expected stage=done; got {event.get('stage')!r}"
+
+
+@pytest.mark.asyncio
+async def test_done_transition_when_mixed_accepted_dropped(tmp_path):
+    """_check_done_or_next: mix of accepted and dropped (no queued/building) → done.
+
+    N3-S01 acceptance: Given dropped sections, when sequencing, then they are skipped
+    (already handled by queued status) and done is emitted when all are terminal.
+    """
+    plan = [
+        {
+            "id": "sec_01",
+            "title": "S1",
+            "hypothesis": "H1",
+            "status": "accepted",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+        {
+            "id": "sec_02",
+            "title": "S2",
+            "hypothesis": "H2",
+            "status": "dropped",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+        {
+            "id": "sec_03",
+            "title": "S3",
+            "hypothesis": "H3",
+            "status": "failed",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+    ]
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=plan)
+    sub = bus.subscribe()
+
+    await orch._check_done_or_next("sec_03")
+
+    assert sm.get_state()["stage"] == "done"
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "stage.changed"
+    assert event.get("stage") == "done"
+
+
+@pytest.mark.asyncio
+async def test_no_done_while_section_still_queued(tmp_path):
+    """_check_done_or_next: a queued section still remains → no done transition.
+
+    N3-S01 acceptance: auto-sequence is still running; done must not fire prematurely.
+    """
+    plan = [
+        {
+            "id": "sec_01",
+            "title": "S1",
+            "hypothesis": "H1",
+            "status": "accepted",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+        {
+            "id": "sec_02",
+            "title": "S2",
+            "hypothesis": "H2",
+            "status": "queued",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+    ]
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=plan)
+    sub = bus.subscribe()
+
+    await orch._check_done_or_next("sec_01")
+
+    # Stage must remain building.
+    assert sm.get_state()["stage"] == "building", (
+        "Stage must remain 'building' while sections are queued"
+    )
+    # No event emitted.
+    assert sub._queue.empty(), "No stage.changed must be emitted while a section is queued"
+
+
+@pytest.mark.asyncio
+async def test_no_done_while_section_still_building(tmp_path):
+    """_check_done_or_next: a section is still building → no done transition."""
+    plan = [
+        {
+            "id": "sec_01",
+            "title": "S1",
+            "hypothesis": "H1",
+            "status": "accepted",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+        {
+            "id": "sec_02",
+            "title": "S2",
+            "hypothesis": "H2",
+            "status": "building",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+    ]
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=plan)
+    sub = bus.subscribe()
+
+    await orch._check_done_or_next("sec_01")
+
+    assert sm.get_state()["stage"] == "building", (
+        "Stage must remain 'building' while a section is building"
+    )
+    assert sub._queue.empty(), "No stage.changed must be emitted while a section is building"
+
+
+@pytest.mark.asyncio
+async def test_rapid_accept_safety(tmp_path):
+    """Two rapid _check_done_or_next calls do not double-emit stage.changed(done).
+
+    N3-S01 acceptance: Given rapid accepts, when they occur, the loop is re-entrant safe.
+    """
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=_all_accepted_plan())
+    sub = bus.subscribe()
+
+    # Call twice (simulating rapid accepts / race).
+    await orch._check_done_or_next("sec_02")
+    await orch._check_done_or_next("sec_02")
+
+    # Collect all events.
+    received = []
+    try:
+        for _ in range(5):
+            event = await asyncio.wait_for(sub.__anext__(), timeout=0.2)
+            received.append(event)
+    except asyncio.TimeoutError:
+        pass
+
+    # stage.changed(done) must be emitted exactly once.
+    done_events = [
+        e for e in received if e.get("type") == "stage.changed" and e.get("stage") == "done"
+    ]
+    assert len(done_events) == 1, (
+        f"Expected exactly 1 stage.changed(done) event; got {len(done_events)}: {received}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_done_noop_when_not_building(tmp_path):
+    """_check_done_or_next is a no-op when the current stage is not 'building'."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="planning", plan=_all_accepted_plan())
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    sub = bus.subscribe()
+
+    await orch._check_done_or_next("sec_01")
+
+    assert sm.get_state()["stage"] == "planning", "Stage must not change when not building"
+    assert sub._queue.empty(), "No events emitted when stage is not building"
+
+
+@pytest.mark.asyncio
+async def test_start_next_queued_calls_check_done_when_no_queued(tmp_path):
+    """_start_next_queued_section calls _check_done_or_next when no queued sections remain.
+
+    Belt-and-suspenders fallback for the auto-sequence path: when all sections have been
+    processed (proposed/failed/accepted) via session.idle, the loop still reaches done.
+    """
+    plan = [
+        {
+            "id": "sec_01",
+            "title": "S1",
+            "hypothesis": "H1",
+            "status": "accepted",
+            "py_path": None,
+            "png_path": None,
+            "md_path": None,
+        },
+    ]
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=plan)
+    sub = bus.subscribe()
+
+    # _start_next_queued_section with no queued sections should trigger _check_done_or_next.
+    await orch._start_next_queued_section()
+
+    # Since all sections are accepted and stage is building → done.
+    assert sm.get_state()["stage"] == "done"
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "stage.changed"
+    assert event.get("stage") == "done"

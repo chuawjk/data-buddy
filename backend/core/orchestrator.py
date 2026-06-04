@@ -926,14 +926,70 @@ class Orchestrator:
         logger.info("section.proposed emitted: %s (ts=%d)", section_id, ts)
         await self._start_next_queued_section()
 
+    async def _check_done_or_next(self, section_id: str) -> None:
+        """Check whether all sections are terminal and transition to done if so.
+
+        Called by:
+        - ``POST /section/:id/accept`` and ``POST /section/:id/drop`` after the
+          status is persisted (direct user interaction path).
+        - ``_start_next_queued_section`` when it finds no more queued sections
+          (belt-and-suspenders for the auto-sequence path).
+
+        Terminal statuses are ``"accepted"``, ``"dropped"``, and ``"failed"``.
+        Non-terminal statuses (``"queued"``, ``"building"``) mean the loop is
+        still running and we must not fire ``done`` yet.
+
+        Re-entrant safety: the stage guard (``stage == "building"``) prevents
+        double-emission — after the first call persists ``stage="done"``, every
+        subsequent call returns early on the guard check.
+
+        Args:
+            section_id: The ID of the section that triggered this check
+                (informational; used only for logging).
+
+        N3-S01.
+        """
+        state = self._state_manager.get_state()
+        if state.get("stage") != "building":
+            logger.debug(
+                "_check_done_or_next: ignoring (stage=%r, expected building)",
+                state.get("stage"),
+            )
+            return
+
+        plan: list[dict[str, Any]] = state.get("plan") or []
+        _terminal = {"accepted", "dropped", "failed"}
+        non_terminal = [s.get("status") for s in plan if s.get("status") not in _terminal]
+        if non_terminal:
+            logger.debug(
+                "_check_done_or_next: %d section(s) still in non-terminal state %r — "
+                "auto-sequence is still running, deferring done check",
+                len(non_terminal),
+                non_terminal,
+            )
+            return
+
+        # All sections are terminal and we are still in the building stage.
+        logger.info(
+            "_check_done_or_next: all %d section(s) terminal after %r — "
+            "transitioning stage to done",
+            len(plan),
+            section_id,
+        )
+        self._state_manager.update(stage="done")
+        ts = int(time.time() * 1000)
+        await self._bus.publish("stage.changed", {"stage": "done", "ts": ts})
+        logger.info("stage.changed → done (ts=%d)", ts)
+
     async def _start_next_queued_section(self) -> None:
         """Find the next queued section and start its build turn.
 
         Called by ``_handle_section_idle`` after each section completes (success
         or failure).  Reads the current plan, finds the first section with
         ``status="queued"``, and delegates to ``start_build_section``.  If no
-        queued sections remain, logs and returns — the watchdog is already
-        cancelled by the caller.
+        queued sections remain, delegates to ``_check_done_or_next`` (N3-S01
+        belt-and-suspenders: the auto-sequence path must also reach done when
+        all sections are terminal).
         """
         state = self._state_manager.get_state()
         plan: list[dict[str, Any]] = state.get("plan") or []
@@ -942,7 +998,10 @@ class Orchestrator:
             None,
         )
         if next_section is None:
-            logger.info("_start_next_queued_section: all sections complete.")
+            logger.info("_start_next_queued_section: no queued sections remain.")
+            # Belt-and-suspenders: check if all sections are now terminal and
+            # transition to done if so (N3-S01).
+            await self._check_done_or_next("")
             return
 
         session_id: str | None = state.get("opencode_session_id")
