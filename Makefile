@@ -24,12 +24,12 @@ dev:
 	@echo "==> Starting dev servers (FastAPI :8000, Vite :5173)"
 	@echo "    NOTE: OpenCode is managed by the FastAPI backend (not started separately here)."
 	@echo "    Set SKIP_OPENCODE=1 to disable OpenCode (CI / no-agent mode)."
-	@trap 'kill 0' INT TERM; \
-	( \
-		uv run --project backend uvicorn backend.main:app --reload --reload-dir backend --port 8000 & \
-		pnpm --prefix frontend run dev & \
-		wait \
-	)
+	@uv run --project backend uvicorn backend.main:app --reload --reload-dir backend --port 8000 & \
+	BE_PID=$$!; \
+	pnpm --prefix frontend run dev & \
+	FE_PID=$$!; \
+	trap 'kill "$$BE_PID" "$$FE_PID" 2>/dev/null; wait "$$BE_PID" "$$FE_PID" 2>/dev/null' INT TERM EXIT; \
+	wait "$$BE_PID" "$$FE_PID"
 
 # ── test ──────────────────────────────────────────────────────────────────────
 test:

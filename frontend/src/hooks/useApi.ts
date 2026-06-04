@@ -62,11 +62,11 @@ export const api = {
    * API_CONTRACT.html §1 · POST /turn
    * Returns 204 No Content; resolves void on success.
    */
-  async postTurn(text: string): Promise<void> {
+  async postTurn(text: string, sectionId?: string): Promise<void> {
     const res = await fetch("/api/turn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(sectionId ? { text, section_id: sectionId } : { text }),
     });
     await throwIfError(res);
   },
@@ -83,6 +83,15 @@ export const api = {
     });
     await throwIfError(res);
     return res.json() as Promise<PlanUpdateResponse>;
+  },
+
+  /**
+   * POST /api/profile/accept — accept profile, advance to planning.
+   * Returns 204 No Content; resolves void on success.
+   */
+  async postProfileAccept(): Promise<void> {
+    const res = await fetch("/api/profile/accept", { method: "POST" });
+    await throwIfError(res);
   },
 
   /**
@@ -116,14 +125,14 @@ export const api = {
   },
 
   /**
-   * GET /api/export — export brief as Markdown.
+   * GET /api/export — export brief as a ZIP archive.
    * API_CONTRACT.html §1 · GET /export
-   * Returns the raw Markdown text (file download body).
+   * Returns a Blob (application/zip) for browser download.
    */
-  async getExport(): Promise<string> {
+  async getExport(): Promise<Blob> {
     const res = await fetch("/api/export", { method: "GET" });
     await throwIfError(res);
-    return res.text();
+    return res.blob();
   },
 
   /**

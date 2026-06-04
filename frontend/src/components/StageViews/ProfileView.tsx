@@ -25,6 +25,7 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
   const [profile, setProfile] = useState<Profile | null>(initialProfile);
   const [inputText, setInputText] = useState("");
   const [isTurnInFlight, setIsTurnInFlight] = useState(false);
+  const [isAccepting, setIsAccepting] = useState(false);
 
   const handleEvent = useCallback((event: SSEEvent) => {
     if (event.type === "profile.ready") {
@@ -68,20 +69,64 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
   );
 
   const isSubmitDisabled = inputText.trim() === "" || isTurnInFlight;
+  const showLoading = profile === null || isTurnInFlight;
+
+  const handleAccept = useCallback(async () => {
+    if (isAccepting) return;
+    setIsAccepting(true);
+    try {
+      await api.postProfileAccept();
+    } catch {
+      setIsAccepting(false);
+    }
+    // On success, App.tsx will receive stage.changed and unmount this view.
+  }, [isAccepting]);
 
   return (
     <div data-testid="profile-view" className="flex flex-col gap-4">
+      {showLoading && (
+        <div
+          data-testid="profile-loading-spinner"
+          className="flex items-center gap-3 py-6 text-[#9b9489]"
+        >
+          <svg
+            className="animate-spin h-5 w-5 text-[#b8732a]"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          <span className="text-sm">
+            {profile === null ? "Profiling dataset..." : "Revising profile..."}
+          </span>
+        </div>
+      )}
+
       {profile !== null && (
         <div
           data-testid="shape-strip"
-          className="flex gap-6 bg-[#f4e5d0] border border-[#ddd5c5] rounded-lg px-5 py-3 text-sm font-medium text-[#5d5a52] mb-6"
+          className="flex gap-6 bg-[#faf7f0] border border-[#ddd5c5] rounded px-5 py-3 text-sm font-medium text-[#5d5a52] mb-6"
         >
           <div className="flex flex-col items-center">
-            <span className="text-lg font-semibold text-[#1a1a17]">{profile.shape.rows}</span>
+            <span className="text-lg font-semibold text-[#1a1a17]">{profile.shape.rows ?? profile.shape.total_rows}</span>
             <span className="text-xs">rows</span>
           </div>
           <div className="flex flex-col items-center">
-            <span className="text-lg font-semibold text-[#1a1a17]">{profile.shape.columns}</span>
+            <span className="text-lg font-semibold text-[#1a1a17]">{profile.shape.columns ?? profile.shape.total_columns}</span>
             <span className="text-xs">columns</span>
           </div>
           {profile.shape.nulls_pct !== undefined && (
@@ -94,9 +139,7 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
           )}
           {profile.shape.target !== null && (
             <div className="flex flex-col items-center">
-              <span className="text-base font-semibold text-[#1a1a17]">
-                {profile.shape.target}
-              </span>
+              <span className="text-base font-semibold text-[#1a1a17]">{profile.shape.target}</span>
               <span className="text-xs">target (inferred)</span>
             </div>
           )}
@@ -104,7 +147,7 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
       )}
 
       {profile !== null && profile.columns.length > 0 && (
-        <div className="rounded-lg border border-[#ddd5c5] overflow-hidden">
+        <div className="rounded border border-[#ddd5c5] overflow-hidden">
           {profile.columns.map((col, idx) => (
             <div
               key={col.name}
@@ -113,8 +156,8 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
                 idx % 2 === 0 ? "bg-white" : "bg-[#faf7f0]"
               }`}
             >
-              <span className="font-medium text-[#1a1a17] w-40 shrink-0">{col.name}</span>
-              <span className="bg-[#dbeae8] text-[#4a7a76] text-xs px-2 py-0.5 rounded shrink-0">
+              <span className="font-mono font-medium text-[#1a1a17] text-[13px] w-40 shrink-0">{col.name}</span>
+              <span className="font-mono bg-[#faf7f0] text-[#9b9489] border border-[#e8e1d1] text-xs px-2 py-0.5 rounded-sm shrink-0">
                 {col.type}
               </span>
               <span className="text-[#5d5a52] flex-1">{col.summary}</span>
@@ -135,7 +178,7 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
         </div>
       )}
 
-      <div className="mt-6 flex gap-3">
+      <div className="mt-4 flex gap-3">
         <input
           data-testid="reprof-input"
           type="text"
@@ -144,18 +187,32 @@ export default function ProfileView({ profile: initialProfile }: ProfileViewProp
           onKeyDown={handleKeyDown}
           placeholder="Anything to flag before the plan? e.g. 'cap support_tickets at p99'…"
           disabled={isTurnInFlight}
-          className="flex-1 border border-[#ddd5c5] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
+          className="flex-1 border border-[#ddd5c5] rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
         />
         <button
           data-testid="reprof-submit"
           type="button"
           onClick={() => void handleSubmit()}
           disabled={isSubmitDisabled}
-          className="bg-[#b8732a] text-white rounded-lg px-5 py-2.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+          className="bg-[#b8732a] text-white rounded-sm px-5 py-2.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Send
         </button>
       </div>
+
+      {profile !== null && (
+        <div className="flex">
+          <button
+            data-testid="profile-accept-btn"
+            type="button"
+            onClick={() => void handleAccept()}
+            disabled={isAccepting}
+            className="bg-[#4a7a76] text-white rounded-sm px-6 py-2.5 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isAccepting ? "Accepting..." : "Accept profile"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

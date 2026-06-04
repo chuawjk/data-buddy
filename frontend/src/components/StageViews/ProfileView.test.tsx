@@ -22,11 +22,13 @@ import type { Profile } from "../../types/api";
 
 const mockGetState = vi.fn();
 const mockPostTurn = vi.fn();
+const mockPostProfileAccept = vi.fn();
 
 vi.mock("../../hooks/useApi", () => ({
   api: {
     getState: (...args: unknown[]) => mockGetState(...args),
     postTurn: (...args: unknown[]) => mockPostTurn(...args),
+    postProfileAccept: (...args: unknown[]) => mockPostProfileAccept(...args),
   },
 }));
 
@@ -91,6 +93,8 @@ describe("ProfileView", () => {
     vi.clearAllMocks();
     // Default: postTurn resolves immediately (204)
     mockPostTurn.mockResolvedValue(undefined);
+    // Default: postProfileAccept resolves immediately (204)
+    mockPostProfileAccept.mockResolvedValue(undefined);
     // Default: getState resolves with state including the sample profile
     mockGetState.mockResolvedValue({
       version: "1",
@@ -228,6 +232,8 @@ describe("ProfileView", () => {
   it("test_renders_null_profile — renders gracefully with null profile (loading state)", () => {
     render(<ProfileView profile={null} />);
 
+    expect(screen.getByTestId("profile-loading-spinner")).toBeInTheDocument();
+
     // Should not crash; shape-strip and column-row should not appear
     expect(screen.queryByTestId("shape-strip")).toBeNull();
     expect(screen.queryByTestId("column-row")).toBeNull();
@@ -235,6 +241,20 @@ describe("ProfileView", () => {
     // Bottom bar input and submit should still render
     expect(screen.getByTestId("reprof-input")).toBeInTheDocument();
     expect(screen.getByTestId("reprof-submit")).toBeInTheDocument();
+  });
+
+  it("test_loading_spinner_during_revision — shows a loading spinner while a turn is pending", async () => {
+    mockPostTurn.mockReturnValue(new Promise(() => {}));
+
+    render(<ProfileView profile={SAMPLE_PROFILE} />);
+
+    expect(screen.queryByTestId("profile-loading-spinner")).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByTestId("reprof-input"), "focus on account age");
+    await userEvent.click(screen.getByTestId("reprof-submit"));
+
+    expect(screen.getByTestId("profile-loading-spinner")).toBeInTheDocument();
+    expect(screen.getByTestId("profile-loading-spinner")).toHaveTextContent("Revising profile");
   });
 
   // -------------------------------------------------------------------------
@@ -256,5 +276,75 @@ describe("ProfileView", () => {
     expect(input).toHaveValue("focus on age");
     // Submit button must be re-enabled after the failed call.
     expect(submit).not.toBeDisabled();
+  });
+
+  // -------------------------------------------------------------------------
+  // test_accept_button_present_with_profile
+  // -------------------------------------------------------------------------
+
+  it("test_accept_button_present_with_profile — accept button renders when profile is loaded", () => {
+    render(<ProfileView profile={SAMPLE_PROFILE} />);
+
+    const btn = screen.getByTestId("profile-accept-btn");
+    expect(btn).toBeInTheDocument();
+    expect(btn).not.toBeDisabled();
+  });
+
+  it("test_accept_button_below_bottom_bar — accept button renders after the re-profile controls", () => {
+    render(<ProfileView profile={SAMPLE_PROFILE} />);
+
+    const submit = screen.getByTestId("reprof-submit");
+    const accept = screen.getByTestId("profile-accept-btn");
+
+    expect(submit.compareDocumentPosition(accept)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  // -------------------------------------------------------------------------
+  // test_accept_button_absent_without_profile
+  // -------------------------------------------------------------------------
+
+  it("test_accept_button_absent_without_profile — accept button not rendered while profile is null", () => {
+    render(<ProfileView profile={null} />);
+
+    expect(screen.queryByTestId("profile-accept-btn")).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // test_accept_button_calls_api
+  // -------------------------------------------------------------------------
+
+  it("test_accept_button_calls_api — clicking accept calls api.postProfileAccept", async () => {
+    const user = userEvent.setup();
+    render(<ProfileView profile={SAMPLE_PROFILE} />);
+
+    const btn = screen.getByTestId("profile-accept-btn");
+    await user.click(btn);
+
+    expect(mockPostProfileAccept).toHaveBeenCalledOnce();
+  });
+
+  // -------------------------------------------------------------------------
+  // test_accept_button_disabled_while_in_flight
+  // -------------------------------------------------------------------------
+
+  it("test_accept_button_disabled_while_in_flight — button is disabled while accept is pending", async () => {
+    // Hold the promise so we can inspect mid-flight state.
+    let resolveAccept!: () => void;
+    mockPostProfileAccept.mockReturnValue(
+      new Promise<void>((res) => {
+        resolveAccept = res;
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<ProfileView profile={SAMPLE_PROFILE} />);
+
+    const btn = screen.getByTestId("profile-accept-btn");
+    await user.click(btn);
+
+    expect(btn).toBeDisabled();
+
+    // Resolve so the component can settle.
+    act(() => resolveAccept());
   });
 });

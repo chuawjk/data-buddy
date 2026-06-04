@@ -64,7 +64,7 @@ export default function SetupView() {
 
   return (
     <div data-testid="setup-view" className="flex items-center justify-center py-12">
-      <div className="bg-white border border-[#ddd5c5] rounded-xl p-8 shadow-sm max-w-lg w-full">
+      <div className="bg-white border border-[#ddd5c5] rounded p-8 shadow-sm max-w-lg w-full">
         <h2 className="text-xl font-semibold text-[#1a1a17] mb-2">Upload your dataset</h2>
         <p className="text-sm text-[#5d5a52] mb-6">
           Drop a CSV file below, then tell the agent what you&apos;re trying to learn. The plan and
@@ -102,7 +102,7 @@ export default function SetupView() {
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               className={[
-                "mt-1 w-full border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
+                "mt-1 w-full border-2 border-dashed rounded p-8 text-center cursor-pointer transition-colors",
                 dragging
                   ? "border-[#b8732a] bg-[#b8732a]/5"
                   : "border-[#ddd5c5] hover:border-[#b8732a]/50",
@@ -117,17 +117,17 @@ export default function SetupView() {
             </div>
           </div>
 
-          {/* Aim textarea */}
+          {/* Aim input */}
           <div className="mt-4">
             <label className="block text-sm font-medium text-[#1a1a17]">
               Aim of investigation
             </label>
-            <textarea
+            <input
               data-testid="aim-input"
+              type="text"
               placeholder="e.g. understand drivers of customer churn in Q3 2025"
               value={aim}
-              rows={2}
-              className="mt-1 w-full border border-[#ddd5c5] rounded-lg p-3 text-sm text-[#1a1a17] resize-none focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
+              className="mt-1 w-full border border-[#ddd5c5] rounded p-3 text-sm text-[#1a1a17] focus:outline-none focus:ring-2 focus:ring-[#b8732a]/30"
               onChange={(e) => {
                 setAim(e.target.value);
                 setError(null);
@@ -147,7 +147,7 @@ export default function SetupView() {
             data-testid="submit-btn"
             type="submit"
             disabled={!canSubmit}
-            className="mt-6 w-full bg-[#b8732a] text-white rounded-lg py-2.5 text-sm font-medium hover:bg-[#a06120] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="mt-6 w-full bg-[#1a1a17] text-white rounded-sm py-2.5 text-sm font-medium hover:bg-[#333330] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {submitting ? "Starting..." : "Start analysis"}
           </button>

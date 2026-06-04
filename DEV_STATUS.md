@@ -4,294 +4,215 @@
 
 ---
 
-## Night 1 complete — all demo wiring fixed; develop green; awaiting morning review for develop → main promotion
+## Current Status
+
+**Branch:** `develop`
+
+**Night 2 is complete.** All lane stories, integration, and QA are merged. QA passed with 63 structural assertions, 0 blocking defects, and 486 total tests at the Night 2 gate. The branch is awaiting morning human review for `develop` -> `main` promotion before Night 3 starts.
+
+**Post-Night-2 UX fixes are recorded and should be treated as current handoff context:**
+
+- Building-stage revision is section-targeted: `POST /turn` accepts optional `section_id`; `orchestrator.redirect_section(text, section_id)` rebuilds only that section, clears stale artefact paths, and emits `section.building`.
+- The building-stage global bottom bar was removed; each proposed section owns its own revision input/button.
+- Profiling and planning now show loading spinners while initial/revision turns are in flight.
+- `Accept profile` and `Accept plan & start building` sit below their revision controls and use the teal primary action style.
+- Header `Export` is hidden until `building` / `done`.
+- Frontend SSE types include `session.idle`; Vite config uses Vitest's typed `defineConfig`.
+- Latest recorded verification:
+  - Targeted section revision branch: `make test` passed (327 backend + 175 frontend tests); `make lint` passed.
+  - Stage controls branch: `pnpm --prefix frontend run lint`, `pnpm --prefix frontend run test` (180 tests), and `pnpm --prefix frontend run build` passed.
 
 ---
 
-## Current branch: `develop`
+## Night 1 Summary
 
-Pre-sprint infrastructure merged (PR #2, squash commit `69ae52f`):
-- `.github/workflows/ci.yml` — single `ci` job; triggers on push/PR to `main` and `develop`; sets up uv + Python 3.12, Node 22, pnpm; runs `make install` → `make lint` → `make test`.
+**Goal:** Walking skeleton through setup -> profiling, with live OpenCode events, state persistence, second-turn re-profile, watchdog recovery, and the first usable frontend views.
 
----
+**Outcome:** Complete, QA passed, promoted to `main` after morning review.
 
-## Night 1 — Walking skeleton through Profiling (+ second-turn recovery)
+Night 1 established the core spine:
 
-**Status: COMPLETE. All lane stories merged, integration merged, QA passed. Awaiting morning human review for develop → main promotion.**
+- Project scaffold, CI, `make install` / `make dev` / `make test` / `make lint`.
+- FastAPI app skeleton with `EventBus`, `StateManager`, typed REST stubs, and `GET /events` SSE streaming.
+- OpenCode lifecycle owned by the backend; event subscription normalises OpenCode events into the app SSE contract.
+- Setup flow: `POST /setup` validates CSV + aim, writes the dataset into `workspace/data/`, persists initial state, and transitions to profiling.
+- Profiling flow: prompt/schema in `backend/prompts/profile.py`; OpenCode writes `workspace/profile.json`; orchestrator reads it on `session.idle`, updates `state.json`, and emits `profile.ready`.
+- Re-profile flow: `POST /turn` in `profiling` dispatches `orchestrator.re_profile(text)`.
+- Watchdog: aborts stalled turns, creates/persists a fresh OpenCode session, and emits `turn.error`.
+- Frontend setup/profile views, Activity Rail, API/SSE hooks, stable `data-testid` selectors, drag-and-drop upload, concise activity log, and light styling.
 
-### Merged to `develop`
+Important Night 1 carry-forward decisions:
 
-- `chore/ci-workflow` — GitHub Actions CI workflow (pre-sprint infra, PR #2, `69ae52f`)
-- `feat/n1-s01-scaffold` — **N1-S01 · Project scaffold & dev loop** (PR #3, squash `77c8550`)
-  - `Makefile`: `install`, `dev`, `test`, `lint`, `format` targets
-  - `backend/`: `main.py` stub, `pyproject.toml` (FastAPI/uvicorn/httpx/httpx-sse + ruff/pytest), `uv.lock`, `tests/{unit,integration}/` skeleton
-  - `frontend/`: Vite+React+TS scaffold, ESLint, Prettier, Vitest, Playwright, `pnpm-workspace.yaml`
-  - `.pre-commit-config.yaml`: ruff hooks
-  - `CLAUDE.md`: frontend module map updated
-  - CI green on merge
-- `feat/n1-s07-sse-contract` — **N1-S07 · Reconciled SSE event contract** (PR #5, squash `117dfc1`)
-  - `docs/contracts/SSE_CONTRACT.md`: authoritative mapping of all 13 backend→SPA event types
-  - All 6 divergences (D1–D6) documented with handler-actionable detail
-  - Placement at `docs/contracts/` (not `backend/docs/`) accepted; rationale recorded in the doc
-  - CI pending at merge time (pre-N1-S01 state; expected); merged with `--admin`
-- `feat/n1-s13-frontend-scaffold` — **N1-S13 · Frontend scaffold & stage routing** (PR #7, squash `fae8303`)
-  - `App.tsx`: calls `GET /api/state` on mount, routes on `stage`, no business logic
-  - Four StageView stubs at `frontend/src/components/StageViews/` with `data-testid` attributes
-  - Vite `/api` proxy to `:8000` in `vite.config.ts`
-  - Tailwind v4 via `@tailwindcss/vite` plugin + `@import "tailwindcss"` in `index.css`
-  - 8 Vitest tests pass, lint clean; CI green on merge
-  - Note: N1-S13 commit was originally on `feat/n1-s02-app-skeleton`; separated to a clean branch before merge for story-level tracking
-- `feat/n1-s02-app-skeleton` — **N1-S02 · FastAPI app skeleton & event bus** (PR #6, squash `0da0543`)
-  - `backend/event_bus.py`: `EventBus` fan-out pub/sub; one `asyncio.Queue` per subscriber; independent envelope copy per subscriber; no replay for late subscribers
-  - `backend/router.py`: all 10 REST routes from `API_CONTRACT.html` registered with typed stubs; no route returns 404 or 5xx
-  - `backend/main.py`: `lifespan` wires `EventBus` to `app.state.bus`; router mounted
-  - 16 backend tests pass (5 event-bus + 10 router + 1 health); lint clean
-  - Hard boundary respected: no `httpx` in router/orchestrator; no orchestrator import in client code
-  - Process note: PR #6 branch also contained the original N1-S13 FE commit (branch collision); FE work was lane-clean (touches `frontend/` only). Stale remote branch `origin/feat/n1-s13-frontend-routing` confirmed identical to PR #6's FE commit and deleted post-merge.
+- `docs/contracts/SSE_CONTRACT.md` is the authoritative SSE contract.
+- `workspace/profile.json` is a file contract. Prompts must instruct OpenCode to write it; returning JSON in chat is not sufficient.
+- `OpenCodeClient.start()` owns the OpenCode subprocess; `make dev` does not start `opencode serve` separately.
+- OpenCode v1.15.13 `prompt_async` payload uses `parts: [{type, text}]` and flat `format.schema`.
+- `PROFILE_SCHEMA.shape.target` is required and nullable (`string | null`), matching `API_CONTRACT.html`.
 
-- `feat/n1-s14-api-sse-hooks` — **N1-S14 · API & event hooks** (PR #8, squash `008a6ba`)
-  - `frontend/src/hooks/useApi.ts`: `api` object with 9 typed async functions covering all REST endpoints; FormData for `/setup`; query-param encoding for `/file`; `ApiError` thrown on non-2xx
-  - `frontend/src/hooks/useSSE.ts`: `useSSE(onEvent)` React hook; `EventSource("/api/events")`; 2 s reconnect on error; cleans up on unmount; returns `{ connected: boolean }`
-  - `frontend/src/types/events.ts`: `SSEEvent` discriminated union over all 13 types from `SSE_CONTRACT.md §2`; field shapes match contract exactly
-  - `frontend/src/types/api.ts`: `Stage`, `SectionStatus`, `ColumnType`, `ColumnProfile`, `Profile`, `Section`, `StateResponse`, `SetupResponse`, `PlanUpdateRequest`, `PlanUpdateResponse`, `ApiError` — all derived from `API_CONTRACT.html`
-  - 29 tests pass (13 useApi + 8 useSSE + 8 App.test); lint clean; CI green on merge
+Night 1 defects closed:
 
-- `feat/n1-s03-state-store` — **N1-S03 · State store & `GET /state`** (PR #9, squash `2c64c43`)
-  - `backend/state_manager.py` (new): `StateManager` class; atomic write via `state.tmp.json` + `os.replace()`; `save()` / `save_async(lock)` (deferred write while turn lock held) / `update(**kwargs)` / `get_state()` / `load()`; `opencode_session_id` held internally, stripped at router boundary
-  - `backend/main.py`: `StateManager()` instantiated on `app.state.state_manager` in lifespan; `load()` called at startup to re-hydrate from disk
-  - `backend/router.py`: `GET /state` reads from `app.state.state_manager`; strips `opencode_session_id` before returning
-  - 29 backend tests pass (9 state-manager + 10 router + 5 event-bus + 1 health + 4 sse-proxy); lint clean; CI green on merge
-
-- `feat/n1-s17-activity-rail` — **N1-S17 · Activity rail** (PR #10, squash `8cbc4c9`)
-  - `frontend/src/components/ActivityRail.tsx` (new): subscribes to `useSSE`; renders `tool.bash_running` / `tool.bash_done` / `tool.file_written` items in arrival order; accumulates `message.part` content into text buffer; resets all state on `session.idle`
-  - All required `data-testid` seams present: `activity-rail`, `activity-tool-running`, `activity-tool-done`, `activity-file-written`, `activity-message`
-  - 7 ActivityRail tests; 42 frontend tests total pass; lint clean; CI green on merge
-  - Note: self-approve not possible on GitHub (same account owns PR); merged after all three gates (acceptance, lane boundary, CI) verified green
-
-- `feat/n1-s10-sse-stream` — **N1-S10 · Browser event stream (`GET /events`)** (PR #11, squash `2e616ee`)
-  - `backend/sse_proxy.py` (new): `event_stream(bus)` factory registers subscription synchronously at call time; inner `_generate` async generator yields `data: <json>\n\n`; emits `: keepalive\n\n` on 15 s silence; `finally` block unregisters via `bus._unregister(subscription._queue)`
-  - `backend/router.py`: `GET /events` replaced — `StreamingResponse(event_stream(bus))` with `media_type="text/event-stream"`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`; stub `_stub_sse_stream()` removed
-  - `backend/tests/unit/app/test_sse_proxy.py` (new): 4 TDD tests — event forwarding, ordering, disconnect cleanup, keepalive on silence; all use real `EventBus`
-  - `backend/tests/unit/app/test_router.py`: `test_get_events_registered` calls route handler directly with `MagicMock` request; checks `StreamingResponse` type, `media_type`, and headers (does not consume the infinite stream body)
-  - `backend/main.py`: TL hygiene fix — reverted accidental `orchestrator` import introduced in a prior TL DEV_STATUS commit; restored correct N1-S03 state (`EventBus + StateManager` only)
-  - 29 backend tests pass (4 sse-proxy + 10 router + 9 state-manager + 5 event-bus + 1 health); lint clean; tests run locally (no CI run on branch due to unregistered check)
-  - Merge note: PR had conflict in `router.py` (develop moved ahead with N1-S03 StateManager integration after the PR branch was cut); resolved by applying N1-S10 SSE changes onto develop's version via git plumbing; PR #11 closed with comment referencing squash SHA
-
-- `feat/n1-s06-opencode-client` — **N1-S06 · OpenCode process & session** (PR #12, squash `daee4ba`)
-  - `backend/main.py`: `OpenCodeClient` wired into lifespan; `SKIP_OPENCODE=1` env var skips startup for CI; failed startup logs but does not crash server; `client.stop()` on shutdown
-  - `opencode_client.py` and its 6 unit tests already on develop via `8fe71cf` (lane deviation; see ADR below)
-  - TL hygiene fix: ruff I001 import sort in `test_router.py` to pass CI lint gate
-  - 35 backend tests pass; CI green on merge
-
-- `feat/n1-s05-setup-endpoint` — **N1-S05 · Setup endpoint** (PR #16, squash `e7640ec`)
-  - `backend/orchestrator.py` (new): minimal `Orchestrator` stub; `setup_complete()` advances stage to `profiling` and emits `stage.changed`; no `httpx` import; client never imports orchestrator
-  - `backend/router.py`: `POST /setup` real handler — validates aim, content-type (.csv), size (≤10 MB); writes CSV to `workspace/data/`; persists initial state; fire-and-forgets `orchestrator.setup_complete()`
-  - `backend/main.py`: `Orchestrator` wired into lifespan alongside `OpenCodeClient`
-  - `backend/pyproject.toml`: `python-multipart>=0.0.9` added
-  - 5 new unit tests (`test_setup.py`); 40 backend tests total pass; CI green on merge
-  - Conflict resolution: main.py merged N1-S06 OpenCodeClient + N1-S05 Orchestrator wiring; router.py kept N1-S10 SSE + N1-S05 /setup real handler
-
-- `feat/n1-s15-setup-screen` — **N1-S15 · Setup screen** (PR #13, squash `a77542e`)
-  - `frontend/src/components/StageViews/SetupView.tsx`: `csv-input`, `aim-input`, `submit-btn` (disabled when no file or empty aim); calls `api.postSetup(file, aim)`; surfaces error in `setup-error`
-  - `frontend/src/components/StageViews/SetupView.test.tsx`: 6 Vitest tests; 42 frontend tests total pass
-  - Only `frontend/` touched; CI green on merge
-
-- `feat/n1-s16-profile-view-v2` — **N1-S16 · Profile screen & re-profile bar** (PR #15, squash `67cc7e7`)
-  - `frontend/src/components/StageViews/ProfileView.tsx`: `shape-strip` (rows/columns), `column-row` list (name, type, flags, summary), `reprof-input`/`reprof-submit`; updates on `profile.ready` SSE via `api.getState()`
-  - `frontend/src/App.tsx`: passes `profile` prop from `GET /state` response down to `ProfileView`; adds `Profile | null` to `AppState`
-  - `frontend/src/App.test.tsx`: adds `useSSE` mock for profile-stage test
-  - `frontend/src/components/StageViews/ProfileView.test.tsx`: 8 Vitest tests; 44 frontend tests total pass
-  - Only `frontend/` touched; CI green on merge
-
-- `feat/n1-s21-test-selectors` — **N1-S21 · Stable test selectors (`data-testid`)** (PR #17, squash `654bd08`)
-  - Audit-only commit: all 17 required `data-testid` attributes were already present from N1-S15, N1-S16, N1-S17; no file changes needed
-  - Confirmed present: `setup-view`, `csv-input`, `aim-input`, `submit-btn`, `setup-error` (SetupView); `profile-view`, `shape-strip`, `column-row`, `reprof-input`, `reprof-submit` (ProfileView); `activity-rail`, `activity-tool-running`, `activity-tool-done`, `activity-file-written`, `activity-message` (ActivityRail); `plan-view` (PlanView); `build-view` (BuildView)
-  - 50 FE + 40 BE tests pass; lint clean; CI green on merge
-  - Self-approve not possible (same account owns PR); merged after all three gates verified green
-
-- `feat/n1-s08-event-subscription` — **N1-S08 · Live events from OpenCode** (PR #18, squash `a8822a1`)
-  - `backend/opencode_client.py`: `start_event_subscription(bus, heartbeat_timeout=30)` — persistent `GET /event` SSE connection as background asyncio Task; reconnects on `asyncio.TimeoutError`, `StopAsyncIteration`, or exception with 100ms back-off; single connection enforced by one `create_task` call in lifespan
-  - Session filter: `_SESSION_SCOPED_TYPES` frozenset covers all session-scoped event types; events with non-matching `sessionID` silently dropped; global types (`server.heartbeat`, `file.edited`, `server.connected`) bypass filter
-  - `_normalise_and_publish`: full mapping per SSE_CONTRACT.md §2 — `message.part.delta` → `message.part`; `message.part.updated` (bash, running) → `tool.bash_running`; (bash, completed) → `tool.bash_done`; (any tool, completed, metadata.files present) → `tool.file_written` per file (D1: no tool-name hardcoding); `session.idle` → `session.idle`; `file.edited` → `file.ready`; `server.heartbeat` → timer reset only, not published; all others silently dropped
-  - Reconnect on heartbeat silence: `asyncio.wait_for` on each `__anext__` with `remaining` seconds; `asyncio.TimeoutError` returns from `_run_one_connection` triggering outer reconnect loop
-  - `stop_event_subscription()` / `_register_subscription_task()` wired into `main.py` lifespan shutdown
-  - `backend/tests/unit/app/test_event_subscription.py`: 9 new unit tests; 49 BE tests total pass; 50 FE tests pass; lint clean; CI green on merge
-  - Self-approve not possible (same account owns PR); merged after all three gates verified green
-
-- `feat/n1-s09-profiling-turn` — **N1-S09 · Profiling turn → `profile.json`** (PR #19, squash `ca389ac`)
-  - `backend/opencode_client.py`: `prompt(session_id, text, schema=None)` added — POSTs to `/session/:id/prompt_async` (spike-confirmed v1 path); returns immediately (204); when schema provided, payload includes `format: {type: "json_schema", json_schema: {name: "output", schema: <schema>}, retryCount: 2}`; no format key when schema=None
-  - `backend/prompts/__init__.py` (new): package init
-  - `backend/prompts/profile.py` (new): `PROFILE_SCHEMA` — top-level required: `shape{rows,columns}`, `columns[]{name,type,flags,summary}`, `flags[]`; `build_profile_prompt(dataset, aim)` references `workspace/data/<dataset>` and aim text
-  - `backend/tests/unit/app/test_profile_prompt.py` (new): 4 TDD tests — schema payload with/without format block, schema field validation, prompt content; 53 BE tests total pass; 50 FE tests pass; lint clean; CI green on merge
-  - Hard boundary clean: `opencode_client.py` does not import orchestrator; deviation noted in PR — `session.idle → profile.ready` wired in orchestrator (N1-S04), not client, which is correct per boundary rules
-  - Self-approve not possible (same account owns PR); merged after all three gates verified green
-
-- `feat/n1-s04-orchestrator` — **N1-S04 · Stage orchestrator (setup → profiling)** (PR #20, squash `c6f76cd`)
-  - `backend/orchestrator.py`: full state machine replacing N1-S05 stub; `client: OpenCodeClient | None` param; `setup_complete()` persists `stage=profiling` via `state_manager.update()` then publishes `stage.changed` then fire-and-forgets `_run_profile_turn` via `asyncio.create_task`; `_build_profile_prompt` and `_load_profile_schema` gracefully import from `backend.prompts.profile` (N1-S09) with `ImportError` fallback; no `httpx` import — verified by AST check
-  - `backend/main.py`: `client=client` wired into `Orchestrator` constructor in lifespan; `None` guard when `SKIP_OPENCODE=1`
-  - `backend/tests/unit/app/test_orchestrator.py` (new): 5 TDD tests — transition to profiling, stage.changed emission, profile turn triggered with session, profile turn not triggered without session, no-httpx-import AST boundary check
-  - 58 BE tests pass, 50 FE tests pass (108 total); lint clean; CI green on merge
-  - Self-approve not possible (same account owns PR); merged after all three gates verified green
-
-- `feat/n1-s11-watchdog` — **N1-S11 · Stuck-turn watchdog & recovery** + **N1-S20 · Testability seams** (PR #21, squash `5efd7fe`)
-  - `backend/watchdog.py` (new): `Watchdog` class — `start_turn()` creates an `asyncio.Task` sleeping `WATCHDOG_TIMEOUT` seconds; `heartbeat()` cancels and restarts the task (timer reset); `cancel()` cancels it; on expiry: `_handle_timeout()` calls `client.abort(session_id)` best-effort (errors swallowed), sleeps 10s grace, calls `client.create_fresh_session()`, calls `state_manager.update(opencode_session_id=new_id)`, publishes `turn.error`; no-session-id edge case handled (skips abort/fresh-session, still publishes `turn.error`); `WATCHDOG_TIMEOUT` read from `WATCHDOG_TIMEOUT_SECONDS` env var (default 60)
-  - `backend/opencode_client.py` (additive only relative to N1-S09): `abort(session_id)` — best-effort POST to `/session/:id/abort`, all errors swallowed; `create_fresh_session()` — delegates to refactored `_create_session()` which now returns `str` (no side effects); `start()` owns side effects (`self._session_id = session_id`, `state_manager.update()`); `QA_FORCE_STALL=1` seam in `_run_one_connection` suppresses events after the first, off by default, zero production path impact
-  - `backend/tests/unit/app/test_watchdog.py` (new): 8 TDD tests — timeout triggers abort, fresh session after grace, state updated with new session ID, `turn.error` emitted, heartbeat resets timer (no abort), cancel stops watch (no abort), `WATCHDOG_TIMEOUT_SECONDS` env var override, no-session-id skips abort but still emits `turn.error`
-  - Rebase: conflict in `opencode_client.py` between N1-S09's `_create_session()` (void, side effects) and N1-S11's refactor (returns `str`, no side effects). Resolved: kept N1-S11's design (`_create_session()` returns `str`, `start()` owns side effects) — correct because `create_fresh_session()` must reuse `_create_session()` without duplicating logic. All N1-S09 changes (`prompt()` method) preserved intact.
-  - 66 BE tests pass, 50 FE tests pass (116 total); lint clean; CI green on merge
-
-- `feat/n1-s12-reprof-turn` — **N1-S12 · Re-profile turn (`POST /turn`)** (PR #22, squash `e52c962`)
-  - `backend/orchestrator.py`: `Watchdog | None` param added to `__init__`; `re_profile(text)` added — validates active session + stage=profiling (raises `ValueError` on either), builds re-profile prompt (base profile prompt + user note via `_build_profile_prompt`), arms `watchdog.start_turn()` if wired in, fire-and-forgets `_run_profile_turn()` via `asyncio.create_task` (same error-handling wrapper as `setup_complete`)
-  - `backend/router.py`: `POST /turn` real handler — strips + validates `text` (422 `invalid_text` on empty/whitespace); reads stage from `state_manager`; dispatches `orchestrator.re_profile(text)` as background task when stage=profiling, returns 204 immediately; 422 `invalid_stage` for any other stage; error envelopes match `POST /setup` pattern
-  - `backend/main.py`: `Watchdog` instantiated in lifespan when `client is not None`; stored on `app.state.watchdog`; passed to `Orchestrator` constructor
-  - `backend/tests/unit/app/test_turn.py` (new): 8 TDD tests — 204 + re_profile dispatched, empty text 422, missing text 422, wrong stage 422, client.prompt called with correct session+schema, ValueError without session, ValueError wrong stage, watchdog.start_turn called when wired
-  - Accepted deviation: `re_profile()` reuses `_run_profile_turn()` wrapper instead of calling `client.prompt()` directly — same error→`turn.error` path as `setup_complete`; strictly better behaviour
-  - 74 BE tests pass, 50 FE tests pass (124 total); lint clean; CI green on merge
-
-- `integrate/n1-s18` + `fix/app-sse-subscription` — **N1-S18 · Integrate Night 1 slice** + **App.tsx SSE fix** (squash `8dfeaf1`, PR #23)
-  - `backend/orchestrator.py`: `start_bus_listener()` background task + `_handle_profile_idle()` — reads `workspace/profile.json` on `session.idle`, validates required fields, updates `state.json`, emits `profile.ready` on bus
-  - `backend/main.py`: bus listener task started in lifespan; shut down cleanly before OpenCode on exit
-  - `backend/prompts/profile.py`: `build_profile_prompt()` updated to instruct OpenCode to write the JSON to `workspace/profile.json` (not just "return JSON" in message content)
-  - `Makefile`: `make dev` no longer starts `opencode serve` separately — backend owns OpenCode lifecycle via `OpenCodeClient.start()`
-  - `frontend/src/App.tsx`: `useSSE(onEvent)` called additively alongside mount `useEffect`; `onEvent` handles `stage.changed` + `profile.ready` by calling `api.getState()` and merging result into local state — UI now advances automatically after `POST /setup`
-  - `frontend/src/App.test.tsx`: 2 new tests (`reacts to stage.changed`, `reacts to profile.ready`); useSSE mock updated to capture callback for test injection
-  - 52 FE + 78 BE = 130 total pass; lint clean; CI green on merge
-  - ADR-011 (profile prompt file-write), ADR-012 (OpenCode lifecycle ownership) appended as Proposed
-  - FE integration blocker resolved
-
-- **N1-S19 · Night 1 QA & demo script** — **Complete — PASS** (structural PASS / live PASS, all 6 demo steps)
-  - QA run date: 2026-06-02
-  - All 6 structural assertions passed: profile schema fields, orchestrator httpx boundary, opencode_client orchestrator boundary, single event connection, data-testid completeness (19 unique, >= 17 required), make test (130/130), make lint (clean)
-  - Live demo path defects found: QA-01 (SSE `await aconnect_sse` crash loop), QA-02 (`prompt_async` payload 400 — v1.15.13 schema change)
-  - Both defects fixed in commit `f63787c` (TL, direct to develop) — see post-QA fixes below
-  - Live demo path re-run post-fix: all 6 steps PASS — POST /setup, stage=profiling, Activity Rail streaming, profile.json written at t=45s (shape: rows=100/columns=9), Profile view rendered, re-profile accepted
-  - QA_LOG closed: QA-01 + QA-02 marked Closed in commit `cc88859`; REG-N1-11 + REG-N1-12 regression checks added
-  - 12 standing regression checks total (REG-N1-01 through REG-N1-12) — see `QA_LOG.md`
-  - ADR-013 appended (prompt_async payload shape change in v1.15.13)
-
-- **Post-QA fixes and living-doc close-out** — commits `f63787c` and `42d4ff1` (2026-06-02, directly to develop)
-  - `f63787c` — `backend/opencode_client.py`: removed `await` from `aconnect_sse(...)` (QA-01); updated `prompt()` payload to `{"parts": [{"type": "text", "text": text}]}` and `format` to flat `format.schema` shape (QA-02); 3 test files updated to match new signatures; 130/130 tests pass, lint clean
-  - `42d4ff1` — `DEV_STATUS.md`, `ADR.md`, `QA_LOG.md` updated to record QA-01/QA-02 closure, ADR-013, and Night 1 final state
-
-- **Morning demo wiring fix** — PR #24, squash `a09dac5` (2026-06-02, CI run 26805380929 green)
-  - `frontend/src/hooks/useApi.ts`: FormData field `"file"` → `"csv"` to match `POST /setup` parameter name — was causing 422 on every upload
-  - `frontend/src/App.tsx`: ActivityRail wired into layout as right-side panel (rendered for all stages except `setup`)
-  - `frontend/vite.config.ts`: `host: "0.0.0.0"` so Vite is reachable from host via devcontainer port forwarding
-  - `Makefile`: `--reload-dir backend` added to uvicorn so frontend file edits don't restart the backend process
-  - `frontend/src/App.test.tsx`: SSE mock updated to broadcast events to all registered callbacks (App + ActivityRail both call `useSSE`); call-count assertions relaxed to `toHaveBeenCalledWith`
-  - `frontend/src/hooks/useApi.test.ts`: `fd.get("csv")` to match the field rename
-  - 132 FE + BE tests pass; lint clean; CI green
-
-- **Light styling pass** — PR #25, squash `a7c6167` (2026-06-02, CI green)
-  - Pure className additions/replacements across `App.tsx`, `SetupView.tsx`, `ProfileView.tsx`, `ActivityRail.tsx` — warm off-white palette (`#f6f2e9`), amber header, teal type badges, card layout
-  - No logic changes; all 17 required `data-testid` attributes preserved intact; no test files touched
-  - `frontend/src/` only; no backend, no contracts, no test changes
-  - All three review gates passed (scope, data-testid integrity, CI green); self-approve not possible (same account); merged after CI confirmed green
-
-- **fix(be): add shape.target to PROFILE_SCHEMA and profile prompt** — PR #28, squash `80a3661` (2026-06-02, CI run 26818563102 green)
-  - `backend/prompts/profile.py`: `"target": {"type": ["string", "null"]}` added to `shape.properties`; `"target"` added to `shape.required`; `build_profile_prompt()` updated to instruct OpenCode to infer the target column from the analysis aim, or set null if not determinable
-  - `backend/tests/unit/app/test_profile_prompt.py`: 2 new TDD tests — `test_profile_schema_has_nullable_target` (schema field presence + nullable type), `test_build_profile_prompt_instructs_target_inference` (prompt mentions "target" and "null")
-  - Contract alignment: `shape.target` is specified in `API_CONTRACT.html` line 540 with comment `// null if not inferred`; was absent from schema causing frontend's "target (inferred)" widget to stay permanently hidden
-  - BE lane only; no frontend, no contracts, no Makefile touched; lane boundary clean
-  - 80/80 backend tests pass; self-approve blocked (same account); merged after all three gates verified green
-
-- **Drag-and-drop CSV upload in SetupView** — PR #26, squash `8e0b67a` (2026-06-02, CI run 26816902032 green)
-  - `frontend/src/components/StageViews/SetupView.tsx`: `drop-zone` div with `onDragOver`/`onDragLeave`/`onDrop` handlers; `data-dragging` attribute tracks visual active state; clicking zone calls `fileInputRef.current?.click()` to trigger the hidden `csv-input`; `onDrop` sets file from `e.dataTransfer?.files?.[0]`
-  - `frontend/src/components/StageViews/SetupView.test.tsx`: 4 new TDD tests — `test_dropzone_renders`, `test_drag_over_sets_active_state`, `test_drag_leave_clears_active_state`, `test_drop_sets_file`
-  - All data-testid values preserved: `setup-view`, `csv-input`, `aim-input`, `submit-btn`, `setup-error`; `drop-zone` added (new)
-  - Only `frontend/` touched; lane boundary clean
-  - 56/56 FE + 78/78 BE = 134 total tests pass; CI green on merge
-  - Self-approve not possible (same account owns PR); merged after all three gates verified green
-
-- **Concise activity rail with animated running indicator** — PR #29, squash `b61f498` (2026-06-02, CI run 26820012481 green)
-  - `frontend/src/hooks/useActivityState.ts` (new): `useActivityState` hook — full state machine: `isRunning`, `bashCount`, `fileCount`, `dotPhase`; handles `tool.bash_running/done`, `tool.file_written`, `message.part` (set running, count completions), `session.idle` (stop running, preserve counts); 500ms interval cycles `dotPhase` while running; `wasIdle` ref tracks turn boundaries to reset counts on next turn start
-  - `frontend/src/hooks/useActivityState.test.ts` (new): 9 hook tests covering initial state, all event types, session.idle preserve/reset, dotPhase cycling, unknown event ignore
-  - `frontend/src/components/ActivityRail.tsx`: replaced with thin presenter — calls `useActivityState()`, renders "Thinking." / ".." / "..." while running (`activity-thinking`), "N commands run · M files written" summary when counts exist (`activity-summary`), "No activity yet." placeholder when idle with no counts
-  - `frontend/src/components/ActivityRail.test.tsx`: 11 presentation tests that mock the hook; covers all render states and singular/plural text
-  - Testid changes: `activity-tool-running`, `activity-tool-done`, `activity-file-written`, `activity-message` removed; `activity-thinking`, `activity-summary` added; `activity-rail` preserved; total unique testids: 18 (>= 17 required, REG-N1-05 satisfied)
-  - TL hygiene fix applied: `useActivityState.test.ts` line 6 — typed ref declaration (`{ current: (e: unknown) => void } = { current: () => {} }`) to silence ESLint `no-unused-vars` on no-op initial value; re-ran CI after fix, green
-  - Lane boundary note: PR also added `docs/superpowers/specs/2026-06-02-activity-rail-concise-design.md` outside `frontend/`; additive design spec, non-contract, no TL-owned path conflict; accepted as recorded deviation
-  - 69/69 FE + 80/80 BE = 149 total tests pass; CI green on merge
-  - Self-approve not possible (same account owns PR); merged after all three gates verified green
-
-### **Night 1 COMPLETE. All stories on `develop`. Morning demo wiring, styling, drag-and-drop UX, and concise activity rail resolved. QA structural + live gate passed (all 6 steps). Awaiting morning human review for develop → main promotion.**
+- QA-01: fixed incorrect `await aconnect_sse(...)`.
+- QA-02: fixed `prompt_async` payload/schema shape for OpenCode v1.15.13.
+- Morning demo wiring: frontend `FormData` field is `csv`, Activity Rail is in layout outside setup, and Vite binds to `0.0.0.0`.
 
 ---
 
-## Night 2 — Plan proposal + one interactive Section + Export
+## Night 2 Summary
 
-### Merged to `develop`
+**Goal:** Plan proposal, interactive section build, section accept/drop/redirect, export, and enough UI/backend wiring for a human-in-the-loop analysis loop.
 
-*(none yet — Night 2 not started)*
+**Outcome:** Complete. All lane stories, TL integration, and QA merged to `develop`.
 
-### In Dev / In Review / In QA
+### Merged Capability
 
-*(none — awaiting Night 2 kick-off)*
+Backend:
 
-### Night 2 t0 startable set
+- Planning stage and `plan.json`:
+  - Profile acceptance now controls the profiling -> planning transition via `POST /profile/accept`.
+  - Plan prompts/schema live in `backend/prompts/plan.py`.
+  - `session.idle` in planning reads `workspace/plan.json`, persists sections, and emits `plan.ready`.
+  - Initial section status is `proposed`, not `queued`.
+- Plan editing and acceptance:
+  - `POST /plan/update` has full replacement semantics. It accepts new section IDs and preserves existing statuses where applicable.
+  - `POST /plan/accept` transitions proposed sections into the build queue and starts building.
+- Section build:
+  - Section prompts live in `backend/prompts/section.py`; sections use the file triplet contract (`.py`, `.png`, `.md`) rather than structured output.
+  - Build events include `section.building`, `section.proposed`, and `section.failed`.
+  - Artefact paths (`py_path`, `png_path`, `md_path`) are persisted to `state.json`, not just emitted in SSE payloads.
+  - Section build watchdog timeout is 180s; profiling/planning remain at 60s.
+  - Section builds now auto-sequence through queued sections; the watchdog is reset/cancelled per section.
+- Section controls:
+  - `POST /section/:id/accept` changes `proposed` -> `accepted`.
+  - `POST /section/:id/drop` changes `proposed` -> `dropped` and excludes dropped sections from export.
+  - `POST /turn` dispatches by stage:
+    - `profiling` -> `re_profile(text)`
+    - `planning` -> `re_plan(text)`
+    - `building` -> `redirect_section(text, section_id?)`
+- Files and export:
+  - `GET /file` serves workspace files with path traversal and missing-file guards.
+  - `backend/frontmatter_parser.py` parses section frontmatter/body.
+  - `GET /export` returns accepted sections in Markdown, separated by `---`, using `md_path` or fallback glob lookup.
 
-The following stories are startable immediately at Night 2 kick-off. All dependencies are confirmed on `develop`. Source: `03_OPERATING_MODEL.md` §5 Night 2, cross-checked against `02_STORY_BACKLOG.md` dependency fields.
+Frontend:
 
-**BE lane:**
-- **N2-S01** · Orchestrator: planning stage — depends on N1-S04 (on develop)
-- **N2-S02** · Planning turn → `plan.json` — depends on N1-S09 (on develop)
-- **N2-S06** · Section build turn (the file triplet) — depends on N1-S09 (on develop)
-- **N2-S09** · Frontmatter parser — no dependencies
-- **N2-S14** · Serve workspace files (`GET /file`) — depends on N1-S02 (on develop)
+- `PlanView` renders the editable plan, supports inline edits/revisions, and accepts the plan.
+- `BuildView` renders non-queued sections in plan order; `SectionPane` fetches code/chart/markdown artefacts and gates Accept/Drop until artefacts load.
+- `ExportButton` is enabled when there is at least one accepted section and hidden before build/done stages.
+- `ProfileView` includes `Accept profile`.
+- App state uses `plan: Section[]`; `plan.ready` updates directly from `event.sections` to avoid a stale `GET /state` race.
+- Activity Rail now has a compact scrollable log of commands/files.
+- Activity Rail QoL (`feat/qol-stage-controls`): log entries wrap up to 3 lines (no more hard truncation); log box height raised to 27 rem; completed commands prefixed `$`, file writes prefixed `✎`.
+- `make dev` clean shutdown: dropped the subshell, tracks BE/FE PIDs explicitly, traps INT/TERM/EXIT, and waits for both processes to exit — prevents hanging PIDs on port 8000/5173 after Ctrl+C.
+- Backend reorganised into `api/` (router, sse_proxy), `agent/` (opencode_client, prompts), and `core/` (orchestrator, state_manager, event_bus, watchdog, frontmatter_parser). Test tree mirrors source under `tests/unit/{api,agent,core}/`. All 327 backend tests pass.
+- Frontend `e2e/section-build.spec.ts` moved into `tests/e2e/` — it was outside Playwright's `testDir` and never running.
+- Frontend `useActivityState` tests updated to match current log symbols (`$` for commands, `✎` for file writes, no CMD_MAX truncation). All 180 frontend tests pass.
+- Styling aligned with mockup: Hanken Grotesk/Fraunces/JetBrains Mono fonts loaded; border-radius flattened (rounded-lg/xl → rounded/rounded-sm); header warm `#faf7f0` bg; profile type badges warm-muted; ActivityRail header "Agent Activity".
+- SetupView aim field converted from textarea to single-line input — Enter now submits the form natively.
+- Teal accept buttons left-aligned across ProfileView and PlanView.
+- ProfileShape type extended to accept `total_rows`/`total_columns` fallback — agent occasionally writes these instead of schema-specified `rows`/`columns`; shape strip now displays correctly either way.
 
-**FE lane:**
-- **N2-S15** · Plan screen — depends on N1-S14 (on develop)
-- **N2-S16** · Section build screen — depends on N1-S14, N1-S17 (both on develop)
-- **N2-S17** · Export control — depends on N1-S14 (on develop)
+### Night 2 Merge Ledger
 
-Stories not in the t0 set unlock as their within-night dependencies merge:
-- N2-S03 unlocks after N2-S02
-- N2-S04, N2-S10, N2-S11 unlock after N2-S03
-- N2-S05 unlocks after N2-S03 and N2-S06
-- N2-S07 unlocks after N2-S06 and N1-S08 (already on develop)
-- N2-S08 unlocks after N2-S07
-- N2-S12 unlocks after N2-S06 and N1-S11 (already on develop)
-- N2-S13 unlocks after N2-S09
-- N2-S18 (TL integration) unlocks after all N2 lane stories and N2-S20
-- N2-S19 (QA) unlocks after N2-S18 and N2-S20
-- N2-S20 (forced section-failure hook) unlocks after N2-S08
+| Story | PR / merge | SHA | What mattered |
+|---|---:|---|---|
+| N2-S14 Serve workspace files | #32 | `2a77cdc` | Real `GET /file`; path traversal/missing-file errors |
+| N2-S09 Frontmatter parser | #33 | `3943d39` | `backend/frontmatter_parser.py`; `pyyaml>=6.0` |
+| N2-S06 Section build turn | #31 | `df20dc0` | Section prompt and file triplet contract |
+| N2-S01 Planning stage | #34 | `7d59001` | Profiling -> planning orchestration |
+| N2-S02 Planning turn | conflict merge | `f85c042` | `plan.json`, `PLAN_SCHEMA`, `plan.ready` |
+| N2-S15 Plan screen | #36 | `78bb3f4` | Full `PlanView`; plan state in App |
+| N2-S16 Section build screen | conflict merge | `731e702` | `BuildView`, `SectionPane` |
+| N2-S17 Export control | conflict merge | `ececc79` | Export button; fixed `plan.ready` race |
+| N2-S03 Persist statuses | #39 | `e243b64` | `proposed` initial status; plan persistence |
+| N2-S13 Export brief | #41 | `2f15b32` | Real `GET /export` |
+| N2-S07 Section build events | #40 | `eeca6b0` | Section build/idle/event handling |
+| N2-S12 Redirect section | #42 | `c83e24b` | Building-stage `/turn`; redirect prompt |
+| N2-S08 Detect failed section | #46 | `2d56b48` | Missing triplet -> `section.failed` tests |
+| N2-S10 Accept section | #43 | `ff9a05a` | Real section accept endpoint |
+| N2-S11 Drop section | #44 | `fff708d` | Real section drop endpoint |
+| N2-S04 Edit plan | #45 | `c9838a5` | Full replacement plan update |
+| N2-S05 Accept plan/start build | #47 | `056997e` | `accept_plan()` and first build dispatch |
+| N2-S20 Forced section failure hook | #48 | `691240e` | `QA_FORCE_SECTION_FAIL=1` |
+| N2-S18 Integration | #49 | `9636cb0` | 30 integration tests; cross-lane endpoint checks |
 
-### Blockers
+Post-Night-2 fixes merged to `develop`:
 
-*(none)*
+- `e4dca81` - profiling pauses for user review; `POST /profile/accept` added.
+- `40389d7` - frontend Accept profile button.
+- `247a5f0` - planning-stage `POST /turn` via `orchestrator.re_plan(text)`.
+- `a3ccd58` - section build watchdog timeout override to 180s.
+- `f9d8eb9` - section auto-sequencing, watchdog reset per section, buttons gated on artefact load.
+- `569deb4` - persist section artefact paths in state; frontend treats `undefined` like `null`.
+- `a3cbd9f` - compact scrollable Activity Rail log.
 
-### Overnight ADR decisions (Night 2)
+### Night 2 ADRs And Sharp Edges
 
-*(none yet)*
+- ADR-014: `POST /plan/update` accepts new section IDs and replaces the plan array. Do not reject unknown IDs.
+- ADR-015: `plan.ready` carries the complete section list and must update App state directly from `event.sections`. Do not immediately refresh `GET /state` for that event.
+- ADR-016: `build_section_prompt(plan=...)` accepts `list | dict`; orchestrator passes a list.
+- `section.failed` means missing artefacts after a section turn. It is separate from recoverable `turn.error`.
+- `section.py` build prompts intentionally do not use structured output. Sections are file-triplet based.
+- Fire-and-forget setup/orchestrator tasks can race with direct `state_manager.update()` calls in tests; integration tests that need precise state should write fixture `state.json` directly.
 
-### Post-Night-1 fixes (QA-01, QA-02)
+### Test Hooks For QA And Night 3
 
-- ADR-013 (Proposed — pending review): `prompt_async` payload shape changed in v1.15.13 relative to v1.15.10 (spike). `text` → `parts[{type,text}]`; `format.json_schema.schema` → `format.schema`. Confirmed from live OpenAPI spec at `/doc`. See ADR.md.
+- `SKIP_OPENCODE=1` - start backend without launching OpenCode.
+- `QA_FORCE_STALL=1` - suppresses events after the first to exercise watchdog recovery.
+- `QA_FORCE_SECTION_FAIL=1` - removes the section Markdown artefact before triplet validation, forcing `section.failed`.
+- Night 3 still needs `QA_FORCE_TURN_ERROR` (N3-S16) to drive recoverable `turn.error` deterministically.
 
 ---
 
-## Overnight ADR decisions — Night 1
+## Night 3 Handoff
 
-- N1-S01 deviation: `frontend/pnpm-workspace.yaml` added with `allowBuilds: esbuild: true, @playwright/test: true` — required because pnpm v11 moved build-script approval out of `package.json` into `pnpm-workspace.yaml`; without this, `pnpm install` exits with `ERR_PNPM_IGNORED_BUILDS` in CI. No contract impact.
-- N1-S07 placement: `docs/contracts/SSE_CONTRACT.md` used instead of backlog's `backend/docs/SSE_CONTRACT.md`. Consistent with CLAUDE.md rule that all contracts live in `docs/contracts/` and FE lane codes against that directory. Accepted; recorded in the document itself.
-- N1-S13 branch separation: the FE agent committed the N1-S13 work onto the BE `feat/n1-s02-app-skeleton` branch. TL cherry-picked that commit to a clean `feat/n1-s13-frontend-scaffold` branch and opened PR #7 for proper story-level tracking before merging. The original commit on `feat/n1-s02-app-skeleton` remains there for the pending N1-S02 PR #6 review.
-- N1-S13 Tailwind v4 deviation: `@tailwindcss/vite` plugin + `@import "tailwindcss"` (v4 pattern) instead of v3 CLI — correct for the installed version, functionally equivalent. Accepted.
-- N1-S02 branch collision (post-merge note): PR #6 (`feat/n1-s02-app-skeleton`) contained both the FE agent's N1-S13 commit and the BE agent's N1-S02 commit. On review, `origin/feat/n1-s13-frontend-routing` (the FE agent's separate push) was confirmed to have identical tree content to the PR's FE commit — no work was missing. PR #6 was merged as-is (commits are lane-clean); stale `origin/feat/n1-s13-frontend-routing` deleted post-merge. Root cause: FE agent pushed to the BE branch before BE agent committed. Process improvement needed: agents should verify they are on their own branch before committing.
-- N1-S10 TDD deviation (router test): `test_get_events_registered` calls the route handler directly with a `MagicMock` request and inspects the returned `StreamingResponse` object, rather than using `httpx.AsyncClient + ASGITransport`. Root cause: `ASGITransport` runs the full ASGI call inline and does not support client-side cancellation of infinite SSE generators — the `async with ac.stream()` context exits but `listen_for_disconnect` (inside Starlette's `StreamingResponse`) waits for full response completion, hanging the test. Direct handler invocation tests all contract properties (type, media_type, headers) without streaming. Documented per CONTRIBUTING §3.
-- N1-S10 main.py blocker (Proposed — pending review): A prior TL DEV_STATUS commit (`8fe71cf`) accidentally included a modified `backend/main.py` that imported `backend.orchestrator.Orchestrator` (from stashed N1-S05 work in the working tree at merge time). This made develop's test collection fail with `ModuleNotFoundError: No module named 'backend.orchestrator'`. Fixed in the N1-S10 squash commit by reverting `main.py` to the correct N1-S03 state. Root cause: TL committed with a dirty working tree; N1-S05 stash files leaked into the DEV_STATUS commit. Prevention: always check `git diff` before committing living-doc updates.
-- N1-S06 lane boundary deviation (Proposed — pending review): TL accidentally committed BE implementation code (`opencode_client.py` and its unit tests) to `develop` directly (commit `8fe71cf`) outside a PR during a prior DEV_STATUS update with a dirty working tree. Content is correct and forms the core of N1-S06. Accepted as-is; reverting would create more churn than value. Prevention: TL must check `git diff --cached` before committing living-doc updates.
-- N1-S18 ADR-011 (Proposed — pending review): Profile prompt must explicitly instruct OpenCode to write `workspace/profile.json`. "Return JSON" is insufficient — OpenCode returns structured output as message content, not as a file. See ADR-011.
-- N1-S18 ADR-012 (Proposed — pending review): `make dev` no longer starts `opencode serve` separately. Backend's `OpenCodeClient.start()` is the sole owner of the OpenCode subprocess lifecycle. See ADR-012.
+Night 3 is startable only after morning promotion of Night 2 to `main`.
+
+**Night 3 goal:** via `make run` from a clean checkout, build a full multi-section brief on the churn CSV, repeat the core path on a second dataset, induce a failure and recover it through the UI, and export the final brief.
+
+### Startable Story Map
+
+| Story | Role | Depends on | Notes for agents |
+|---|---|---|---|
+| N3-S01 Sequential section loop & done | BE | N2-S05, N2-S10 | Partially de-risked by post-N2 auto-sequencing; still verify last accept -> `done`, `stage.changed(done)`, dropped-section skip, rapid-accept safety |
+| N3-S02 Retry a turn | BE | N1-S11 | Retry should resend exact failed prompt against current/fresh session; retries bounded |
+| N3-S03 Map turn errors | BE | N1-S09, N2-S02 | Emit recoverable `turn.error` for structured/provider errors; distinguish from `section.failed` |
+| N3-S04 Harden watchdog for long runs | BE | N1-S11, N3-S01 | Verify multi-section timer reset and fresh-session persistence |
+| N3-S05 Retry banner | FE | N1-S14, N3-S02 | Inline banner on `turn.error`; Retry action; clear on success |
+| N3-S06 Failed-section controls | FE | N1-S14, N2-S08 | Section-level Retry/Drop on `section.failed`; Drop continues loop |
+| N3-S07 Watchdog-timeout surface | FE | N3-S06 | No silent hangs; surface watchdog-driven failure/recovery options |
+| N3-S08 Done screen | FE | N1-S14, N3-S01 | Render accepted sections and prominent export action on `done` |
+| N3-S09 `make run` | TL | N1-S01 | Build Vite bundle and serve from FastAPI on one port |
+| N3-S10 `make clean` & gitignore | TL | N1-S01 | Reset runtime workspace/build artefacts; verify clean -> run |
+| N3-S11 README | TL | N3-S09 | Document install/dev/run/clean and prerequisites |
+| N3-S12 Architecture write-up | TL | none | `docs/ARCHITECTURE.md` or README section; cite ADRs |
+| N3-S16 Forced turn-error hook | BE | N3-S03 | Opt-in `QA_FORCE_TURN_ERROR`; off by default |
+| N3-S13 Integration | TL | N3-S01-S12, N3-S16 | Full submission build handoff to QA |
+| N3-S14 Full regression | QA | N3-S13, N3-S16 | Multi-section churn + second dataset + forced failure/stall + cold `make run` |
+| N3-S15 Submission demo script | QA | N3-S14 | Rehearsed interview path |
+
+### Night 3 QA Expectations
+
+- Multi-section churn run reaches `done`.
+- Second dataset run reaches `done` and exports.
+- Forced recoverable turn error shows retry banner and recovers.
+- Forced section failure shows Retry/Drop; Drop advances the loop.
+- Forced stall recovers through watchdog without corrupting `state.json` or sequence.
+- Cold `make run` uses the built bundle, not Vite.
+- `make clean` resets runtime artefacts.
+- `/export` returns valid multi-section Markdown in plan order.
+
+### Demo Script Baseline
+
+1. `make clean`, then `make run`.
+2. Upload `data/customers_q3.csv`, enter aim, and complete profiling.
+3. Accept profile; revise/edit the plan; accept plan.
+4. Build multiple sections; accept at least one; redirect/revise one section if demo time allows.
+5. Exercise one failure path with QA hook and recover through Retry or Drop.
+6. Reach `done`, export zip, and open the brief.
+7. Repeat the core path on a second dataset to prove generality.
 
 ---
 
-## Night 1 demo script (morning review)
+## Blockers
 
-1. Fresh clone → `make install` → `make dev`
-2. Open app at http://localhost:5173 → upload `data/customers_q3.csv` + enter an aim
-3. Watch profiling activity stream live in the Activity Rail
-4. Confirm Profile view renders (shape strip + per-column rows) — profile.json written ~45s post-setup
-5. Submit one bottom-bar re-profile → confirm second turn completes or recovers via fresh session
-6. Refresh browser → confirm UI re-hydrates from `state.json`
-
-*Note: steps 3–5 require provider credentials configured for OpenCode (`~/.local/share/opencode/auth.json`). QA-01 and QA-02 are now fixed; live demo path verified end-to-end on 2026-06-02.*
+None recorded. Night 3 should not begin until Night 2 is promoted to `main` at morning review.

@@ -22,6 +22,9 @@
 | ADR-011 | N1-S18: profile prompt must write workspace/profile.json explicitly | Accepted |
 | ADR-012 | N1-S18: OpenCode lifecycle owned by backend; make dev does not start opencode | Accepted |
 | ADR-013 | QA-02: prompt_async payload format changed in OpenCode v1.15.13 | Accepted |
+| ADR-014 | N2-S15: POST /plan/update accepts new section IDs (full replacement) | Proposed — pending review |
+| ADR-015 | N2-S17: plan.ready SSE handler updates state directly from event, no API refresh | Proposed — pending review |
+| ADR-016 | N2-S18: build_section_prompt() plan parameter corrected to list\|dict | Proposed — pending review |
 
 ---
 
@@ -355,4 +358,67 @@ The OpenAPI spec is authoritative. Both changes confirmed by live curl tests aga
 - All 130 tests updated to match new payload shape and pass.
 - Live QA confirmed: profiling turn completes at ~45s with `profile.json` written correctly.
 - SPIKE_REPORT.md still references v1.15.10 shapes; this ADR supersedes that reference for the prompt payload.
+
+---
+
+## ADR-014 · N2-S15: POST /plan/update accepts new section IDs
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-03
+
+### Decision
+`POST /plan/update` is a full replacement operation. The backend writes whatever sections array it receives, including sections with IDs not present in the original plan. The N2-S04 implementation must not validate submitted IDs against the existing plan.
+
+### Context
+N2-S15 (Plan screen) needs to support an "add section" feature where the FE generates a local ID (`sec_new_<timestamp>`) for a new section before persisting it. The API contract specifies `POST /plan/update` as a full replacement but does not explicitly state whether new IDs are accepted. This ambiguity would block the "add section" feature.
+
+### Rationale
+Full replacement semantics are simpler and consistent with how the plan is treated in the rest of the system (plan.json is written and read atomically). Accepting any ID allows the FE to manage the section lifecycle locally without a round-trip ID assignment endpoint. This is sufficient for a prototype with no concurrent multi-user access.
+
+### Consequences
+- N2-S04 must not reject sections whose IDs differ from the existing plan.
+- FE (N2-S15) may use `sec_new_<timestamp>` for locally-added sections.
+- No new endpoint needed for ID assignment.
+
+---
+
+## ADR-016 · N2-S18: build_section_prompt() plan parameter corrected to list|dict
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-03
+
+### Decision
+`build_section_prompt()` in `backend/prompts/section.py` accepts `plan` as `list | dict`. Previously declared as `dict`, which was wrong — the orchestrator always passes a list.
+
+### Context
+`orchestrator._build_section_prompt()` declares `plan: list[Any]` and passes the list from `state.get("plan", [])` to `build_section_prompt(plan=plan)`. The downstream function only calls `json.dumps(plan, indent=2)` which handles both lists and dicts — so no runtime error occurred. The annotation mismatch was found during N2-S18 integration review.
+
+### Rationale
+The prompt template serialises `plan` as JSON context for the agent. `json.dumps` works correctly with a list (producing a JSON array), which is the correct shape — the plan is an array of section objects. Changing the annotation to `list | dict` documents the real accepted types and removes a misleading IDE warning.
+
+### Consequences
+- No behaviour change; annotation-only fix.
+- `build_section_prompt(plan=some_list)` is now type-correct without suppression.
+- If a caller passes a plain dict in future, it would still work (json.dumps handles it).
+
+---
+
+## ADR-015 · N2-S17: plan.ready SSE handler updates state directly from event
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-03
+
+### Decision
+The App.tsx `plan.ready` SSE handler updates `state.plan` directly from `event.sections` without triggering an `api.getState()` refresh. `stage.changed` and `profile.ready` continue to trigger `api.getState()`.
+
+### Context
+N2-S15 added `plan.ready` to the `api.getState()` trigger block in App.tsx. When N2-S17 was merged, a test race appeared: the mock `getState()` returned `plan: []`, overwriting the sections from the `plan.ready` event. The race caused the `export-btn` enabled state test to fail.
+
+### Rationale
+`plan.ready` carries the full sections array in `event.sections` — no API refresh is needed. This is unlike `stage.changed` (which carries only the new stage, not full state) and `profile.ready` (which carries the profile but App.tsx re-hydrates all fields). The direct setState from the event is sufficient, race-free, and consistent with how N2-S17 originally designed the handler.
+
+### Consequences
+- App.tsx SSE handler: `plan.ready` → `setState((s) => ({ ...s, plan: event.sections }))` only; no `api.getState()` call.
+- `stage.changed` and `profile.ready` still trigger full `api.getState()` refresh.
+- 154 FE tests pass with this design.
 

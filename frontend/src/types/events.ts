@@ -1,6 +1,6 @@
 // SSE event types derived from docs/contracts/SSE_CONTRACT.md
 // Ground truth: SSE_CONTRACT.md §2 — the reconciled event taxonomy.
-// All 13 event types present.
+// All 14 event types present.
 
 import type { Profile, Section } from "./api";
 
@@ -112,8 +112,13 @@ export interface FileReadyEvent {
   ts: number;
 }
 
+export interface SessionIdleEvent {
+  type: "session.idle";
+  ts: number;
+}
+
 // ---------------------------------------------------------------------------
-// Discriminated union — all 13 event types
+// Discriminated union — all 14 event types
 // ---------------------------------------------------------------------------
 
 export type SSEEvent =
@@ -129,4 +134,5 @@ export type SSEEvent =
   | ToolBashDoneEvent
   | ToolFileWrittenEvent
   | MessagePartEvent
-  | FileReadyEvent;
+  | FileReadyEvent
+  | SessionIdleEvent;
