@@ -8,9 +8,10 @@
 
 **Branch:** `develop`
 
-**Night 3 is in progress.** Night 2 is complete and merged. All BE stories are now merged to `develop`. The FE lane (N3-S05/S06/S07/S08) is in development and is the remaining blocker before integration (N3-S13).
+**Night 3 is in progress.** Night 2 is complete and merged. All BE stories are now merged to `develop`. The `turn.error` contract violation (retryable bool → reason enum) has been corrected on develop (SHA `ae99ecd`). The FE lane (N3-S05/S06/S07/S08) is in development and is the remaining blocker before integration (N3-S13).
 
 **What is on `develop` from Night 3:**
+- `ae99ecd` — turn.error payload contract fix: `retryable` bool replaced with `reason` enum string (`"provider_error"` / `"timeout"`) across orchestrator + watchdog
 - N3-S01, N3-S04 (section loop → done, watchdog heartbeat fix) — merged via PR #60 (SHA `492b422`)
 - N3-S02, N3-S03, N3-S16 (retry, turn.error mapping, QA_FORCE_TURN_ERROR) — merged via PR #58
 - N3-S09, N3-S10, N3-S11, N3-S12 (make run, make clean, README, architecture doc) — merged via PR #57
@@ -203,6 +204,7 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 | N3-S09/S10/S11/S12 Packaging | #57 | `428c669` | `make run`, `make clean`, README, `docs/ARCHITECTURE.md` |
 | N3-S02/S03/S16 Retry + turn.error + forced hook | #58 | `b5501db` | `retry_last_turn()`, `turn.error { stage, reason }`, `QA_FORCE_TURN_ERROR` |
 | N3-S01/S04 Section loop → done + watchdog heartbeat | #60 | `492b422` | `_check_done_or_next()`, `stage.changed(done)`, `_current_timeout` watchdog fix |
+| turn.error contract fix (TL inline) | — | `ae99ecd` | `retryable` bool → `reason` enum; `"provider_error"` / `"timeout"` |
 
 ### N3-S01/S04 — What landed
 
@@ -222,13 +224,14 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 - `README.md`: prerequisites table, quick-start, dev, test/lint, clean, env vars table
 - `docs/ARCHITECTURE.md`: orchestration model, files-as-contract, BE vs agent split, structured output vs file triplet, session recovery, SSE transport, extension path; cites ADR-002/003/004/005/006/008/009
 
-### N3-S02/S03/S16 — What landed
+### N3-S02/S03/S16 — What landed (as corrected by `ae99ecd`)
 
-- `orchestrator._last_turn`: records last-dispatched stage/prompt/section_id; `retry_last_turn()` replays it, capped at 3 retries; 4th attempt emits `turn.error` with `retryable=False`
-- `turn.error` payloads now carry `{ stage, message, section_id (building only), retryable }` — `retryable` and `section_id` are additions beyond the API contract minimum; FE reads `message` for error text
+- `orchestrator._last_turn`: records last-dispatched stage/prompt/section_id; `retry_last_turn()` replays it, capped at 3 retries; 4th attempt emits `turn.error` with `reason="provider_error"`
+- `turn.error` payloads carry `{ type, stage, reason, ts, section_id? }` — correct contract shape; `reason` is an enum string (`"provider_error"` for orchestrator errors, `"timeout"` for watchdog timeouts); `section_id` present only for building-stage errors
 - `QA_FORCE_TURN_ERROR=1`: raises `RuntimeError` in each `_run_*_turn` before `client.prompt()` call (placed in orchestrator, not opencode_client — see ADR-018)
 - `POST /turn` with empty/absent body now routes to `retry_last_turn()` rather than returning 422
 - Plan-approval step was bypassed for this story set (ADR-017 — Proposed, pending human review)
+- Contract correction (`ae99ecd`): PR #58 shipped `retryable` bool — corrected to `reason` enum on develop by TL inline fix before QA
 
 ### Night 3 QA Expectations
 
@@ -255,9 +258,12 @@ Night 3 is startable only after morning promotion of Night 2 to `main`.
 
 ## Blockers
 
-None blocking progress. Night 2 is on `develop` (pending human promotion to `main`); Night 3 is proceeding in parallel at human direction.
+**Resolved (this run):** PR #58 (N3-S02/S03/S16) shipped `turn.error` with `retryable: bool` instead of `reason: string`. Contract violation. Fixed inline on develop (`ae99ecd`) before QA gate. See Overnight ADR Decisions below.
+
+No other blockers. FE lane (PR #54) is the last pending work before N3-S13 integration.
 
 ## Overnight ADR Decisions (Night 3)
 
 - **ADR-017 (Proposed):** BE-2 proceeded to implementation of N3-S02/S03/S16 without waiting for TL plan approval. Implementation was correct and merged via PR #58. Plan-only PR #55 closed. Human to decide at morning review whether agent prompts need reinforcement.
 - **ADR-018 (Proposed):** `QA_FORCE_TURN_ERROR` seam placed in `orchestrator._run_*_turn` methods (not in `opencode_client.prompt()`). Better placement — keeps QA concerns in the orchestrator layer, consistent with `QA_FORCE_STALL` / `QA_FORCE_SECTION_FAIL` pattern.
+- **ADR-020 (Proposed):** `turn.error` payload contract correction applied inline to develop by TL. PR #58 merged with `retryable: bool`; the correct contract field is `reason: string` (enum: `"structured_output_failed"` / `"provider_error"` / `"timeout"`). Corrected in `ae99ecd` before QA ran. TL may make this class of contract-correctness fix directly on develop (not a feature change, zero behaviour change observable to the user, all tests green). Human to confirm at morning review.

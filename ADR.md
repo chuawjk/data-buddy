@@ -28,6 +28,7 @@
 | ADR-017 | N3-S02/S03/S16: BE-2 proceeded to implementation without waiting for plan approval | Proposed — pending review |
 | ADR-018 | N3-S16: QA_FORCE_TURN_ERROR seam placed in orchestrator._run_*_turn, not opencode_client.prompt | Proposed — pending review |
 | ADR-019 | N3-S09/S10/S11/S12: TL packaging stories skipped plan review step | Proposed — pending review |
+| ADR-020 | turn.error payload contract: reason enum string, not retryable bool | Proposed — pending review |
 
 ---
 
@@ -494,4 +495,40 @@ The plan-review gate exists so an independent reviewer can catch risks before co
 - PR #57 carries the full implementation diff as the audit trail; no separate plan document was committed.
 - TL must ensure this shortcut does not extend to in-lane feature work — it applies only to TL's own packaging stories (Makefile, README, docs) where TL is the sole author and reviewer.
 - Human to confirm at morning review whether to formalise this exception or require a plan stub for TL packaging work.
+
+---
+
+## ADR-020 · turn.error payload: reason enum string, not retryable bool
+
+**Status:** Proposed — pending review
+**Date:** 2026-06-04
+
+### Decision
+The `turn.error` SSE event payload must carry a `reason` field (enum string) — not `retryable` (bool). Correct contract shape:
+
+```json
+{ "type": "turn.error", "stage": "profiling|planning|building", "reason": "provider_error|timeout|structured_output_failed", "ts": 1234567890, "section_id": "..." }
+```
+
+`section_id` is present only for building-stage errors. `retryable` is not a field in this contract.
+
+Enum values:
+- `"provider_error"` — general exception from `_run_*_turn` or max retries exceeded in `retry_last_turn`
+- `"timeout"` — watchdog timer fired and session was replaced
+- `"structured_output_failed"` — reserved for use when `_handle_plan_idle` or `_handle_profile_idle` detect malformed output after a successful turn (already used in `_handle_plan_idle`)
+
+### Context
+PR #58 (N3-S02/S03/S16) merged with `turn.error` carrying `{ retryable: True/False, message: str }` instead of `{ reason: "...", ts: ... }`. The API contract specifies `reason` as the discriminant field. The FE lane reads `reason` to decide how to render the error UI (retry banner vs non-recoverable). The `retryable` field is not defined in the contract and was a deviation.
+
+### Rationale
+The contract is the interface. The FE lane (N3-S05/S07 in development) must read `reason` to implement the retry banner and watchdog surface correctly. A `retryable` bool does not distinguish provider errors from timeouts — information the FE needs to display different UI messages. Correcting before QA runs is correct: the fix is a straight field rename with no semantic ambiguity and all 346 tests pass.
+
+### Consequences
+- `orchestrator._run_profile_turn` / `_run_plan_turn` / `_run_section_turn`: emit `{ reason: "provider_error", ts: ... }`.
+- `orchestrator.retry_last_turn` (max retries): emit `{ reason: "provider_error", ts: ... }`.
+- `watchdog._handle_timeout`: emit `{ stage: ..., reason: "timeout", ts: ... }`.
+- `_handle_plan_idle` already used `reason` for structured-output failures — no change needed there.
+- All tests updated to assert `reason` and assert `retryable` is NOT present.
+- Commit `ae99ecd` on develop; applied by TL inline before QA gate.
+- FE lane (PR #54) must read `event.reason` (not `event.retryable`) when handling `turn.error`.
 
