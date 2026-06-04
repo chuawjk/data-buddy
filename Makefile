@@ -36,7 +36,10 @@ run:
 	@echo "==> Building frontend bundle"
 	pnpm --prefix frontend run build
 	@echo "==> Starting FastAPI (serving built bundle on http://localhost:8000)"
-	uv run --project backend uvicorn backend.main:app --host 0.0.0.0 --port 8000
+	@uv run --project backend uvicorn backend.main:app --host 0.0.0.0 --port 8000 & \
+	BE_PID=$$!; \
+	trap 'kill "$$BE_PID" 2>/dev/null; wait "$$BE_PID" 2>/dev/null' INT TERM EXIT; \
+	wait "$$BE_PID"
 
 # ── test ──────────────────────────────────────────────────────────────────────
 test:
