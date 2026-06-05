@@ -191,5 +191,4 @@ The overall result is **PASS** only if every section passes every rubric.
 ### Adding a new eval case
 
 1. Add your CSV to `data/`.
-2. Create `backend/evals/golden_briefs/<name>.json` — see `customers_churn.json` for the shape.
-3. Add an entry to `backend/evals/test_cases.json`.
+2. Add an entry to `backend/evals/test_cases.json` with the golden brief inlined — see the existing `tc001` entry for the shape.

@@ -59,7 +59,7 @@ _RESPONSE_SCHEMA = {
 }
 
 
-def judge_section(section: SectionArtifacts, brief: GoldBrief) -> RubricResult:
+def judge_section(section: SectionArtifacts, brief: GoldBrief, aim: str) -> RubricResult:
     """Evaluate one section against the gold brief and return a RubricResult.
 
     Makes a single litellm completion call with structured output.  The model
@@ -73,7 +73,7 @@ def judge_section(section: SectionArtifacts, brief: GoldBrief) -> RubricResult:
     Returns:
         A RubricResult with PASS/FAIL verdicts and per-rubric reasoning.
     """
-    prompt = _build_prompt(section, brief)
+    prompt = _build_prompt(section, brief, aim)
     logger.info("judge_section: evaluating %s (%s)", section.section_id, section.title)
 
     response = litellm.completion(
@@ -115,7 +115,7 @@ def judge_section(section: SectionArtifacts, brief: GoldBrief) -> RubricResult:
 # ---------------------------------------------------------------------------
 
 
-def _build_prompt(section: SectionArtifacts, brief: GoldBrief) -> str:
+def _build_prompt(section: SectionArtifacts, brief: GoldBrief, aim: str) -> str:
     known = "\n".join(f"  - {p}" for p in brief.known_patterns)
     forbidden = "\n".join(f"  - {c}" for c in brief.forbidden_claims)
     relevant = ", ".join(brief.relevant_fields)
@@ -127,7 +127,7 @@ the gold brief and return a JSON object with binary PASS/FAIL verdicts for \
 each rubric plus a one-line reason per rubric.
 
 === USER AIM ===
-{brief.user_aim}
+{aim}
 
 === GOLD BRIEF ===
 Target variable : {brief.target}

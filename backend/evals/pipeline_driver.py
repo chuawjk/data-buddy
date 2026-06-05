@@ -55,13 +55,13 @@ async def build_case(case: TestCase, max_sections: int | None = None) -> None:
     orchestrator = Orchestrator(state_mgr, bus, client, workspace_root=case.workspace)
 
     await client.start()
-    logger.info("build_case[%s]: OpenCode started, session=%s", case.name, client.session_id)
+    logger.info("build_case[%s]: OpenCode started, session=%s", case.id, client.session_id)
 
     listener = asyncio.create_task(
-        orchestrator.start_bus_listener(), name=f"bus-listener-{case.name}"
+        orchestrator.start_bus_listener(), name=f"bus-listener-{case.id}"
     )
     subscription = asyncio.create_task(
-        client.start_event_subscription(bus), name=f"sse-sub-{case.name}"
+        client.start_event_subscription(bus), name=f"sse-sub-{case.id}"
     )
 
     try:
@@ -69,12 +69,12 @@ async def build_case(case: TestCase, max_sections: int | None = None) -> None:
             _drive(case, orchestrator, state_mgr, bus, max_sections=max_sections),
             timeout=_PIPELINE_TIMEOUT_S,
         )
-        logger.info("build_case[%s]: pipeline complete (stage=done)", case.name)
+        logger.info("build_case[%s]: pipeline complete (stage=done)", case.id)
     finally:
         listener.cancel()
         subscription.cancel()
         await client.stop()
-        logger.info("build_case[%s]: OpenCode stopped", case.name)
+        logger.info("build_case[%s]: OpenCode stopped", case.id)
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ def _prepare_workspace(case: TestCase) -> None:
         shutil.rmtree(case.workspace)
     (case.workspace / "data").mkdir(parents=True)
     shutil.copy2(case.dataset, case.workspace / "data" / case.dataset.name)
-    logger.info("build_case[%s]: workspace prepared at %s", case.name, case.workspace)
+    logger.info("build_case[%s]: workspace prepared at %s", case.id, case.workspace)
 
 
 async def _drive(
@@ -118,7 +118,7 @@ async def _drive(
             event_type: str = envelope.get("type", "")
 
             if event_type == "profile.ready":
-                logger.info("build_case[%s]: profile.ready → accepting profile", case.name)
+                logger.info("build_case[%s]: profile.ready → accepting profile", case.id)
                 await orchestrator.accept_profile()
 
             elif event_type == "plan.ready":
@@ -126,31 +126,29 @@ async def _drive(
                     state = state_mgr.get_state()
                     state_mgr.update(plan=state.get("plan", [])[:max_sections])
                     logger.info(
-                        "build_case[%s]: plan truncated to %d section(s)", case.name, max_sections
+                        "build_case[%s]: plan truncated to %d section(s)", case.id, max_sections
                     )
-                logger.info("build_case[%s]: plan.ready → accepting plan", case.name)
+                logger.info("build_case[%s]: plan.ready → accepting plan", case.id)
                 await orchestrator.accept_plan()
 
             elif event_type == "section.proposed":
                 section_id: str = envelope.get("section_id", "")
-                logger.info(
-                    "build_case[%s]: section.proposed %r → accepting", case.name, section_id
-                )
+                logger.info("build_case[%s]: section.proposed %r → accepting", case.id, section_id)
                 _accept_section(state_mgr, section_id)
                 await orchestrator._check_done_or_next(section_id)  # noqa: SLF001
 
             elif event_type == "stage.changed" and envelope.get("stage") == "done":
-                logger.info("build_case[%s]: stage.changed → done", case.name)
+                logger.info("build_case[%s]: stage.changed → done", case.id)
                 done.set()
                 return
 
             elif event_type == "turn.error":
                 raise RuntimeError(
-                    f"build_case[{case.name}]: turn.error — "
+                    f"build_case[{case.id}]: turn.error — "
                     f"stage={envelope.get('stage')!r}, reason={envelope.get('reason')!r}"
                 )
 
-    listener_task = asyncio.create_task(_listen(), name=f"driver-{case.name}")
+    listener_task = asyncio.create_task(_listen(), name=f"driver-{case.id}")
 
     await orchestrator.setup_complete(case.dataset.name, case.aim)
 

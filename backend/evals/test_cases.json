@@ -1,10 +1,153 @@
 {
   "cases": [
     {
-      "name": "customers_churn",
+      "id": "tc001",
       "dataset": "../../data/customers_q3.csv",
       "aim": "Why are customers leaving?",
-      "golden_brief": "golden_briefs/customers_churn.json"
+      "golden_brief": {
+        "target": "churned",
+        "relevant_fields": [
+          "plan_tier",
+          "monthly_spend",
+          "tenure_months",
+          "support_tickets_30d",
+          "last_login_days",
+          "region"
+        ],
+        "irrelevant_fields": [
+          "customer_id",
+          "signup_date"
+        ],
+        "known_patterns": [
+          "The overall churn rate is 26% (26 of 100 customers).",
+          "Plan tier is the strongest churn signal: basic tier churns at 41% (24/58), pro at 6% (2/31), enterprise at 0% (0/11).",
+          "Monthly spend is tightly tied to plan tier and churn: churned customers have a median spend of ~$26 vs ~$61 for retained.",
+          "Customers who have not logged in recently are far more likely to have churned: the most-lapsed quartile (51–113 days) has a 56% churn rate vs 8% for the most-recent quartile (0–5 days).",
+          "Shorter-tenure customers churn more: the shortest-tenure quartile (1–39 months) churns at 42% vs 8% for the longest (77–96 months), though the pattern is non-monotonic across middle quartiles.",
+          "Having any support tickets in the past 30 days is associated with higher churn (44% vs 22%), but the signal is noisy — the median ticket count is 0 for both churned and retained customers.",
+          "Regional churn rates vary (ANZ 32%, EMEA 33%, LATAM 26%, APAC 17%) but are largely explained by plan tier mix across regions."
+        ],
+        "forbidden_claims": [
+          "customer_id is a meaningful churn driver.",
+          "signup_date predicts churn directly (tenure_months already captures customer age).",
+          "Plan tier or monthly spend are weak churn signals — they are among the strongest signals in this dataset.",
+          "Any claim of statistical significance without a test being run.",
+          "Any predictive accuracy metric such as accuracy, precision, recall, or AUC — this is descriptive analysis, not modelling.",
+          "Any field causes churn without experimental evidence."
+        ]
+      }
+    },
+    {
+      "id": "tc002",
+      "dataset": "../../data/customers_q3.csv",
+      "aim": "Which customers generate the most revenue, and are we retaining them?",
+      "golden_brief": {
+        "target": "monthly_spend",
+        "relevant_fields": [
+          "monthly_spend",
+          "plan_tier",
+          "churned",
+          "region"
+        ],
+        "irrelevant_fields": [
+          "customer_id",
+          "signup_date",
+          "tenure_months",
+          "support_tickets_30d",
+          "last_login_days"
+        ],
+        "known_patterns": [
+          "Plan tier completely determines the spend range: basic $10–48, pro $53–298, enterprise $496–4003.",
+          "Revenue is highly concentrated: the top 10 customers account for ~76% of total revenue, all enterprise or high-end pro.",
+          "Churned customers are almost entirely basic-tier (24 of 26 churned are basic) with a median spend of ~$26 — the revenue lost to churn is small in absolute terms.",
+          "APAC has the highest mean spend ($835) because it has the highest enterprise concentration (6 of 18 customers, 33%).",
+          "ANZ and EMEA have no enterprise customers, giving them the lowest mean spend ($79 and $97 respectively).",
+          "Monthly spend has negligible correlation with tenure (r ≈ −0.10) — customer age does not predict spend."
+        ],
+        "forbidden_claims": [
+          "customer_id identifies a revenue segment.",
+          "signup_date or tenure_months predict monthly spend.",
+          "support_tickets_30d or last_login_days determine monthly spend.",
+          "Regional differences in spend are due to geography rather than plan tier mix.",
+          "Any causal claim about what drives spend without experimental evidence.",
+          "Any predictive accuracy metric such as accuracy, precision, recall, or AUC — this is descriptive analysis, not modelling.",
+          "Any claim of statistical significance without a test being run."
+        ]
+      }
+    },
+    {
+      "id": "tc003",
+      "dataset": "../../data/customers_q3.csv",
+      "aim": "Which customers are at risk of disengaging?",
+      "golden_brief": {
+        "target": "last_login_days",
+        "relevant_fields": [
+          "last_login_days",
+          "support_tickets_30d",
+          "tenure_months",
+          "churned",
+          "plan_tier"
+        ],
+        "irrelevant_fields": [
+          "customer_id",
+          "signup_date",
+          "region",
+          "monthly_spend"
+        ],
+        "known_patterns": [
+          "last_login_days is the strongest engagement signal: churned customers last logged in 55 days ago on average vs 21 days for retained; the most-lapsed quartile (51–113 days) has a 56% churn rate vs 8% for the most-recent quartile.",
+          "support_tickets_30d is a noisy secondary signal: the median is 0 for both churned and retained customers, but churned customers have a higher mean (2.6 vs 0.2) driven by a small number of outliers with very high ticket counts.",
+          "last_login_days and support_tickets_30d are essentially independent signals (r ≈ −0.05) — a customer can be lapsed and low-ticket, or recent and high-ticket.",
+          "Enterprise customers have the lowest median last_login_days (5 days) and zero churn; pro customers have the highest (28 days).",
+          "Short-tenure customers show higher disengagement: the shortest-tenure quartile churns at 42% vs 8% for the longest, though the relationship is non-monotonic."
+        ],
+        "forbidden_claims": [
+          "customer_id identifies at-risk customers.",
+          "signup_date directly measures engagement (last_login_days already captures recency).",
+          "monthly_spend or region are meaningful engagement signals.",
+          "last_login_days and support_tickets_30d are correlated with each other — they are independent signals.",
+          "Any predictive accuracy metric such as accuracy, precision, recall, or AUC — this is descriptive analysis, not modelling.",
+          "Any claim that these signals predict churn with quantified accuracy without a model being built.",
+          "Any claim of statistical significance without a test being run."
+        ]
+      }
+    },
+    {
+      "id": "tc004",
+      "dataset": "../../data/customers_q3.csv",
+      "aim": "How do customers vary by region?",
+      "golden_brief": {
+        "target": "region",
+        "relevant_fields": [
+          "region",
+          "churned",
+          "monthly_spend",
+          "plan_tier",
+          "support_tickets_30d"
+        ],
+        "irrelevant_fields": [
+          "customer_id",
+          "signup_date",
+          "tenure_months",
+          "last_login_days"
+        ],
+        "known_patterns": [
+          "23% of customers (23 of 100) have no region recorded — any regional analysis covers only 77 customers and this gap should be noted.",
+          "APAC has the highest mean spend ($835) due to enterprise customer concentration (6 of 18 APAC customers are enterprise, 33%); ANZ and EMEA have no enterprise customers and the lowest mean spend ($79 and $97).",
+          "LATAM has a substantially higher mean support ticket rate (2.8 per customer) than all other regions (~0.4), driven by a small number of high-ticket customers.",
+          "Churn rates vary by region: EMEA and ANZ are highest (~33%), APAC lowest (~17%), but differences are largely explained by plan tier mix.",
+          "Tenure is similar across regions (mean 49–63 months) and does not explain regional differences."
+        ],
+        "forbidden_claims": [
+          "customer_id is a meaningful regional indicator.",
+          "The 23 customers with no region can be ignored — they represent 23% of the dataset.",
+          "Regional differences in spend are due to geography rather than plan tier mix.",
+          "Region causes churn — regional differences are correlational and confounded by plan tier.",
+          "Any claim of statistical significance without a test being run.",
+          "Any predictive accuracy metric such as accuracy, precision, recall, or AUC — this is descriptive analysis, not modelling.",
+          "Tenure or last_login_days explain regional variation."
+        ]
+      }
     }
   ]
 }

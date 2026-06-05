@@ -16,22 +16,21 @@ _RUBRIC_KEYS: tuple[str, ...] = (
 
 
 @dataclass
-class TestCase:
-    name: str
-    dataset: Path
-    aim: str
-    golden_brief: Path
-    workspace: Path = field(default_factory=Path)  # set by runner; not read from test_cases.json
-
-
-@dataclass
 class GoldBrief:
-    user_aim: str
     target: str
     relevant_fields: list[str]
     irrelevant_fields: list[str]
     known_patterns: list[str]
     forbidden_claims: list[str]
+
+
+@dataclass
+class TestCase:
+    id: str
+    dataset: Path
+    aim: str
+    golden_brief: GoldBrief
+    workspace: Path = field(default_factory=Path)  # set by runner; not read from test_cases.json
 
 
 @dataclass

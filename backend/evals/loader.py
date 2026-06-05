@@ -21,20 +21,17 @@ def load_suite(path: Path) -> list[TestCase]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     return [
         TestCase(
-            name=item["name"],
+            id=item["id"],
             dataset=(base / item["dataset"]).resolve(),
             aim=item["aim"],
-            golden_brief=(base / item["golden_brief"]).resolve(),
+            golden_brief=_parse_golden_brief(item["golden_brief"]),
         )
         for item in raw["cases"]
     ]
 
 
-def load_golden_brief(path: Path) -> GoldBrief:
-    """Load a gold brief JSON file into a GoldBrief dataclass."""
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+def _parse_golden_brief(raw: dict) -> GoldBrief:
     return GoldBrief(
-        user_aim=raw["user_aim"],
         target=raw["target"],
         relevant_fields=raw["relevant_fields"],
         irrelevant_fields=raw["irrelevant_fields"],

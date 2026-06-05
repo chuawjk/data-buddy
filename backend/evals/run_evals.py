@@ -14,7 +14,7 @@ Usage:
     python -m backend.evals.run_evals --skip-build                 # re-judge latest run
     python -m backend.evals.run_evals --skip-build --run-id 20260605_143022
     python -m backend.evals.run_evals --max-sections 1
-    python -m backend.evals.run_evals --case customers_churn
+    python -m backend.evals.run_evals --case tc001
 
 Exit code: 0 if every case passes every rubric, 1 otherwise.
 """
@@ -31,7 +31,7 @@ from datetime import datetime
 from pathlib import Path
 
 from backend.evals.judge import judge_section
-from backend.evals.loader import load_artifacts, load_golden_brief, load_suite
+from backend.evals.loader import load_artifacts, load_suite
 from backend.evals.models import CaseReport, RubricResult, SuiteReport, TestCase
 from backend.evals.pipeline_driver import build_case
 
@@ -75,8 +75,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--case",
         default=None,
-        metavar="NAME",
-        help="Run only the named case (matches TestCase.name)",
+        metavar="ID",
+        help="Run only the case with this id (matches TestCase.id, e.g. tc001)",
     )
     return p.parse_args()
 
@@ -131,18 +131,19 @@ async def run_suite(
     cases = load_suite(suite_path)
 
     if case_filter:
-        cases = [c for c in cases if c.name == case_filter]
+        cases = [c for c in cases if c.id == case_filter]
         if not cases:
-            raise SystemExit(f"No case named {case_filter!r} in {suite_path}")
+            raise SystemExit(f"No case with id {case_filter!r} in {suite_path}")
 
     # Bind each case's workspace to this run's directory.
-    cases = [dc_replace(c, workspace=run_dir / "cases" / c.name / "workspace") for c in cases]
+    cases = [dc_replace(c, workspace=run_dir / "cases" / c.id / "workspace") for c in cases]
 
     report = SuiteReport()
     for case in cases:
         case_report = await _run_case(case, skip_build=skip_build, max_sections=max_sections)
         report.cases.append(case_report)
         _print_case_summary(case_report)
+        _write_report(report, run_dir)
 
     return report
 
@@ -153,18 +154,18 @@ async def _run_case(
     max_sections: int | None,
 ) -> CaseReport:
     if not skip_build:
-        logger.info("runner: building case %r", case.name)
+        logger.info("runner: building case %r", case.id)
         await build_case(case, max_sections=max_sections)
 
-    brief = load_golden_brief(case.golden_brief)
+    brief = case.golden_brief
     artifacts = load_artifacts(case)
 
     if not artifacts:
-        logger.warning("runner: no built sections for case %r — skipping judge", case.name)
-        return CaseReport(case_name=case.name)
+        logger.warning("runner: no built sections for case %r — skipping judge", case.id)
+        return CaseReport(case_name=case.id)
 
-    sections: list[RubricResult] = [judge_section(a, brief) for a in artifacts]
-    return CaseReport(case_name=case.name, sections=sections)
+    sections: list[RubricResult] = [judge_section(a, brief, case.aim) for a in artifacts]
+    return CaseReport(case_name=case.id, sections=sections)
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +271,6 @@ def main() -> None:
         )
     )
 
-    _write_report(report, run_dir)
     _print_suite_summary(report, run_id, run_dir)
     sys.exit(0 if report.passed else 1)
 
