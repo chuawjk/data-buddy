@@ -8,6 +8,21 @@ The analysis is done by [OpenCode](https://opencode.ai), an AI coding agent. The
 
 ---
 
+## Table of contents
+
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Workflow](#workflow)
+- [Resetting between runs](#resetting-between-runs)
+- [Development](#development)
+- [Testing and linting](#testing-and-linting)
+- [Environment variables](#environment-variables)
+- [Repository layout](#repository-layout)
+- [How it works](#how-it-works)
+- [E2E evals](#e2e-evals)
+
+---
+
 ## Prerequisites
 
 | Requirement | Version | Notes |
@@ -143,3 +158,38 @@ graph LR
 For the full architecture including the state machine, session recovery model, and the backend-vs-agent split, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
+
+## E2E evals
+
+End-to-end evals run the full pipeline on a CSV + aim pair, then use an LLM judge to score each built section against a golden brief. They live in `backend/evals/`.
+
+**Prerequisites:** an `OPENAI_API_KEY` in your environment (the judge calls `gpt-5.4-mini`) and OpenCode on PATH.
+
+### Running evals
+
+Full run — build workspace from scratch, then judge all sections:
+```bash
+uv run --project backend python -m backend.evals.run_evals
+```
+
+See `run_evals.py` for more eval run options.
+
+### Rubrics
+
+Each built section is scored PASS/FAIL on five rubrics:
+
+| Rubric | Passes when |
+|---|---|
+| `relevant` | The section directly addresses the stated aim |
+| `uses_reasonable_fields` | The script uses relevant fields and avoids ID/irrelevant columns |
+| `claims_supported_by_script` | Every claim in the writeup is computed by the script |
+| `claims_consistent_with_golden_brief` | Claims match known patterns and make no forbidden claims |
+| `writeup_is_descriptive` | The writeup contains substantive findings, not a stub |
+
+The overall result is **PASS** only if every section passes every rubric.
+
+### Adding a new eval case
+
+1. Add your CSV to `data/`.
+2. Create `backend/evals/golden_briefs/<name>.json` — see `customers_churn.json` for the shape.
+3. Add an entry to `backend/evals/test_cases.json`.

@@ -1,0 +1,25 @@
+{
+  "user_aim": "Why are customers leaving?",
+  "target": "churned",
+  "relevant_fields": [
+    "plan_tier",
+    "monthly_spend",
+    "tenure_months",
+    "support_tickets_30d",
+    "last_login_days",
+    "region"
+  ],
+  "irrelevant_fields": [
+    "customer_id",
+    "signup_date"
+  ],
+  "known_patterns": [
+    "Shorter-tenure customers have higher churn.",
+    "Customers with more support tickets have higher churn.",
+    "Customers who have not logged in recently are more likely to churn."
+  ],
+  "forbidden_claims": [
+    "customer_id is a meaningful churn driver.",
+    "Any field causes churn without experimental evidence."
+  ]
+}

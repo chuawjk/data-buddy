@@ -1,0 +1,10 @@
+{
+  "cases": [
+    {
+      "name": "customers_churn",
+      "dataset": "../../data/customers_q3.csv",
+      "aim": "Why are customers leaving?",
+      "golden_brief": "golden_briefs/customers_churn.json"
+    }
+  ]
+}
