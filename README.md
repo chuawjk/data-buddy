@@ -6,6 +6,26 @@ Data Buddy is an agent-driven data analysis tool. Upload a CSV, state what you w
 
 The analysis is done by [OpenCode](https://opencode.ai), an AI coding agent. The backend orchestrates what OpenCode does and when; the frontend shows it happening in real time.
 
+## What this is really about
+Data Buddy is a data analysis tool, but that's incidental.
+The real demonstration is a pattern: **an opinionated agentic workflow where human-in-the-loop gates are structurally enforced**. A backend-orchestrated state machine ensures the agent cannot skip steps or proceed without explicit **human sign-off** at each boundary. The same architecture applies to any knowledge work process where sequence matters — Data Buddy is an instantiation in the data analysis context.
+The rest of this README describes this implementation.
+
+---
+
+## Table of contents
+
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Workflow](#workflow)
+- [Resetting between runs](#resetting-between-runs)
+- [Development](#development)
+- [Testing and linting](#testing-and-linting)
+- [Environment variables](#environment-variables)
+- [Repository layout](#repository-layout)
+- [How it works](#how-it-works)
+- [E2E evals](#e2e-evals)
+
 ---
 
 ## Table of contents
@@ -56,6 +76,8 @@ Open `http://localhost:8000` in your browser, upload a CSV, type an aim, and fol
 ---
 
 ## Workflow
+
+Each stage represents a boundary where **human-in-the-loop sign-off** is required before the agentic workflow can proceed.
 
 ```mermaid
 graph LR
