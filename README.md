@@ -28,21 +28,6 @@ The rest of this README describes this implementation.
 
 ---
 
-## Table of contents
-
-- [Prerequisites](#prerequisites)
-- [Quick start](#quick-start)
-- [Workflow](#workflow)
-- [Resetting between runs](#resetting-between-runs)
-- [Development](#development)
-- [Testing and linting](#testing-and-linting)
-- [Environment variables](#environment-variables)
-- [Repository layout](#repository-layout)
-- [How it works](#how-it-works)
-- [E2E evals](#e2e-evals)
-
----
-
 ## Prerequisites
 
 | Requirement | Version | Notes |
@@ -204,9 +189,9 @@ Each built section is scored PASS/FAIL on five rubrics:
 |---|---|
 | `relevant` | The section directly addresses the stated aim |
 | `uses_reasonable_fields` | The script uses relevant fields and avoids ID/irrelevant columns |
-| `claims_supported_by_script` | Every claim in the writeup is computed by the script |
-| `claims_consistent_with_golden_brief` | Claims match known patterns and make no forbidden claims |
-| `writeup_is_descriptive` | The writeup contains substantive findings, not a stub |
+| `claims_supported_by_script` | Every claim in the writeup is based on analysis in the Python script |
+| `claims_consistent_with_golden_brief` | Claims match known patterns and make no unsupported statements |
+| `writeup_is_descriptive` | The writeup contains substantive, non-tautological findings beyond the original hypothesis |
 
 The overall result is **PASS** only if every section passes every rubric.
 
