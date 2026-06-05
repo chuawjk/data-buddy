@@ -9,6 +9,7 @@ data/
 
 # Runtime workspace — wiped by make clean
 workspace/
+backend/evals/runs/
 workspace copy/
 workspace/state.json
 workspace/plan.json
