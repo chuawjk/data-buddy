@@ -195,8 +195,9 @@ def _print_case_summary(report: CaseReport) -> None:
 
 
 def _print_suite_summary(report: SuiteReport, run_id: str, run_dir: Path) -> None:
+    n_sections = sum(len(c.sections) for c in report.cases)
     print(f"\n{'=' * 60}")
-    print(f"Suite summary  ({report.total_cases} cases, {sum(len(c.sections) for c in report.cases)} sections)")
+    print(f"Suite summary  ({report.total_cases} cases, {n_sections} sections)")
     for key, stats in report.rubric_summary.items():
         mark = "✓" if stats["pct"] == 100 else "✗" if stats["pct"] == 0 else "~"
         print(f"  {mark} {key}: {stats['pct']}% ({stats['pass']}/{stats['total']})")
