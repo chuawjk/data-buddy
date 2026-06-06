@@ -38,6 +38,7 @@ import logging
 import os
 import shutil
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -54,9 +55,11 @@ _DEFAULT_PORT: int = 4096
 # v1 session endpoint — per SSE_CONTRACT.md §D5, stick with v1 /session.
 _SESSION_PATH: str = "/session"
 
-# OpenCode OAuth provider config (spike §2: providerID "openai", modelID "gpt-5.4-mini").
-_DEFAULT_PROVIDER_ID: str = "openai"
-_DEFAULT_MODEL_ID: str = "gpt-5.4-mini"
+# OpenCode provider/model — read from env so different environments (dev, spike, prod)
+# can configure the right model without touching code.
+# OPENCODE_PROVIDER_ID / OPENCODE_MODEL_ID override the defaults at runtime.
+_DEFAULT_PROVIDER_ID: str = os.environ.get("OPENCODE_PROVIDER_ID", "openai")
+_DEFAULT_MODEL_ID: str = os.environ.get("OPENCODE_MODEL_ID", "gpt-5.4-mini")
 
 # Health readiness defaults.
 _READINESS_TIMEOUT_S: float = 30.0  # seconds to wait for server to accept connections
@@ -562,6 +565,25 @@ class OpenCodeClient:
     # Private helpers
     # ------------------------------------------------------------------
 
+    def _write_model_config(self) -> None:
+        """Merge provider/model into opencode.jsonc at the project root.
+
+        opencode serve reads this file on startup (v1.15.13+).  We merge
+        rather than overwrite so any other keys the user has set are preserved.
+        """
+        project_root = Path(__file__).parent.parent.parent
+        config_path = project_root / "opencode.jsonc"
+        try:
+            existing: dict = json.loads(config_path.read_text()) if config_path.exists() else {}
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+        existing["$schema"] = "https://opencode.ai/config.json"
+        existing["model"] = f"{self._provider_id}/{self._model_id}"
+        config_path.write_text(json.dumps(existing, indent=2) + "\n")
+        logger.info(
+            "Wrote opencode.jsonc model: %s/%s", self._provider_id, self._model_id
+        )
+
     @staticmethod
     def _resolve_binary() -> str:
         """Return the full path to the ``opencode`` binary.
@@ -582,9 +604,15 @@ class OpenCodeClient:
     async def _launch(self, binary: str) -> None:
         """Spawn ``opencode serve`` as a background subprocess.
 
+        Writes the configured provider/model into ``opencode.jsonc`` at the
+        project root before starting the server.  opencode serve reads this
+        file on startup — the session creation payload alone is not sufficient
+        to select the model in v1.15.13+.
+
         Args:
             binary: Full filesystem path to the opencode binary.
         """
+        self._write_model_config()
         logger.info("Launching OpenCode: %s serve --port %d", binary, _DEFAULT_PORT)
         self._process = await asyncio.create_subprocess_exec(
             binary,

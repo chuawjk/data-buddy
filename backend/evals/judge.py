@@ -78,6 +78,7 @@ def judge_section(section: SectionArtifacts, brief: GoldBrief, aim: str) -> Rubr
 
     response = litellm.completion(
         model=_MODEL,
+        temperature=0.0,
         messages=[{"role": "user", "content": prompt}],
         response_format={
             "type": "json_schema",

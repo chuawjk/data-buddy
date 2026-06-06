@@ -178,7 +178,7 @@ Full run — build workspace from scratch, then judge all sections:
 uv run --project backend python -m backend.evals.run_evals
 ```
 
-See `run_evals.py` for more eval run options.
+See `--help` for more eval run options.
 
 ### Rubrics
 
