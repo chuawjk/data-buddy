@@ -417,7 +417,7 @@ async def test_profile_ready_transitions_to_planning(tmp_path):
     orch, sm, bus, client = _make_orchestrator(tmp_path)
     sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
 
-    await orch._handle_planning_transition()
+    await orch.accept_profile()
     await asyncio.sleep(0)
 
     assert sm.get_state()["stage"] == "planning"
@@ -431,7 +431,7 @@ async def test_profile_ready_emits_stage_changed(tmp_path):
 
     sub = bus.subscribe()
 
-    await orch._handle_planning_transition()
+    await orch.accept_profile()
     await asyncio.sleep(0)
 
     # Drain events to find stage.changed
@@ -455,7 +455,7 @@ async def test_profile_ready_fires_plan_prompt(tmp_path):
     orch, sm, bus, client = _make_orchestrator(tmp_path)
     sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
 
-    await orch._handle_planning_transition()
+    await orch.accept_profile()
     # Allow fire-and-forget task to run.
     await asyncio.sleep(0)
 
@@ -473,7 +473,7 @@ async def test_profile_ready_wrong_stage_returns_early(tmp_path):
 
     sub = bus.subscribe()
 
-    await orch._handle_planning_transition()
+    await orch.accept_profile()
     await asyncio.sleep(0)
 
     # No events should have been emitted.
@@ -494,7 +494,7 @@ async def test_profile_ready_no_session_id_no_prompt(tmp_path):
     mock_client.prompt = AsyncMock(return_value=None)
     orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client)
 
-    await orch._handle_planning_transition()
+    await orch.accept_profile()
     await asyncio.sleep(0)
 
     # Stage still transitions.
@@ -512,7 +512,7 @@ async def test_profile_ready_client_none_no_crash(tmp_path):
     orch = Orchestrator(state_manager=sm, bus=bus, client=None)
 
     # Must not raise.
-    await orch._handle_planning_transition()
+    await orch.accept_profile()
     await asyncio.sleep(0)
 
     assert sm.get_state()["stage"] == "planning"
@@ -520,7 +520,7 @@ async def test_profile_ready_client_none_no_crash(tmp_path):
 
 @pytest.mark.asyncio
 async def test_plan_turn_error_publishes_turn_error(tmp_path):
-    """When client.prompt raises in _run_plan_turn, turn.error is emitted on bus."""
+    """When client.prompt raises in _dispatch_turn, turn.error is emitted on bus."""
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="profiling")
     bus = EventBus()
@@ -530,7 +530,7 @@ async def test_plan_turn_error_publishes_turn_error(tmp_path):
 
     sub = bus.subscribe()
 
-    await orch._run_plan_turn("sess-abc", "Draft a plan")
+    await orch._dispatch_turn("sess-abc", "Draft a plan", "planning")
     await asyncio.sleep(0)
 
     event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
@@ -750,7 +750,7 @@ async def test_plan_turn_calls_watchdog_if_wired(tmp_path):
     watchdog.start_turn = MagicMock()
     orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, watchdog=watchdog)
 
-    await orch._handle_planning_transition()
+    await orch.accept_profile()
     await asyncio.sleep(0)
 
     watchdog.start_turn.assert_called_once()
@@ -1380,7 +1380,7 @@ async def test_retry_without_prior_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_turn_error_has_stage_and_reason(tmp_path):
-    """_run_profile_turn emits turn.error with stage='profiling' and reason='provider_error'.
+    """_dispatch_turn emits turn.error with stage='profiling' and reason='provider_error'.
 
     Structured-output failures and provider errors emit turn.error with
     stage/section_id/reason fields per the API contract.
@@ -1394,7 +1394,7 @@ async def test_turn_error_has_stage_and_reason(tmp_path):
 
     sub = bus.subscribe()
 
-    await orch._run_profile_turn("sess-abc", "Profile the data")
+    await orch._dispatch_turn("sess-abc", "Profile the data", "profiling")
     await asyncio.sleep(0)
 
     event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
@@ -1410,7 +1410,7 @@ async def test_turn_error_has_stage_and_reason(tmp_path):
 
 @pytest.mark.asyncio
 async def test_turn_error_planning_has_stage(tmp_path):
-    """_run_plan_turn emits turn.error with stage='planning' and reason='provider_error'."""
+    """_dispatch_turn emits turn.error with stage='planning' and reason='provider_error'."""
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="planning")
     bus = EventBus()
@@ -1420,7 +1420,7 @@ async def test_turn_error_planning_has_stage(tmp_path):
 
     sub = bus.subscribe()
 
-    await orch._run_plan_turn("sess-abc", "Draft the plan")
+    await orch._dispatch_turn("sess-abc", "Draft the plan", "planning")
     await asyncio.sleep(0)
 
     event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
@@ -1432,7 +1432,7 @@ async def test_turn_error_planning_has_stage(tmp_path):
 
 @pytest.mark.asyncio
 async def test_turn_error_building_has_stage_and_section_id(tmp_path):
-    """_run_section_turn emits turn.error with stage='building', section_id, reason."""
+    """_dispatch_turn emits turn.error with stage='building', section_id, reason."""
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="building")
     bus = EventBus()
@@ -1442,7 +1442,7 @@ async def test_turn_error_building_has_stage_and_section_id(tmp_path):
 
     sub = bus.subscribe()
 
-    await orch._run_section_turn("sess-abc", "Build the section", section_id="sec_01")
+    await orch._dispatch_turn("sess-abc", "Build the section", "building", section_id="sec_01")
     await asyncio.sleep(0)
 
     event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
@@ -1477,7 +1477,7 @@ async def test_qa_force_turn_error(tmp_path, monkeypatch):
 
     sub = bus.subscribe()
 
-    await orch._run_profile_turn("sess-abc", "Profile the data")
+    await orch._dispatch_turn("sess-abc", "Profile the data", "profiling")
     await asyncio.sleep(0)
 
     # turn.error must be emitted.

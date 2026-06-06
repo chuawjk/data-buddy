@@ -12,7 +12,7 @@ Architecture boundaries (from backlog):
 
 State transitions implemented here:
   setup → profiling   (via ``setup_complete``)
-  profiling → planning  (via ``_handle_planning_transition``, triggered on ``profile.ready``)
+  profiling → planning  (via ``accept_profile``, triggered by POST /profile/accept)
   planning → building  (via ``accept_plan``)
   building → done     (via ``_check_done_or_next``)
 
@@ -102,7 +102,7 @@ class Orchestrator:
         1. Persist ``stage=profiling``, ``dataset``, and ``aim`` via the
            state manager (atomic write).
         2. Publish ``stage.changed`` on the event bus.
-        3. If a session ID is stored, schedule ``_run_profile_turn`` as a
+        3. If a session ID is stored, schedule ``_dispatch_turn`` as a
            fire-and-forget ``asyncio.Task``.
 
         Args:
@@ -118,9 +118,14 @@ class Orchestrator:
         # 3. Fire the profiling turn (if we have a session to send it to).
         session_id = self._state_manager.get_state().get("opencode_session_id")
         if session_id and self._client is not None:
+            from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415
+
             prompt_text = self._build_profile_prompt(dataset, aim)
             asyncio.create_task(
-                self._run_profile_turn(session_id, prompt_text),
+                self._dispatch_turn(
+                    session_id, prompt_text, "profiling",
+                    schema=PROFILE_SCHEMA,
+                ),
                 name="profile-turn",
             )
         else:
@@ -143,7 +148,7 @@ class Orchestrator:
         4. Emit ``stage.changed`` with ``{"stage": "building"}``.
         5. Find the first section in the plan with ``status="proposed"``.
         6. If none, log and return (degenerate empty/all-accepted plan).
-        7. Build the section prompt via ``_build_section_prompt()``.
+        7. Build the section prompt via ``build_section_prompt()``.
         8. Arm the watchdog if wired.
         9. Schedule ``_run_section_turn`` as a fire-and-forget task.
 
@@ -250,11 +255,14 @@ class Orchestrator:
         if self._watchdog is not None:
             self._watchdog.start_turn()
 
-        # fire-and-forget; watchdog handles timeout / recovery.
-        # _run_profile_turn loads the schema internally via _load_profile_schema().
         assert self._client is not None  # noqa: S101  # guarded by session check above
+        from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415
+
         asyncio.create_task(
-            self._run_profile_turn(session_id, prompt),
+            self._dispatch_turn(
+                session_id, prompt, "profiling",
+                schema=PROFILE_SCHEMA,
+            ),
             name="re-profile-turn",
         )
 
@@ -303,8 +311,13 @@ class Orchestrator:
             self._watchdog.start_turn()
 
         assert self._client is not None  # noqa: S101  # guarded by session check above
+        from backend.agent.prompts.plan import PLAN_SCHEMA  # noqa: PLC0415
+
         asyncio.create_task(
-            self._run_plan_turn(session_id, prompt),
+            self._dispatch_turn(
+                session_id, prompt, "planning",
+                schema=PLAN_SCHEMA,
+            ),
             name="re-plan-turn",
         )
 
@@ -422,7 +435,9 @@ class Orchestrator:
         )
 
         # Build the redirect prompt.
-        prompt_text = self._build_redirect_prompt(
+        from backend.agent.prompts.redirect import build_redirect_prompt  # noqa: PLC0415
+
+        prompt_text = build_redirect_prompt(
             section_id=section_id,
             section_index=section_index,
             title=title,
@@ -432,6 +447,7 @@ class Orchestrator:
             profile=profile,
             plan=plan,
             redirect_text=text,
+            workspace_root=self._workspace_root.resolve(),
         )
 
         # Arm the watchdog with extended timeout for section builds.
@@ -441,7 +457,7 @@ class Orchestrator:
         # Fire-and-forget.
         assert self._client is not None  # noqa: S101  # guarded by session check above
         asyncio.create_task(
-            self._run_section_turn(session_id, prompt_text, section_id=section_id),
+            self._dispatch_turn(session_id, prompt_text, "building", section_id=section_id),
             name=f"redirect-turn-{section_id}",
         )
 
@@ -510,23 +526,25 @@ class Orchestrator:
             section_id,
         )
 
-        if stage == "profiling":
-            asyncio.create_task(
-                self._run_profile_turn(session_id, prompt),
-                name="retry-profile-turn",
-            )
-        elif stage == "planning":
-            asyncio.create_task(
-                self._run_plan_turn(session_id, prompt),
-                name="retry-plan-turn",
-            )
-        elif stage == "building":
-            asyncio.create_task(
-                self._run_section_turn(session_id, prompt, section_id=section_id),
-                name=f"retry-section-turn-{section_id}",
-            )
-        else:
+        if stage not in ("profiling", "planning", "building"):
             logger.warning("retry_last_turn: unknown stage %r — cannot retry", stage)
+            return
+
+        from backend.agent.prompts.plan import PLAN_SCHEMA  # noqa: PLC0415
+        from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415
+
+        _schemas: dict[str, Any] = {
+            "profiling": PROFILE_SCHEMA,
+            "planning": PLAN_SCHEMA,
+        }
+        asyncio.create_task(
+            self._dispatch_turn(
+                session_id, prompt, stage,
+                schema=_schemas.get(stage),
+                section_id=section_id,
+            ),
+            name=f"retry-{stage}-turn",
+        )
 
     # ------------------------------------------------------------------
     # Bus listener — session.idle / profile.ready → stage output handling
@@ -539,10 +557,53 @@ class Orchestrator:
         and explicitly accepts it.  Returns immediately; the plan turn runs as
         a fire-and-forget asyncio Task.
 
-        Delegates to ``_handle_planning_transition`` which handles the stage
-        guard, state persistence, event emission, and plan turn dispatch.
+        Steps:
+        1. Guard: if current stage is not ``profiling``, return early (idempotent).
+        2. Persist ``stage=planning`` via state manager.
+        3. Emit ``stage.changed`` with ``{"stage": "planning"}``.
+        4. If client and session ID are present, arm the watchdog and schedule
+           ``_dispatch_turn`` as a fire-and-forget task.
         """
-        await self._handle_planning_transition()
+        state = self._state_manager.get_state()
+        current_stage: str = state.get("stage", "")
+        if current_stage != "profiling":
+            logger.debug(
+                "accept_profile: ignoring (stage=%r, expected profiling)",
+                current_stage,
+            )
+            return
+
+        self._state_manager.update(stage="planning")
+
+        ts = int(time.time() * 1000)
+        await self._bus.publish("stage.changed", {"stage": "planning", "ts": ts})
+        logger.info("stage.changed: planning (ts=%d)", ts)
+
+        session_id = self._state_manager.get_state().get("opencode_session_id")
+        if session_id and self._client is not None:
+            dataset: str = state.get("dataset") or ""
+            aim: str = state.get("aim") or ""
+            profile: dict[str, Any] = state.get("profile") or {}
+            prompt_text = self._build_plan_prompt(dataset, aim, profile)
+
+            if self._watchdog is not None:
+                self._watchdog.start_turn()
+
+            from backend.agent.prompts.plan import PLAN_SCHEMA  # noqa: PLC0415
+
+            asyncio.create_task(
+                self._dispatch_turn(
+                    session_id, prompt_text, "planning",
+                    schema=PLAN_SCHEMA,
+                ),
+                name="plan-turn",
+            )
+        else:
+            logger.debug(
+                "accept_profile: skipping plan turn (session_id=%r, client=%r)",
+                session_id,
+                self._client,
+            )
 
     async def start_bus_listener(self) -> None:
         """Subscribe to the EventBus and handle internal events.
@@ -624,57 +685,6 @@ class Orchestrator:
         ts = int(time.time() * 1000)
         await self._bus.publish("profile.ready", {"profile": profile, "ts": ts})
         logger.info("profile.ready emitted (ts=%d)", ts)
-
-    async def _handle_planning_transition(self) -> None:
-        """Called when ``profile.ready`` fires — transitions profiling → planning.
-
-        Steps:
-        1. Guard: if current stage is not ``profiling``, return early (idempotent).
-        2. Persist ``stage=planning`` via state manager.
-        3. Emit ``stage.changed`` with ``{"stage": "planning"}``.
-        4. If client and session ID are present, arm the watchdog and schedule
-           ``_run_plan_turn`` as a fire-and-forget task.
-
-        """
-        state = self._state_manager.get_state()
-        current_stage: str = state.get("stage", "")
-        if current_stage != "profiling":
-            logger.debug(
-                "_handle_planning_transition: ignoring (stage=%r, expected profiling)",
-                current_stage,
-            )
-            return
-
-        # 1. Persist the transition.
-        self._state_manager.update(stage="planning")
-
-        # 2. Emit the domain event.
-        ts = int(time.time() * 1000)
-        await self._bus.publish("stage.changed", {"stage": "planning", "ts": ts})
-        logger.info("stage.changed: planning (ts=%d)", ts)
-
-        # 3. Fire the plan turn if we have a session.
-        session_id = self._state_manager.get_state().get("opencode_session_id")
-        if session_id and self._client is not None:
-            dataset: str = state.get("dataset") or ""
-            aim: str = state.get("aim") or ""
-            profile: dict[str, Any] = state.get("profile") or {}
-            prompt_text = self._build_plan_prompt(dataset, aim, profile)
-
-            # Arm the watchdog before firing the turn (same pattern as profiling).
-            if self._watchdog is not None:
-                self._watchdog.start_turn()
-
-            asyncio.create_task(
-                self._run_plan_turn(session_id, prompt_text),
-                name="plan-turn",
-            )
-        else:
-            logger.debug(
-                "_handle_planning_transition: skipping plan turn (session_id=%r, client=%r)",
-                session_id,
-                self._client,
-            )
 
     async def _handle_plan_idle(self) -> None:
         """Called when ``session.idle`` fires during the planning stage.
@@ -818,7 +828,9 @@ class Orchestrator:
         self._state_manager.update(plan=updated_plan)
 
         # 2. Build the section prompt.
-        prompt_text = self._build_section_prompt(
+        from backend.agent.prompts.section import build_section_prompt  # noqa: PLC0415
+
+        prompt_text = build_section_prompt(
             section_id=section_id,
             section_index=section_index,
             title=title,
@@ -827,6 +839,7 @@ class Orchestrator:
             dataset=dataset,
             profile=profile,
             plan=plan,
+            workspace_root=self._workspace_root.resolve(),
         )
 
         # 3. Arm the watchdog with extended timeout for section builds.
@@ -836,7 +849,7 @@ class Orchestrator:
         # 4. Fire-and-forget the turn.
         assert self._client is not None  # noqa: S101  # guarded by session check above
         asyncio.create_task(
-            self._run_section_turn(session_id, prompt_text, section_id=section_id),
+            self._dispatch_turn(session_id, prompt_text, "building", section_id=section_id),
             name=f"section-turn-{section_id}",
         )
 
@@ -1091,63 +1104,6 @@ class Orchestrator:
     # Prompt construction
     # ------------------------------------------------------------------
 
-    def _build_section_prompt(
-        self,
-        section_id: str,
-        section_index: int,
-        title: str,
-        hypothesis: str,
-        aim: str,
-        dataset: str,
-        profile: dict[str, Any],
-        plan: list[Any],
-    ) -> str:
-        """Return the text to send to OpenCode for the section build turn.
-
-        Tries to import ``build_section_prompt`` from ``backend.prompts.section``.
-        Falls back to a minimal placeholder.
-
-        Args:
-            section_id: Section identifier (e.g. ``"sec_01"``).
-            section_index: 1-based ordinal in the plan.
-            title: Section title.
-            hypothesis: Section hypothesis.
-            aim: The user's stated aim.
-            dataset: Dataset filename.
-            profile: Full parsed profile dict.
-            plan: Full plan list.
-
-        Returns:
-            A non-empty prompt string.
-        """
-        try:
-            from backend.agent.prompts.section import build_section_prompt  # noqa: PLC0415
-
-            return build_section_prompt(
-                section_id=section_id,
-                section_index=section_index,
-                title=title,
-                hypothesis=hypothesis,
-                aim=aim,
-                dataset=dataset,
-                profile=profile,
-                plan=plan,
-                workspace_root=self._workspace_root.resolve(),
-            )
-        except ImportError:
-            logger.debug(
-                "_build_section_prompt: backend.prompts.section not yet available; "
-                "using placeholder."
-            )
-            ws = self._workspace_root.resolve()
-            nn = str(section_index).zfill(2)
-            return (
-                f"Build section {section_id} ({title}) of the brief. "
-                f"Aim: {aim}. Dataset: {ws / 'data' / dataset}. "
-                f"Write analyses/sec_{nn}_*.py, charts/sec_{nn}_*.png, "
-                f"sections/sec_{nn}_*.md with YAML frontmatter."
-            )
-
     @staticmethod
     def _select_redirect_target(
         plan: list[dict[str, Any]],
@@ -1174,52 +1130,6 @@ class Orchestrator:
             next((s for s in plan if s.get("status") == "proposed"), None),
         )
 
-    def _build_redirect_prompt(
-        self,
-        section_id: str,
-        section_index: int,
-        title: str,
-        hypothesis: str,
-        aim: str,
-        dataset: str,
-        profile: dict[str, Any],
-        plan: list[Any],
-        redirect_text: str,
-    ) -> str:
-        """Return the text to send to OpenCode for the section redirect turn.
-
-        Tries to import ``build_redirect_prompt`` from ``backend.prompts.redirect``.
-        Falls back to a minimal placeholder.
-        """
-        try:
-            from backend.agent.prompts.redirect import build_redirect_prompt  # noqa: PLC0415
-
-            return build_redirect_prompt(
-                section_id=section_id,
-                section_index=section_index,
-                title=title,
-                hypothesis=hypothesis,
-                aim=aim,
-                dataset=dataset,
-                profile=profile,
-                plan=plan,
-                redirect_text=redirect_text,
-                workspace_root=self._workspace_root.resolve(),
-            )
-        except ImportError:
-            logger.debug(
-                "_build_redirect_prompt: backend.prompts.redirect not yet available; "
-                "using placeholder."
-            )
-            ws = self._workspace_root.resolve()
-            nn = str(section_index).zfill(2)
-            return (
-                f"Redirect section {section_id} ({title}): {redirect_text}. "
-                f"Aim: {aim}. Dataset: {ws / 'data' / dataset}. "
-                f"Rebuild analyses/sec_{nn}_*.py, charts/sec_{nn}_*.png, "
-                f"sections/sec_{nn}_*.md."
-            )
-
     def _build_profile_prompt(self, dataset: str, aim: str) -> str:
         """Return the text to send to OpenCode for the profiling turn.
 
@@ -1233,17 +1143,9 @@ class Orchestrator:
         Returns:
             A non-empty prompt string.
         """
-        try:
-            from backend.agent.prompts.profile import build_profile_prompt  # noqa: PLC0415
+        from backend.agent.prompts.profile import build_profile_prompt  # noqa: PLC0415
 
-            return build_profile_prompt(dataset, aim, self._workspace_root.resolve())
-        except ImportError:
-            logger.debug(
-                "_build_profile_prompt: backend.prompts.profile not yet available; "
-                "using placeholder."
-            )
-            ws = self._workspace_root.resolve()
-            return f"Profile the dataset at {ws / 'data' / dataset} with aim: {aim}"
+        return build_profile_prompt(dataset, aim, self._workspace_root.resolve())
 
     def _build_plan_prompt(self, dataset: str, aim: str, profile: dict[str, Any]) -> str:
         """Return the text to send to OpenCode for the planning turn.
@@ -1259,33 +1161,9 @@ class Orchestrator:
         Returns:
             A non-empty prompt string.
         """
-        try:
-            from backend.agent.prompts.plan import build_plan_prompt  # noqa: PLC0415
+        from backend.agent.prompts.plan import build_plan_prompt  # noqa: PLC0415
 
-            return build_plan_prompt(dataset, aim, profile, self._workspace_root.resolve())
-        except ImportError:
-            logger.debug(
-                "_build_plan_prompt: backend.prompts.plan not yet available; using placeholder."
-            )
-            ws = self._workspace_root.resolve()
-            return (
-                f"Draft an analysis plan for {ws / 'data' / dataset} with aim: {aim}. "
-                "Return as JSON with a 'sections' array."
-            )
-
-    @staticmethod
-    def _load_plan_schema() -> Any:
-        """Return the plan JSON schema for structured output, or ``None``.
-
-        Attempts to import ``PLAN_SCHEMA`` from ``backend.prompts.plan``.
-        Returns ``None`` if the module is not yet available.
-        """
-        try:
-            from backend.agent.prompts.plan import PLAN_SCHEMA  # noqa: PLC0415
-
-            return PLAN_SCHEMA
-        except ImportError:
-            return None
+        return build_plan_prompt(dataset, aim, profile, self._workspace_root.resolve())
 
     # ------------------------------------------------------------------
     # Workspace file helpers
@@ -1323,32 +1201,37 @@ class Orchestrator:
     # Fire-and-forget helpers
     # ------------------------------------------------------------------
 
-    async def _run_plan_turn(self, session_id: str, prompt: str) -> None:
-        """Send the planning prompt to OpenCode and handle errors.
+    async def _dispatch_turn(
+        self,
+        session_id: str,
+        prompt: str,
+        stage: str,
+        *,
+        schema: Any = None,
+        section_id: str | None = None,
+    ) -> None:
+        """Send a prompt to OpenCode and convert any error into a turn.error event.
 
-        This coroutine is scheduled as a fire-and-forget ``asyncio.Task``
-        by ``_handle_planning_transition``.  Any exception is caught here and
-        converted into a ``turn.error`` bus event.
-
-        The JSON schema for structured output is sourced from
-        ``backend.prompts.plan.PLAN_SCHEMA`` when available.
-        If that import fails, no schema is passed (``schema=None``).
+        Single implementation for profiling, planning, and building turns.
+        Scheduled as a fire-and-forget ``asyncio.Task`` by every turn caller.
 
         Args:
             session_id: The active OpenCode session ID.
-            prompt: The plan prompt text to send.
+            prompt: The prompt text to send.
+            stage: Pipeline stage ("profiling", "planning", "building").
+            schema: Optional JSON schema for structured output (ADR-004).
+                Pass ``None`` for section builds (file-triplet output, ADR-005).
+            section_id: Section identifier; included in ``turn.error`` only for
+                building-stage errors so the SPA can locate the affected section.
         """
-        # Record this turn so retry_last_turn() can replay it.
         self._last_turn = {
-            "stage": "planning",
+            "stage": stage,
             "prompt": prompt,
-            "section_id": None,
+            "section_id": section_id,
             "retries": self._last_turn.get("retries", 0) if self._last_turn else 0,
         }
 
-        schema: Any = self._load_plan_schema()
-
-        assert self._client is not None  # guarded by caller  # noqa: S101
+        assert self._client is not None  # noqa: S101  # guarded by all callers
         try:
             if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
                 raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
@@ -1356,58 +1239,9 @@ class Orchestrator:
             if self._last_turn is not None:
                 self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Plan turn failed: %s", exc)
-            await self._bus.publish(
-                "turn.error",
-                {
-                    "stage": "planning",
-                    "reason": "provider_error",
-                    "ts": int(time.time() * 1000),
-                },
-            )
-
-    async def _run_section_turn(
-        self,
-        session_id: str,
-        prompt: str,
-        section_id: str | None = None,
-    ) -> None:
-        """Send the section build prompt to OpenCode and handle errors.
-
-        Scheduled as a fire-and-forget ``asyncio.Task`` by ``start_build_section``.
-        Any exception is caught here and converted into a ``turn.error`` bus event.
-
-        No ``schema`` is passed (``schema=None``) — section build uses the file
-        triplet as structured output, not OpenCode's native JSON schema mechanism
-        (ADR-005).
-
-        Args:
-            session_id: The active OpenCode session ID.
-            prompt: The section build prompt text.
-            section_id: Optional section identifier included in ``turn.error``
-                payloads so the SPA can locate the affected section.
-
-        """
-        # Record this turn so retry_last_turn() can replay it.
-        self._last_turn = {
-            "stage": "building",
-            "prompt": prompt,
-            "section_id": section_id,
-            "retries": self._last_turn.get("retries", 0) if self._last_turn else 0,
-        }
-
-        assert self._client is not None  # noqa: S101  # guarded by caller
-        try:
-            if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
-                raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
-            # schema=None — no structured output for section build (ADR-005).
-            await self._client.prompt(session_id, prompt)
-            if self._last_turn is not None:
-                self._last_turn["retries"] = 0
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Section turn failed: %s", exc)
+            logger.exception("%s turn failed: %s", stage.capitalize(), exc)
             error_payload: dict[str, Any] = {
-                "stage": "building",
+                "stage": stage,
                 "reason": "provider_error",
                 "ts": int(time.time() * 1000),
             }
@@ -1415,60 +1249,3 @@ class Orchestrator:
                 error_payload["section_id"] = section_id
             await self._bus.publish("turn.error", error_payload)
 
-    async def _run_profile_turn(self, session_id: str, prompt: str) -> None:
-        """Send the profiling prompt to OpenCode and handle errors.
-
-        This coroutine is scheduled as a fire-and-forget ``asyncio.Task``
-        by ``setup_complete``.  Any exception (e.g. the client is unavailable)
-        is caught here and converted into a ``turn.error`` bus event so the
-        frontend is notified rather than the error silently disappearing.
-
-        The JSON schema for structured output is sourced from
-        ``backend.prompts.profile.PROFILE_SCHEMA`` when available.
-        If that import fails, no schema is passed (``schema=None``).
-
-        Args:
-            session_id: The active OpenCode session ID.
-            prompt: The profile prompt text to send.
-        """
-        # Record this turn so retry_last_turn() can replay it.
-        self._last_turn = {
-            "stage": "profiling",
-            "prompt": prompt,
-            "section_id": None,
-            "retries": self._last_turn.get("retries", 0) if self._last_turn else 0,
-        }
-
-        schema: Any = self._load_profile_schema()
-
-        assert self._client is not None  # guarded by caller
-        try:
-            if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
-                raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
-            await self._client.prompt(session_id, prompt, schema=schema)
-            if self._last_turn is not None:
-                self._last_turn["retries"] = 0
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Profile turn failed: %s", exc)
-            await self._bus.publish(
-                "turn.error",
-                {
-                    "stage": "profiling",
-                    "reason": "provider_error",
-                    "ts": int(time.time() * 1000),
-                },
-            )
-
-    @staticmethod
-    def _load_profile_schema() -> Any:
-        """Return the profile JSON schema for structured output, or ``None``.
-
-        Attempts to import ``PROFILE_SCHEMA`` from ``backend.prompts.profile``.
-        Returns ``None`` if the module is not yet available.
-        """
-        try:
-            from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415
-
-            return PROFILE_SCHEMA
-        except ImportError:
-            return None
