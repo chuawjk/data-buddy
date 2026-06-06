@@ -25,6 +25,7 @@
           "Customers who have not logged in recently are far more likely to have churned: the most-lapsed quartile (51–113 days) has a 56% churn rate vs 8% for the most-recent quartile (0–5 days).",
           "Shorter-tenure customers churn more: the shortest-tenure quartile (1–39 months) churns at 42% vs 8% for the longest (77–96 months), though the pattern is non-monotonic across middle quartiles.",
           "Having any support tickets in the past 30 days is associated with higher churn (44% vs 22%), but the signal is noisy — the median ticket count is 0 for both churned and retained customers.",
+          "23 of 100 customers have no region recorded (the value 'NA' in the CSV); regional analysis covers only the 77 customers with a known region and this gap should be noted.",
           "Regional churn rates vary (ANZ 32%, EMEA 33%, LATAM 26%, APAC 17%) but are largely explained by plan tier mix across regions."
         ],
         "forbidden_claims": [
@@ -58,7 +59,7 @@
         ],
         "known_patterns": [
           "Plan tier completely determines the spend range: basic $10–48, pro $53–298, enterprise $496–4003.",
-          "Revenue is highly concentrated: the top 10 customers account for ~76% of total revenue, all enterprise or high-end pro.",
+          "Revenue is highly concentrated: the top 10 customers account for ~76% of total revenue, all enterprise-tier.",
           "Churned customers are almost entirely basic-tier (24 of 26 churned are basic) with a median spend of ~$26 — the revenue lost to churn is small in absolute terms.",
           "APAC has the highest mean spend ($835) because it has the highest enterprise concentration (6 of 18 customers, 33%).",
           "ANZ and EMEA have no enterprise customers, giving them the lowest mean spend ($79 and $97 respectively).",
@@ -104,7 +105,7 @@
         "forbidden_claims": [
           "customer_id identifies at-risk customers.",
           "signup_date directly measures engagement (last_login_days already captures recency).",
-          "monthly_spend or region are meaningful engagement signals.",
+          "monthly_spend or region are direct engagement signals independent of plan tier — any apparent correlation with last_login_days runs through plan_tier (enterprise customers have both the highest spend and lowest last_login_days; pro customers have the highest last_login_days despite higher spend than basic).",
           "last_login_days and support_tickets_30d are correlated with each other — they are independent signals.",
           "Any predictive accuracy metric such as accuracy, precision, recall, or AUC — this is descriptive analysis, not modelling.",
           "Any claim that these signals predict churn with quantified accuracy without a model being built.",

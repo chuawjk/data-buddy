@@ -174,13 +174,11 @@ async def _run_case(
 
 
 def _print_case_summary(report: CaseReport) -> None:
-    status = "PASS" if report.passed else "FAIL"
     print(f"\n{'=' * 60}")
-    print(f"Case: {report.case_name}  [{status}]")
+    print(f"Case: {report.case_name}")
     print(f"{'=' * 60}")
     for s in report.sections:
-        sec_status = "PASS" if s.passed else "FAIL"
-        print(f"  [{sec_status}] {s.section_id}")
+        print(f"  {s.section_id}")
         for rubric in (
             "relevant",
             "uses_reasonable_fields",
@@ -197,11 +195,13 @@ def _print_case_summary(report: CaseReport) -> None:
 
 
 def _print_suite_summary(report: SuiteReport, run_id: str, run_dir: Path) -> None:
-    status = "PASS" if report.passed else "FAIL"
     print(f"\n{'=' * 60}")
-    print(f"Suite result : {status}  ({report.passed_cases}/{report.total_cases} cases passed)")
-    print(f"Run ID       : {run_id}")
-    print(f"Report       : {run_dir / 'eval_report.json'}")
+    print(f"Suite summary  ({report.total_cases} cases, {sum(len(c.sections) for c in report.cases)} sections)")
+    for key, stats in report.rubric_summary.items():
+        mark = "✓" if stats["pct"] == 100 else "✗" if stats["pct"] == 0 else "~"
+        print(f"  {mark} {key}: {stats['pct']}% ({stats['pass']}/{stats['total']})")
+    print(f"Run ID  : {run_id}")
+    print(f"Report  : {run_dir / 'eval_report.json'}")
     print(f"{'=' * 60}\n")
 
 
@@ -222,7 +222,6 @@ def _write_report(report: SuiteReport, run_dir: Path) -> Path:
 def _serialise_rubric(r: RubricResult) -> dict:
     return {
         "section_id": r.section_id,
-        "passed": r.passed,
         "relevant": r.relevant,
         "uses_reasonable_fields": r.uses_reasonable_fields,
         "claims_supported_by_script": r.claims_supported_by_script,
@@ -235,16 +234,14 @@ def _serialise_rubric(r: RubricResult) -> dict:
 def _serialise_case(c: CaseReport) -> dict:
     return {
         "case_name": c.case_name,
-        "passed": c.passed,
         "sections": [_serialise_rubric(s) for s in c.sections],
     }
 
 
 def _serialise_suite(s: SuiteReport) -> dict:
     return {
-        "passed": s.passed,
         "total_cases": s.total_cases,
-        "passed_cases": s.passed_cases,
+        "rubric_summary": s.rubric_summary,
         "cases": [_serialise_case(c) for c in s.cases],
     }
 

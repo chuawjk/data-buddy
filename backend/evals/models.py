@@ -76,9 +76,19 @@ class SuiteReport:
         return len(self.cases)
 
     @property
-    def passed_cases(self) -> int:
-        return sum(1 for c in self.cases if c.passed)
-
-    @property
     def passed(self) -> bool:
         return bool(self.cases) and all(c.passed for c in self.cases)
+
+    @property
+    def rubric_summary(self) -> dict[str, dict[str, int]]:
+        all_sections = [s for c in self.cases for s in c.sections]
+        total = len(all_sections)
+        result = {}
+        for key in _RUBRIC_KEYS:
+            passed = sum(1 for s in all_sections if getattr(s, key) == "PASS")
+            result[key] = {
+                "pass": passed,
+                "total": total,
+                "pct": round(passed / total * 100) if total else 0,
+            }
+        return result
