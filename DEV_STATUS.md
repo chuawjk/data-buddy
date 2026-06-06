@@ -329,6 +329,28 @@ Quick path:
 
 ---
 
+---
+
+## Post-Night 3 Update — OpenCode Model Configuration Fix
+
+**Date:** 2026-06-06
+
+**Problem discovered:** `_DEFAULT_MODEL_ID = "gpt-5.4-mini"` in `backend/agent/opencode_client.py` was not being respected at runtime. OpenCode v1.15.13 ignores the `modelID`/`providerID` fields in the `POST /session` payload and selects the model from its own startup configuration instead. On machines without the `openai` provider configured, it silently fell back to `opencode/big-pickle`.
+
+**Fix applied (develop):**
+
+1. `backend/agent/opencode_client.py` — `_DEFAULT_PROVIDER_ID` and `_DEFAULT_MODEL_ID` now read from `OPENCODE_PROVIDER_ID` / `OPENCODE_MODEL_ID` environment variables (same defaults as before). A new `_write_model_config()` helper is called from `_launch()` before the subprocess starts; it merges `"model": "<provider>/<model>"` into `opencode.jsonc` at the project root, which is the mechanism OpenCode actually reads on startup.
+
+2. `.env` / `.env.example` — `OPENCODE_PROVIDER_ID=openai` and `OPENCODE_MODEL_ID=gpt-5.4-mini` added. Source `.env` before `make run` or `make dev`.
+
+3. `opencode.jsonc` (project root) — Written at runtime by the backend on each `start()`; committed seed value reflects the configured model.
+
+**Verified:** Live check against a real OpenCode server confirmed `session.next.model.switched` carries `providerID=openai, modelID=gpt-5.4-mini` after the fix.
+
+**No story or test changes required** — this was a runtime wiring gap, not a logic bug. All 563 tests continue to pass (OpenCode process is mocked in unit/integration tests).
+
+---
+
 ## Blockers
 
 None. All Night 3 blockers resolved overnight.
