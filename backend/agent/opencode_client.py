@@ -231,9 +231,9 @@ class OpenCodeClient:
     async def create_fresh_session(self) -> str:
         """Create a new OpenCode session and return its ID.
 
-        Re-uses ``_create_session()`` internally.  Does NOT update ``_session_id``
-        or ``state_manager`` -- the caller (``Watchdog``) is responsible for
-        persisting the new session ID via
+        Re-uses ``_create_session()`` internally. Does NOT update ``_session_id``
+        or ``state_manager`` -- the caller (the watchdog or orchestrator retry
+        path) is responsible for persisting the new session ID via
         ``state_manager.update(opencode_session_id=new_id)``.
 
         Returns:

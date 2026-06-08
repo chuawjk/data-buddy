@@ -30,7 +30,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.core.event_bus import EventBus
-from backend.core.orchestrator import Orchestrator
+from backend.core.orchestrator import Orchestrator, TurnRecord
 from backend.core.state_manager import StateManager
 
 # ---------------------------------------------------------------------------
@@ -57,6 +57,7 @@ def _make_orchestrator(
     bus = EventBus()
     mock_client = AsyncMock()
     mock_client.prompt = AsyncMock(return_value=None)
+    mock_client.create_fresh_session = AsyncMock(return_value="sess-fresh")
     orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client)
     return orch, sm, bus, mock_client
 
@@ -269,20 +270,41 @@ async def test_handle_profile_idle_wrong_stage_no_emit(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_handle_profile_idle_missing_file_no_emit(tmp_path):
-    """When profile.json is absent, profile.ready must not be emitted (graceful)."""
+async def test_handle_profile_idle_missing_file_emits_turn_error(tmp_path):
+    """When profile.json is absent, a structured-output turn.error is emitted."""
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="profiling")
     bus = EventBus()
     mock_client = AsyncMock()
     orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
 
     # Do NOT write profile.json.
     sub = bus.subscribe()
 
     await orch._handle_profile_idle()
 
-    assert sub._queue.empty(), "profile.ready must NOT be emitted when profile.json is missing"
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    assert event["stage"] == "profiling"
+    assert event["reason"] == "structured_output_failed"
+    assert orch._last_turn is not None
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_idle_invalid_json_emits_turn_error(tmp_path):
+    """Malformed profile.json surfaces the same retryable structured-output error."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._workspace_root = tmp_path
+    (tmp_path / "profile.json").write_text("{not-json", encoding="utf-8")
+    sub = bus.subscribe()
+
+    await orch._handle_profile_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    assert event["reason"] == "structured_output_failed"
 
 
 @pytest.mark.asyncio
@@ -1261,94 +1283,154 @@ async def test_accept_plan_transitions_sections_to_queued(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_retry_last_turn_replays_profile_prompt(tmp_path):
-    """retry_last_turn() replays the last profiling prompt to the same session.
+async def test_retry_last_turn_replays_profile_prompt_on_fresh_session(tmp_path):
+    """retry_last_turn() replays the full profiling turn on a fresh session.
 
-    After _run_profile_turn records _last_turn, retry_last_turn() must call
-    client.prompt with the same prompt text.
+    The fresh session is persisted before the prompt is replayed.
     """
     orch, sm, bus, client = _make_orchestrator(tmp_path)
     sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
 
-    # Simulate a prior profile turn by directly setting _last_turn.
-    orch._last_turn = {
-        "stage": "profiling",
-        "prompt": "Profile the dataset",
-        "section_id": None,
-        "retries": 0,
-    }
-
-    client.prompt.reset_mock()
-    await orch.retry_last_turn()
-    await asyncio.sleep(0)
-
-    client.prompt.assert_awaited_once()
-    args, _ = client.prompt.call_args
-    assert args[0] == "sess-abc", f"Expected session_id 'sess-abc', got {args[0]!r}"
-    assert args[1] == "Profile the dataset"
-
-
-@pytest.mark.asyncio
-async def test_retry_last_turn_uses_fresh_session(tmp_path):
-    """retry_last_turn() reads the session ID fresh from state after a watchdog swap.
-
-    After a watchdog session swap, the session ID in state.json changes.
-    retry_last_turn() must target the new session, not a stale reference.
-    """
-    orch, sm, bus, client = _make_orchestrator(tmp_path)
-    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
-
-    orch._last_turn = {
-        "stage": "profiling",
-        "prompt": "Profile the dataset",
-        "section_id": None,
-        "retries": 0,
-    }
-
-    # Simulate watchdog session swap: new session ID persisted to state.
-    sm.update(opencode_session_id="sess-new-456")
-    client.prompt.reset_mock()
-
-    await orch.retry_last_turn()
-    await asyncio.sleep(0)
-
-    client.prompt.assert_awaited_once()
-    args, _ = client.prompt.call_args
-    assert args[0] == "sess-new-456", f"Expected fresh session_id 'sess-new-456', got {args[0]!r}"
-
-
-@pytest.mark.asyncio
-async def test_retry_bounded_at_three(tmp_path):
-    """retry_last_turn() emits turn.error with reason='provider_error' after 3 retries.
-
-    On the 4th retry attempt (retries >= 3), no further client.prompt is called;
-    turn.error is emitted with reason='provider_error'.
-    """
-    orch, sm, bus, client = _make_orchestrator(tmp_path)
-    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
-
-    orch._last_turn = {
-        "stage": "profiling",
-        "prompt": "Profile the dataset",
-        "section_id": None,
-        "retries": 3,  # Already at the limit.
-    }
-
-    sub = bus.subscribe()
-    client.prompt.reset_mock()
-
-    await orch.retry_last_turn()
-    await asyncio.sleep(0)
-
-    # No further prompt call.
-    client.prompt.assert_not_awaited()
-
-    # turn.error must be emitted with reason='provider_error'.
-    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
-    assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
-    assert event.get("reason") == "provider_error", (
-        f"Expected reason='provider_error'; got {event.get('reason')!r}"
+    schema = {"type": "object"}
+    orch._last_turn = TurnRecord(
+        stage="profiling",
+        prompt="Profile the dataset",
+        schema=schema,
     )
+
+    client.prompt.reset_mock()
+    await orch.retry_last_turn()
+    await asyncio.sleep(0)
+
+    client.create_fresh_session.assert_awaited_once()
+    client.prompt.assert_awaited_once()
+    args, kwargs = client.prompt.call_args
+    assert args[0] == "sess-fresh"
+    assert args[1] == "Profile the dataset"
+    assert kwargs["schema"] is schema
+    assert sm.get_state()["opencode_session_id"] == "sess-fresh"
+
+
+@pytest.mark.asyncio
+async def test_retry_last_turn_rearms_watchdog(tmp_path):
+    """Retry re-arms the watchdog with the stage-appropriate timeout."""
+    from unittest.mock import MagicMock
+
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+    watchdog = MagicMock()
+    watchdog.start_turn = MagicMock()
+    orch._watchdog = watchdog
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+
+    await orch.retry_last_turn()
+    await asyncio.sleep(0)
+
+    watchdog.start_turn.assert_called_once_with(timeout=None)
+
+
+@pytest.mark.asyncio
+async def test_retry_contract_survives_prompt_acceptance(tmp_path):
+    """A 204 prompt acceptance does not clear the replay contract before output validation."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._workspace_root = tmp_path
+    turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    orch._last_turn = turn
+
+    await orch.retry_last_turn()
+
+    assert orch._last_turn is turn
+
+
+@pytest.mark.asyncio
+async def test_new_turn_records_schema_for_future_retry(tmp_path):
+    """A failed initial turn retains its exact schema in the replay contract."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    schema = {"type": "object", "required": ["shape"]}
+    client.prompt.side_effect = RuntimeError("provider error")
+
+    await orch._dispatch_turn("sess-abc", "Profile the dataset", "profiling", schema=schema)
+
+    assert orch._last_turn is not None
+    assert orch._last_turn.schema is schema
+
+
+@pytest.mark.asyncio
+async def test_retry_fresh_session_failure_emits_turn_error(tmp_path):
+    """Failure to create the replacement session remains visible and retryable."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    client.create_fresh_session.side_effect = RuntimeError("session database error")
+    sub = bus.subscribe()
+
+    await orch.retry_last_turn()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    assert event["stage"] == "profiling"
+    assert event["reason"] == "provider_error"
+    client.prompt.assert_not_awaited()
+    assert orch._last_turn is not None
+    assert not orch._retry_in_progress
+
+
+@pytest.mark.asyncio
+async def test_valid_profile_output_clears_last_turn(tmp_path):
+    """A valid profile.ready completion clears the replay contract."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._workspace_root = tmp_path
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    profile = {"shape": {"rows": 1, "columns": 1}, "columns": [], "flags": []}
+    (tmp_path / "profile.json").write_text(__import__("json").dumps(profile), encoding="utf-8")
+
+    await orch._handle_profile_idle()
+
+    assert orch._last_turn is None
+
+
+@pytest.mark.asyncio
+async def test_retry_has_no_fixed_manual_limit(tmp_path):
+    """Every deliberate retry creates a fresh session and replays the turn."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    client.create_fresh_session.side_effect = ["sess-1", "sess-2", "sess-3", "sess-4"]
+
+    for _ in range(4):
+        await orch.retry_last_turn()
+
+    assert client.create_fresh_session.await_count == 4
+    assert client.prompt.await_count == 4
+    assert sm.get_state()["opencode_session_id"] == "sess-4"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_retry_request_is_ignored_while_retry_in_progress(tmp_path):
+    """Concurrent Retry clicks collapse into one fresh-session replay."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    creation_started = asyncio.Event()
+    release_creation = asyncio.Event()
+
+    async def delayed_session_creation():
+        creation_started.set()
+        await release_creation.wait()
+        return "sess-fresh"
+
+    client.create_fresh_session.side_effect = delayed_session_creation
+
+    first_retry = asyncio.create_task(orch.retry_last_turn())
+    await creation_started.wait()
+    await orch.retry_last_turn()
+    release_creation.set()
+    await first_retry
+
+    client.create_fresh_session.assert_awaited_once()
+    client.prompt.assert_awaited_once()
 
 
 @pytest.mark.asyncio

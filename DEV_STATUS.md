@@ -31,7 +31,7 @@
 |---|---:|---|---|
 | N3-S01 Sequential section loop & done | #60 | `492b422` | `_check_done_or_next()`; `stage.changed(done)`; re-entrant safe |
 | N3-S04 Harden watchdog for long runs | #60 | `492b422` | `_current_timeout` stored on `start_turn()`; heartbeat re-arms with correct per-turn budget |
-| N3-S02 Retry a turn | #58 | `b5501db` | `retry_last_turn()`; capped at 3 retries; 4th emits `turn.error` |
+| N3-S02 Retry a turn | #58 | `b5501db` | `retry_last_turn()`; manual retries create fresh sessions; duplicate in-progress requests are ignored |
 | N3-S03 Map turn errors | #58 | `b5501db` | `turn.error { stage, reason }` enum contract; `"provider_error"` / `"timeout"` |
 | N3-S16 Forced turn-error hook | #58 | `b5501db` | `QA_FORCE_TURN_ERROR=1` in `_run_*_turn` before `client.prompt()` |
 | N3-S09 `make run` | #57 | `428c669` | `pnpm build` then `uvicorn`; FastAPI serves `frontend/dist/` as static files |
@@ -267,7 +267,7 @@ Post-Night-2 fixes merged to `develop`:
 
 ### N3-S02/S03/S16 — What landed (as corrected by `ae99ecd`)
 
-- `orchestrator._last_turn`: records last-dispatched stage/prompt/section_id; `retry_last_turn()` replays it, capped at 3 retries; 4th attempt emits `turn.error` with `reason="provider_error"`
+- `orchestrator._last_turn`: records the full replay contract; `retry_last_turn()` creates a fresh session and replays it without a fixed manual limit; duplicate in-progress requests are ignored
 - `turn.error` payloads carry `{ type, stage, reason, ts, section_id? }` — correct contract shape; `reason` is an enum string (`"provider_error"` for orchestrator errors, `"timeout"` for watchdog timeouts); `section_id` present only for building-stage errors
 - `QA_FORCE_TURN_ERROR=1`: raises `RuntimeError` in each `_run_*_turn` before `client.prompt()` call (placed in orchestrator, not opencode_client — see ADR-018)
 - `POST /turn` with empty/absent body now routes to `retry_last_turn()` rather than returning 422
