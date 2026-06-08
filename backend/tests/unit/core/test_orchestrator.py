@@ -366,6 +366,75 @@ async def test_start_bus_listener_routes_session_idle(tmp_path):
     assert profile_ready_event["profile"]["shape"]["rows"] == 42  # type: ignore[possibly-undefined]
 
 
+@pytest.mark.asyncio
+async def test_bus_listener_heartbeats_on_activity_events(tmp_path):
+    """OpenCode activity events re-arm the watchdog via heartbeat()."""
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building")
+    bus = EventBus()
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm,
+        bus=bus,
+        client=AsyncMock(),
+        workspace_root=tmp_path,
+        watchdog=watchdog,
+    )
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    for event_type in ("message.part", "tool.bash_running", "tool.file_written", "file.ready"):
+        await bus.publish(event_type, {"ts": 1})
+    await asyncio.sleep(0.05)
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    assert watchdog.heartbeat.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_bus_listener_no_heartbeat_on_domain_events(tmp_path):
+    """Orchestrator-published domain events must not heartbeat the watchdog.
+
+    Heartbeating on the orchestrator's own output would mask a stalled agent.
+    """
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building")
+    bus = EventBus()
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm,
+        bus=bus,
+        client=AsyncMock(),
+        workspace_root=tmp_path,
+        watchdog=watchdog,
+    )
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    for event_type in ("stage.changed", "section.building", "turn.error", "plan.ready"):
+        await bus.publish(event_type, {"ts": 1})
+    await asyncio.sleep(0.05)
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    watchdog.heartbeat.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # re_profile — error paths and happy path
 # ---------------------------------------------------------------------------

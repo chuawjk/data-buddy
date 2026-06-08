@@ -127,9 +127,14 @@ The section rebuilds with the redirect instruction.
 The `section.proposed` event carries the paths; the frontend fetches content via
 `GET /file`. The backend validated the complete file triplet before emitting the event.
 
-**ADR-002 framing (if a section stalls):** the watchdog fires after 180s of silence.
-It aborts the stalled OpenCode session, creates a fresh session, and emits `turn.error`.
-The UI shows the retry banner or section-failed notice with Retry/Drop options.
+**ADR-002 framing (if a section stalls):** the watchdog fires after a window of
+*silence* — no OpenCode activity event for the per-turn budget (180s for a section
+build in production). Every activity event (`message.part`, `tool.*`, `file.ready`)
+re-arms the timer via `watchdog.heartbeat()`, so a turn that is genuinely working is
+never aborted; only true silence trips it. On firing it aborts the stalled session,
+creates a fresh session, and emits `turn.error`. The UI shows the retry banner.
+For a live, deterministic version of this in seconds rather than minutes, see the
+**Turn-stall variant** in Step 7.
 
 ---
 
@@ -180,6 +185,38 @@ make qa-section-missing-output-on
 Upload the dataset, complete profiling and planning, then accept the plan. The first
 section build fails (`section.failed` emitted). The Section Pane shows Retry / Drop
 buttons. Run `make qa-section-missing-output-off` before retrying.
+
+**Turn-stall variant (watchdog recovery — reliable live flow):**
+
+This exercises the stuck-turn watchdog end-to-end without waiting out the full
+production budget. With the control on, OpenCode emits its first activity event for a
+turn and then goes silent; because the watchdog only re-arms on activity, the silence
+window elapses and recovery fires. Under this control both the silence window (~8s) and
+the post-abort grace (~2s) collapse to short, deterministic values, so the whole
+recovery surfaces in roughly ten seconds.
+
+```bash
+make qa-turn-stall-on
+```
+
+1. Start any agent turn — the simplest is the **profiling** turn right after uploading
+   the dataset and submitting an aim.
+2. The Activity Rail shows the turn's first event, then nothing further — the turn has
+   gone silent.
+3. Within ~10s the watchdog fires. Watch the server log for, in order:
+   - `Watchdog fired: no events for 8s.` (the short stall window, not 60/180s)
+   - `Watchdog: aborting stuck session …`
+   - `Watchdog: creating fresh session.` followed by `fresh session created and persisted`
+   - `Watchdog: published turn.error (stage=…, reason=timeout)`
+4. In the browser, the **Retry Banner** appears ("Couldn't complete this step — retry").
+5. Confirm a *fresh* session was created: the persisted `opencode_session_id` in
+   `workspace/state.json` differs from the one before the stall.
+6. Run `make qa-turn-stall-off`, then click **Retry**. The replayed turn runs on the
+   fresh session and completes normally; no server restart, no lost Data Buddy state.
+
+**ADR-002 framing:** the watchdog detects *silence*, not wall-clock turn length —
+activity heartbeats keep a working turn alive, and only genuine silence triggers abort
++ fresh-session recovery. `qa-turn-stall` makes that recovery observable in seconds.
 
 ---
 

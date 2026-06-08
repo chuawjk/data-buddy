@@ -49,6 +49,22 @@ logger = logging.getLogger(__name__)
 # default 60 s watchdog budget.
 _SECTION_WATCHDOG_TIMEOUT: int = 180
 
+# Normalised OpenCode activity events that count as "the agent is making
+# progress".  Each one re-arms the watchdog so a turn that is genuinely working
+# is never aborted; silence (no such event within the budget) is what fires the
+# watchdog.  Domain events the orchestrator itself publishes are deliberately
+# excluded — they must not mask a stalled agent.  ``session.idle`` is the
+# turn-ending signal, handled separately, so it is not a heartbeat.
+_ACTIVITY_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        "message.part",
+        "tool.bash_running",
+        "tool.bash_done",
+        "tool.file_written",
+        "file.ready",
+    }
+)
+
 
 @dataclass
 class TurnRecord:
@@ -706,6 +722,11 @@ class Orchestrator:
         try:
             async for envelope in subscription:
                 event_type: str = envelope.get("type", "")
+                # Keep the watchdog alive while the agent is actively working.
+                # heartbeat() is a no-op unless a turn is armed, so this is safe
+                # for activity that arrives between turns.
+                if self._watchdog is not None and event_type in _ACTIVITY_EVENT_TYPES:
+                    self._watchdog.heartbeat()
                 if event_type == "session.idle":
                     stage = self._state_manager.get_state().get("stage", "")
                     if stage == "profiling":

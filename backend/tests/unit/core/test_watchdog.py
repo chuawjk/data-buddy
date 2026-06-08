@@ -361,10 +361,11 @@ async def test_heartbeat_preserves_timeout() -> None:
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_uses_default_when_no_prior_start_turn() -> None:
-    """heartbeat() without prior start_turn() falls back to WATCHDOG_TIMEOUT (not crash).
+async def test_heartbeat_without_armed_turn_is_noop() -> None:
+    """heartbeat() before any start_turn() is a no-op — it does not arm the watchdog.
 
-    Edge case: heartbeat() called before start_turn() — must not raise AttributeError.
+    Activity that arrives between turns must never start the silence timer by
+    itself; only start_turn() arms it.
     """
     wmod = _load_watchdog()
     client = _make_client()
@@ -372,7 +373,6 @@ async def test_heartbeat_uses_default_when_no_prior_start_turn() -> None:
     bus = _make_bus()
     watchdog = wmod.Watchdog(client=client, state_manager=sm, bus=bus)
 
-    # Should not raise even though _current_timeout has never been set.
     seen_timeouts: list[float] = []
     original_sleep = asyncio.sleep
 
@@ -384,7 +384,86 @@ async def test_heartbeat_uses_default_when_no_prior_start_turn() -> None:
         watchdog.heartbeat()
         await original_sleep(0.1)
 
-    # Should have used WATCHDOG_TIMEOUT as the fallback.
-    assert seen_timeouts[0] == wmod.WATCHDOG_TIMEOUT, (
-        f"heartbeat() without prior start_turn must use WATCHDOG_TIMEOUT; got {seen_timeouts[0]}"
+    # No timer armed → no sleep, no abort/recovery.
+    assert seen_timeouts == [], f"heartbeat() with no armed turn must not arm; got {seen_timeouts}"
+    client.abort.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_after_cancel_is_noop() -> None:
+    """Once a turn ends (cancel), heartbeat() no longer re-arms the watchdog."""
+    wmod = _load_watchdog()
+    client = _make_client()
+    sm = _make_state_manager()
+    bus = _make_bus()
+    watchdog = wmod.Watchdog(client=client, state_manager=sm, bus=bus)
+
+    watchdog.start_turn()
+    await asyncio.sleep(0.001)
+    watchdog.cancel()
+    await asyncio.sleep(0.001)
+    # Stray activity after the turn finished must not re-arm.
+    watchdog.heartbeat()
+    # WATCHDOG_TIMEOUT is 1s in tests; wait past it to prove nothing fired.
+    await asyncio.sleep(1.2)
+
+    client.abort.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stall_control_shortens_timeout() -> None:
+    """When the turn-stall QA control is active, start_turn() uses the short demo window."""
+    wmod = _load_watchdog()
+    client = _make_client()
+    sm = _make_state_manager()
+    bus = _make_bus()
+    qa = unittest.mock.MagicMock()
+    qa.enabled = unittest.mock.MagicMock(return_value=True)
+    watchdog = wmod.Watchdog(client=client, state_manager=sm, bus=bus, qa_controls=qa)
+
+    seen_timeouts: list[float] = []
+    original_sleep = asyncio.sleep
+
+    async def recording_sleep(seconds: float) -> None:
+        seen_timeouts.append(seconds)
+        await original_sleep(0)
+
+    with unittest.mock.patch("backend.core.watchdog.asyncio.sleep", side_effect=recording_sleep):
+        # Even a long section-build budget collapses to the stall-demo timeout.
+        watchdog.start_turn(timeout=180)
+        await original_sleep(0.1)
+
+    assert seen_timeouts[0] == wmod._STALL_DEMO_TIMEOUT_S, (
+        f"stall control must shorten the timeout to {wmod._STALL_DEMO_TIMEOUT_S}; "
+        f"got {seen_timeouts[0]}"
     )
+
+
+@pytest.mark.asyncio
+async def test_stall_control_uses_short_grace() -> None:
+    """When stall is active, the post-abort grace period collapses to the short demo value."""
+    wmod = _load_watchdog()
+    client = _make_client()
+    sm = _make_state_manager()
+    bus = _make_bus()
+    qa = unittest.mock.MagicMock()
+    qa.enabled = unittest.mock.MagicMock(return_value=True)
+    watchdog = wmod.Watchdog(client=client, state_manager=sm, bus=bus, qa_controls=qa)
+
+    seen_timeouts: list[float] = []
+    original_sleep = asyncio.sleep
+
+    async def recording_sleep(seconds: float) -> None:
+        seen_timeouts.append(seconds)
+        await original_sleep(0)
+
+    with unittest.mock.patch("backend.core.watchdog.asyncio.sleep", side_effect=recording_sleep):
+        watchdog.start_turn()
+        await original_sleep(0.1)
+
+    # seen_timeouts[0] = silence window; the grace sleep must be the short demo value.
+    assert wmod._STALL_GRACE_PERIOD_S in seen_timeouts, (
+        f"stall recovery must use the short grace {wmod._STALL_GRACE_PERIOD_S}; got {seen_timeouts}"
+    )
+    client.abort.assert_awaited_once()
+    client.create_fresh_session.assert_awaited_once()
