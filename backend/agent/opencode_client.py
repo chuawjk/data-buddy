@@ -45,6 +45,7 @@ import httpx
 from httpx_sse import aconnect_sse
 
 from backend.core.event_bus import EventBus
+from backend.core.qa_controls import TURN_STALL, QAControls
 from backend.core.state_manager import StateManager
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,7 @@ class OpenCodeClient:
         poll_interval: float = _POLL_INTERVAL_S,
         provider_id: str = _DEFAULT_PROVIDER_ID,
         model_id: str = _DEFAULT_MODEL_ID,
+        qa_controls: QAControls | None = None,
     ) -> None:
         self._state_manager = state_manager
         self._base_url = base_url.rstrip("/")
@@ -119,6 +121,7 @@ class OpenCodeClient:
         self._poll_interval = poll_interval
         self._provider_id = provider_id
         self._model_id = model_id
+        self._qa_controls = qa_controls or QAControls(state_manager._path.parent)
 
         self._process: asyncio.subprocess.Process | None = None
         self._session_id: str | None = None
@@ -329,9 +332,9 @@ class OpenCodeClient:
             heartbeat_timeout: Maximum seconds to wait for the next event before
                 treating the connection as stale and returning.
         """
-        # QA_FORCE_STALL -- stop emitting after the first event to drive the
-        # watchdog abort -> fresh-session path deterministically.  Off by default.
-        force_stall = os.environ.get("QA_FORCE_STALL") == "1"
+        # turn-stall -- stop emitting after the first active-session event to
+        # drive watchdog recovery deterministically. Checked for every event so
+        # the control can be toggled while the server is running.
         stall_triggered = False
 
         async with httpx.AsyncClient(timeout=None) as http_client:
@@ -398,18 +401,20 @@ class OpenCodeClient:
                             )
                             continue
 
-                    if force_stall:
+                    if self._qa_controls.enabled(TURN_STALL):
                         if stall_triggered:
                             logger.debug(
-                                "QA_FORCE_STALL: suppressing event %r to simulate stall.",
+                                "turn-stall QA control: suppressing event %r.",
                                 event_type,
                             )
                             continue
                         stall_triggered = True
                         logger.info(
-                            "QA_FORCE_STALL active: emitting first event %r, then stalling.",
+                            "turn-stall QA control active: emitting first event %r, then stalling.",
                             event_type,
                         )
+                    else:
+                        stall_triggered = False
 
                     # Normalise and publish to the bus.
                     await self._normalise_and_publish(event_type, properties, bus)
@@ -580,9 +585,7 @@ class OpenCodeClient:
         existing["$schema"] = "https://opencode.ai/config.json"
         existing["model"] = f"{self._provider_id}/{self._model_id}"
         config_path.write_text(json.dumps(existing, indent=2) + "\n")
-        logger.info(
-            "Wrote opencode.jsonc model: %s/%s", self._provider_id, self._model_id
-        )
+        logger.info("Wrote opencode.jsonc model: %s/%s", self._provider_id, self._model_id)
 
     @staticmethod
     def _resolve_binary() -> str:

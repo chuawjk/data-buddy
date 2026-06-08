@@ -154,39 +154,33 @@ assembles Markdown from the files OpenCode wrote during building.
 
 ## Step 7 — Error recovery demo path (QA seam)
 
-Open a second terminal. Stop `make run` (Ctrl+C), then:
+Open a second terminal while `make run` remains active:
 
 ```bash
-make clean
-QA_FORCE_TURN_ERROR=1 make run
+make qa-provider-error-on
 ```
 
-1. Upload the dataset again and enter an aim.
+1. Start a profiling turn.
 2. The profiling turn immediately emits `turn.error` (no OpenCode call, no token spend).
 3. The **Retry Banner** appears at the top of the Profile View: "Couldn't complete this
    step — retry."
-4. Click Retry.
-5. The turn fires again — with `QA_FORCE_TURN_ERROR=1` it fails again; click Retry
+4. Run `make qa-provider-error-off`, then click Retry. The turn now reaches OpenCode
+   without restarting the server or losing Data Buddy state.
+5. To demonstrate bounded retries, leave `qa-provider-error` enabled and click Retry
    up to 3 times. On the 4th attempt, `turn.error` with `reason="provider_error"` fires
    (max retries exceeded).
 
-Unset the env var and restart to confirm normal recovery:
-```bash
-make clean && make run
-```
-
-**ADR-002 framing:** session recovery is deterministic. `QA_FORCE_TURN_ERROR` exercises
+**ADR-002 framing:** session recovery is deterministic. `qa-provider-error` exercises
 the retry banner path without model misbehaviour or token spend. The session ID is
 refreshed from state on each retry so a watchdog swap is picked up automatically.
 
 **Section failure variant (optional):**
 ```bash
-make clean
-QA_FORCE_SECTION_FAIL=1 make run
+make qa-section-missing-output-on
 ```
 Upload the dataset, complete profiling and planning, then accept the plan. The first
 section build fails (`section.failed` emitted). The Section Pane shows Retry / Drop
-buttons. Click Drop to advance the loop.
+buttons. Run `make qa-section-missing-output-off` before retrying.
 
 ---
 
@@ -222,7 +216,7 @@ never hardcodes dataset assumptions.
 | 4–5 | ADR-003 | Zero OpenCode calls for backend-only ops; spy invariant holds |
 | 6 | ADR-003 | Export is purely backend-side; model never runs again after building |
 | 7 | ADR-002 | Session recovery — watchdog fires, fresh session, retry banner |
-| 7 | ADR-002 | QA_FORCE_TURN_ERROR seam — deterministic failure without token spend |
+| 7 | ADR-002 | Runtime QA controls — deterministic failure without token spend |
 | 8 | — | Generality — same pipeline on any CSV, not overfit to churn |
 
 ---

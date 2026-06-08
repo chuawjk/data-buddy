@@ -16,11 +16,11 @@ State transitions implemented here:
   planning → building  (via ``accept_plan``)
   building → done     (via ``_check_done_or_next``)
 
-QA env-var seams (off by default, zero production-path impact):
-  ``QA_FORCE_SECTION_FAIL=1`` -- removes the .md artefact before the triplet
+Runtime QA controls (off by default, zero production-path impact):
+  ``section-missing-output`` -- removes the .md artefact before the triplet
     check so ``section.failed`` fires deterministically.
-  ``QA_FORCE_TURN_ERROR=1`` -- raises before ``client.prompt`` in each
-    ``_run_*_turn`` method, driving ``turn.error`` for QA.
+  ``provider-error`` -- raises before ``client.prompt``, driving
+    ``turn.error`` for QA.
 """
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from backend.core.qa_controls import PROVIDER_ERROR, SECTION_MISSING_OUTPUT, QAControls
 
 if TYPE_CHECKING:
     from backend.agent.opencode_client import OpenCodeClient
@@ -76,12 +78,14 @@ class Orchestrator:
         client: "OpenCodeClient | None" = None,
         workspace_root: Path = Path("workspace"),
         watchdog: "Watchdog | None" = None,
+        qa_controls: QAControls | None = None,
     ) -> None:
         self._state_manager = state_manager
         self._bus = bus
         self._client = client
         self._workspace_root = Path(workspace_root)
         self._watchdog = watchdog
+        self._qa_controls = qa_controls or QAControls(self._workspace_root)
         # Last dispatched turn — used by retry_last_turn() to replay.
         # Shape: {"stage": str, "prompt": str, "section_id": str|None, "retries": int}
         self._last_turn: dict | None = None
@@ -123,7 +127,9 @@ class Orchestrator:
             prompt_text = self._build_profile_prompt(dataset, aim)
             asyncio.create_task(
                 self._dispatch_turn(
-                    session_id, prompt_text, "profiling",
+                    session_id,
+                    prompt_text,
+                    "profiling",
                     schema=PROFILE_SCHEMA,
                 ),
                 name="profile-turn",
@@ -260,7 +266,9 @@ class Orchestrator:
 
         asyncio.create_task(
             self._dispatch_turn(
-                session_id, prompt, "profiling",
+                session_id,
+                prompt,
+                "profiling",
                 schema=PROFILE_SCHEMA,
             ),
             name="re-profile-turn",
@@ -315,7 +323,9 @@ class Orchestrator:
 
         asyncio.create_task(
             self._dispatch_turn(
-                session_id, prompt, "planning",
+                session_id,
+                prompt,
+                "planning",
                 schema=PLAN_SCHEMA,
             ),
             name="re-plan-turn",
@@ -539,7 +549,9 @@ class Orchestrator:
         }
         asyncio.create_task(
             self._dispatch_turn(
-                session_id, prompt, stage,
+                session_id,
+                prompt,
+                stage,
                 schema=_schemas.get(stage),
                 section_id=section_id,
             ),
@@ -593,7 +605,9 @@ class Orchestrator:
 
             asyncio.create_task(
                 self._dispatch_turn(
-                    session_id, prompt_text, "planning",
+                    session_id,
+                    prompt_text,
+                    "planning",
                     schema=PLAN_SCHEMA,
                 ),
                 name="plan-turn",
@@ -873,7 +887,7 @@ class Orchestrator:
         without emitting.  If the current stage is not ``building``: returns
         immediately (idempotent guard).
 
-        When ``QA_FORCE_SECTION_FAIL=1`` is set, the ``.md`` file is removed
+        When the ``section-missing-output`` QA control is enabled, the ``.md`` file is removed
         before the check so that the normal missing-artefact path fires and
         ``section.failed`` is emitted deterministically.
         """
@@ -908,21 +922,21 @@ class Orchestrator:
         nn = str(section_index).zfill(2)
         base_name = f"sec_{nn}_{slug}"
 
-        # QA_FORCE_SECTION_FAIL -- delete the .md before the triplet check so the
+        # section-missing-output -- delete the .md before the triplet check so the
         # normal missing-artefact path fires and section.failed is emitted
         # deterministically.  Off by default; zero production-path impact.
-        if os.environ.get("QA_FORCE_SECTION_FAIL") == "1":
+        if self._qa_controls.enabled(SECTION_MISSING_OUTPUT):
             md_to_remove = self._workspace_root / "sections" / f"{base_name}.md"
             if md_to_remove.exists():
                 try:
                     md_to_remove.unlink()
                     logger.info(
-                        "QA_FORCE_SECTION_FAIL: removed %s to force section.failed",
+                        "section-missing-output QA control: removed %s to force section.failed",
                         md_to_remove,
                     )
                 except OSError as exc:
                     logger.warning(
-                        "QA_FORCE_SECTION_FAIL: could not remove %s: %s",
+                        "section-missing-output QA control: could not remove %s: %s",
                         md_to_remove,
                         exc,
                     )
@@ -1233,8 +1247,8 @@ class Orchestrator:
 
         assert self._client is not None  # noqa: S101  # guarded by all callers
         try:
-            if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
-                raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
+            if self._qa_controls.enabled(PROVIDER_ERROR):
+                raise RuntimeError("provider-error QA control: simulated provider error")
             await self._client.prompt(session_id, prompt, schema=schema)
             if self._last_turn is not None:
                 self._last_turn["retries"] = 0
@@ -1248,4 +1262,3 @@ class Orchestrator:
             if section_id is not None:
                 error_payload["section_id"] = section_id
             await self._bus.publish("turn.error", error_payload)
-

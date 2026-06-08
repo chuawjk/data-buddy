@@ -1490,6 +1490,32 @@ async def test_qa_force_turn_error(tmp_path, monkeypatch):
     mock_client.prompt.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_qa_provider_error_marker_is_runtime_toggleable(tmp_path):
+    """The provider-error marker takes effect without rebuilding the orchestrator."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    sub = bus.subscribe()
+
+    marker_dir = tmp_path / ".qa"
+    marker_dir.mkdir()
+    marker = marker_dir / "provider-error"
+    marker.touch()
+    await orch._dispatch_turn("sess-abc", "Profile the data", "profiling")
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    mock_client.prompt.assert_not_awaited()
+
+    marker.unlink()
+    await orch._dispatch_turn("sess-abc", "Profile the data", "profiling")
+    mock_client.prompt.assert_awaited_once()
+
+
 # ---------------------------------------------------------------------------
 # _check_done_or_next — done transition and sequencing
 # ---------------------------------------------------------------------------
