@@ -559,6 +559,7 @@
       <span class="key">"title"</span>: <span class="str">"Cohort overview &amp; churn baseline"</span>,
       <span class="key">"hypothesis"</span>: <span class="str">"Establish the Q3 churn rate and frame the brief."</span>,
       <span class="key">"status"</span>: <span class="str">"accepted"</span>,     <span class="cmt">// "queued"|"building"|"proposed"|"accepted"|"dropped"|"failed"</span>
+      <span class="key">"failure_reason"</span>: <span class="bool">null</span>,      <span class="cmt">// reason string when status=="failed" (e.g. "missing_files"|"timeout"); null/absent otherwise</span>
       <span class="key">"py_path"</span>: <span class="str">"analyses/sec_01_cohort_overview.py"</span>,   <span class="cmt">// null until built</span>
       <span class="key">"png_path"</span>: <span class="str">"charts/sec_01_cohort_overview.png"</span>,
       <span class="key">"md_path"</span>: <span class="str">"sections/sec_01_cohort_overview.md"</span>

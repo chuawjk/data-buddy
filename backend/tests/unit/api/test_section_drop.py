@@ -142,6 +142,33 @@ def test_section_drop_failed_section(tmp_path: Path):
     assert sm.get_state()["plan"][0]["status"] == "dropped"
 
 
+def test_section_drop_clears_failure_reason(tmp_path: Path):
+    """Dropping a failed section clears its persisted failure_reason."""
+    plan = [
+        {
+            "id": "sec_01",
+            "title": "Cohort overview",
+            "hypothesis": "Baseline",
+            "status": "failed",
+            "failure_reason": "missing_files",
+        },
+    ]
+    state_path = tmp_path / "state.json"
+    sm = StateManager(path=state_path)
+    sm.load()
+    sm.update(stage="building", plan=plan)
+
+    with patch("backend.main.StateManager", lambda: sm):
+        with TestClient(app) as c:
+            c.app.state.state_manager = sm
+            r = c.post("/api/section/sec_01/drop")
+
+    assert r.status_code == 204
+    section = sm.get_state()["plan"][0]
+    assert section["status"] == "dropped"
+    assert section["failure_reason"] is None
+
+
 def test_section_drop_advances_build_queue(tmp_path: Path):
     """Dropping a proposed section releases the next queued section."""
     state_path = tmp_path / "state.json"
