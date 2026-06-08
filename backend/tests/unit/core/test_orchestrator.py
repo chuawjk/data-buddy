@@ -1099,6 +1099,123 @@ async def test_handle_section_idle_persists_failed_status(tmp_path):
     assert section["status"] == "failed"
 
 
+@pytest.mark.asyncio
+async def test_handle_section_idle_persists_failure_reason(tmp_path):
+    """_handle_section_idle() stores failure_reason alongside status=failed."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(
+        stage="building",
+        dataset="data.csv",
+        aim="find churn",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Churn Drivers",
+                "hypothesis": "H",
+                "status": "building",
+                "slug": "churn_drivers",
+                "index": 1,
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            }
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    # Do NOT create artefact files — forces section.failed path.
+
+    await orch._handle_section_idle()
+
+    section = next(s for s in sm.get_state()["plan"] if s["id"] == "sec_01")
+    assert section["status"] == "failed"
+    assert section["failure_reason"] == "missing_files"
+
+
+@pytest.mark.asyncio
+async def test_handle_section_idle_clears_failure_reason_on_proposed(tmp_path):
+    """A successful rebuild clears any persisted failure_reason on section.proposed."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    slug = "churn_drivers"
+    sm.update(
+        stage="building",
+        dataset="data.csv",
+        aim="find churn",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Churn Drivers",
+                "hypothesis": "H",
+                "status": "building",
+                "failure_reason": "missing_files",
+                "slug": slug,
+                "index": 1,
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            }
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    base = f"sec_01_{slug}"
+    (tmp_path / "analyses").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "charts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "sections").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "analyses" / f"{base}.py").write_text("print('hi')", encoding="utf-8")
+    (tmp_path / "charts" / f"{base}.png").write_bytes(b"\x89PNG")
+    (tmp_path / "sections" / f"{base}.md").write_text("# Result", encoding="utf-8")
+
+    await orch._handle_section_idle()
+
+    section = next(s for s in sm.get_state()["plan"] if s["id"] == "sec_01")
+    assert section["status"] == "proposed"
+    assert section["failure_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_start_build_section_clears_failure_reason(tmp_path):
+    """start_build_section() clears failure_reason when a (re)build starts."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(
+        stage="building",
+        dataset="data.csv",
+        aim="find patterns",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Churn",
+                "hypothesis": "Age predicts",
+                "status": "failed",
+                "failure_reason": "missing_files",
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            },
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    await orch.start_build_section(
+        section_id="sec_01",
+        section_index=1,
+        title="Churn",
+        hypothesis="Age predicts",
+        profile={},
+    )
+    await asyncio.sleep(0)
+
+    section = next(s for s in sm.get_state()["plan"] if s["id"] == "sec_01")
+    assert section["status"] == "building"
+    assert section["failure_reason"] is None
+
+
 # ---------------------------------------------------------------------------
 # Watchdog cancel + review-gate tests
 # ---------------------------------------------------------------------------

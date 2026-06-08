@@ -440,6 +440,7 @@ class Orchestrator:
                 "status": "building",
                 "index": section_index,
                 "slug": slug,
+                "failure_reason": None,
                 "py_path": None,
                 "png_path": None,
                 "md_path": None,
@@ -918,8 +919,11 @@ class Orchestrator:
 
         # Persist status=building (and index) so GET /state reflects live build state
         # and _handle_section_idle can derive the artefact filename reliably.
+        # Clear any prior failure_reason — a fresh build attempt is underway.
         updated_plan = [
-            {**s, "status": "building", "index": section_index} if s.get("id") == section_id else s
+            {**s, "status": "building", "index": section_index, "failure_reason": None}
+            if s.get("id") == section_id
+            else s
             for s in plan
         ]
         self._state_manager.update(plan=updated_plan)
@@ -1051,17 +1055,22 @@ class Orchestrator:
                 section_id,
                 missing,
             )
+            reason = "missing_files"
             await self._bus.publish(
                 "section.failed",
                 {
                     "section_id": section_id,
-                    "reason": "missing_files",
+                    "reason": reason,
                     "ts": ts,
                 },
             )
-            # Persist status=failed so GET /state reflects the failure.
+            # Persist status=failed and the reason so GET /state is the source of
+            # truth for the failed-section UI across page refreshes.
             updated_plan = [
-                {**s, "status": "failed"} if s.get("id") == section_id else s for s in plan
+                {**s, "status": "failed", "failure_reason": reason}
+                if s.get("id") == section_id
+                else s
+                for s in plan
             ]
             self._state_manager.update(plan=updated_plan)
             return
@@ -1088,6 +1097,7 @@ class Orchestrator:
             {
                 **s,
                 "status": "proposed",
+                "failure_reason": None,
                 "py_path": py_path_rel,
                 "png_path": png_path_rel,
                 "md_path": md_path_rel,

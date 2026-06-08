@@ -48,6 +48,12 @@ export interface Section {
   png_path: string | null;
   /** null until built */
   md_path: string | null;
+  /**
+   * Reason a build failed, persisted in state.json alongside status="failed".
+   * Cleared (null/absent) once the section is rebuilt, proposed, accepted, or
+   * dropped. Drives the failed-section Retry/Drop UI across page refreshes.
+   */
+  failure_reason?: string | null;
 }
 
 // ---------------------------------------------------------------------------

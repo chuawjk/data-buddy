@@ -459,6 +459,7 @@ async def post_section_accept(request: Request, section_id: str) -> Response:
     # Update section status.
     updated_plan = [dict(s) for s in plan]
     updated_plan[section_index]["status"] = "accepted"
+    updated_plan[section_index]["failure_reason"] = None
     state_manager.update(plan=updated_plan)
 
     # Start the next queued section, or transition to done if none remain.
@@ -521,6 +522,7 @@ async def post_section_drop(request: Request, section_id: str) -> Response:
     # Update section status to dropped.
     updated_plan = [dict(s) for s in plan]
     updated_plan[section_index]["status"] = "dropped"
+    updated_plan[section_index]["failure_reason"] = None
     state_manager.update(plan=updated_plan)
 
     # Start the next queued section, or transition to done if none remain.

@@ -407,7 +407,7 @@ describe("BuildView", () => {
     dispatchSSEEvent({
       type: "section.failed",
       section_id: "sec-02",
-      reason: "timeout",
+      reason: "missing_files",
       ts: Date.now(),
     });
 
@@ -415,6 +415,73 @@ describe("BuildView", () => {
       expect(screen.getByTestId(`section-status-${BUILDING_SECTION.id}`)).toHaveTextContent(
         "failed"
       );
+    });
+    // The failed-section controls derive from section state, not an App-level map.
+    expect(screen.getByTestId("section-failed-notice")).toBeInTheDocument();
+  });
+
+  // ── test_failed_status_hydrates_failed_controls ──────────────────────────
+
+  it("test_failed_status_hydrates_failed_controls — a failed section from state shows Retry/Drop", async () => {
+    const failed: Section = {
+      ...BUILDING_SECTION,
+      status: "failed",
+      failure_reason: "missing_files",
+    };
+    mockGetState.mockResolvedValue(makeStateResponse([failed]));
+
+    render(<BuildView sections={[failed]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("section-failed-notice")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("section-retry-btn")).toBeInTheDocument();
+    expect(screen.getByTestId("section-drop-failed-btn")).toBeInTheDocument();
+  });
+
+  // ── test_failed_timeout_reason_hydrates_watchdog_notice ──────────────────
+
+  it("test_failed_timeout_reason_hydrates_watchdog_notice — timeout reason shows watchdog variant", async () => {
+    const failed: Section = {
+      ...BUILDING_SECTION,
+      status: "failed",
+      failure_reason: "timeout",
+    };
+    mockGetState.mockResolvedValue(makeStateResponse([failed]));
+
+    render(<BuildView sections={[failed]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("watchdog-notice")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("section-failed-notice")).toBeNull();
+  });
+
+  // ── test_section_building_event_clears_failed_controls ───────────────────
+
+  it("test_section_building_event_clears_failed_controls — a new build attempt clears the failed notice", async () => {
+    const failed: Section = {
+      ...BUILDING_SECTION,
+      status: "failed",
+      failure_reason: "missing_files",
+    };
+    mockGetState.mockResolvedValue(makeStateResponse([failed]));
+
+    render(<BuildView sections={[failed]} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("section-failed-notice")).toBeInTheDocument();
+    });
+
+    dispatchSSEEvent({
+      type: "section.building",
+      section_id: failed.id,
+      title: failed.title,
+      ts: Date.now(),
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("section-failed-notice")).toBeNull();
     });
   });
 
