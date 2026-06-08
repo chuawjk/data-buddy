@@ -314,6 +314,27 @@ describe("BuildView", () => {
     expect(mockPostSectionDrop).toHaveBeenCalledWith(PROPOSED_SECTION.id);
   });
 
+  it("test_drop_removes_section_pane — clicking drop hides the corresponding detail pane", async () => {
+    const user = userEvent.setup();
+    const sections = [PROPOSED_SECTION];
+    mockGetState.mockResolvedValue(makeStateResponse(sections));
+    mockGetFile.mockResolvedValue("import pandas as pd");
+
+    render(<BuildView sections={sections} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("section-pane")).toBeInTheDocument();
+      expect(screen.getByTestId("section-drop-btn")).not.toBeDisabled();
+    });
+
+    await user.click(screen.getByTestId("section-drop-btn"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("section-pane")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId(`section-status-${PROPOSED_SECTION.id}`)).toHaveTextContent("dropped");
+  });
+
   // ── test_build_bottom_bar_removed ────────────────────────────────────────
 
   it("test_build_bottom_bar_removed — building stage has no global bottom bar", () => {

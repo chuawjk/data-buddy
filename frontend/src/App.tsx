@@ -89,6 +89,16 @@ export default function App() {
         return next;
       });
     }
+    if (event.type === "section.building" || event.type === "section.proposed") {
+      setFailedSections((prev) => {
+        if (!prev.has(event.section_id)) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.delete(event.section_id);
+        return next;
+      });
+    }
   });
 
   const handleSectionsChange = useCallback((sections: Section[]) => {

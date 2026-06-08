@@ -160,11 +160,12 @@
       <span class="endpoint-title">Bottom-bar free-form input</span>
     </div>
     <div class="endpoint-body">
-      <p class="endpoint-desc">Routes bottom-bar text to the agent. Context-aware: the orchestrator wraps the text in stage-appropriate framing before sending to OpenCode. Used in all stages where the bottom bar is active (profiling feedback, plan revision, section redirect).</p>
+      <p class="endpoint-desc">Routes bottom-bar text to the agent. Context-aware: the orchestrator wraps the text in stage-appropriate framing before sending to OpenCode. An empty body retries the last turn; an empty body with <code>section_id</code> retries that failed section on a fresh session.</p>
       <table class="field-table">
         <thead><tr><th style="width:22%">Field</th><th style="width:16%">Type</th><th style="width:12%">Required</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td class="field-name">text</td><td class="field-type">string</td><td><span class="field-req req-yes">yes</span></td><td>The user's raw bottom-bar input.</td></tr>
+          <tr><td class="field-name">text</td><td class="field-type">string</td><td><span class="field-req req-no">no</span></td><td>The user's raw bottom-bar input. Omit for retry.</td></tr>
+          <tr><td class="field-name">section_id</td><td class="field-type">string</td><td><span class="field-req req-no">no</span></td><td>Targets a section redirect when text is present, or a failed-section retry when text is omitted.</td></tr>
         </tbody>
       </table>
       <p style="font-size:13px;color:var(--ink-3);"><span class="status s-204">204 No Content</span> · progress via SSE</p>
@@ -221,10 +222,10 @@
     <div class="endpoint-head">
       <span class="method method-post">POST</span>
       <span class="endpoint-path">/section/:id/drop</span>
-      <span class="endpoint-title">Drop proposed section · trigger next</span>
+      <span class="endpoint-title">Drop proposed or failed section · trigger next</span>
     </div>
     <div class="endpoint-body">
-      <p class="endpoint-desc">Backend-only. Deletes the section's three workspace files (<code>analyses/</code>, <code>charts/</code>, <code>sections/</code>), removes the section from the plan array in <code>state.json</code>, and fires the next section's build prompt. If no sections remain, transitions to <code>"done"</code>.</p>
+      <p class="endpoint-desc">Backend-only. Changes a proposed or failed section's status to <code>"dropped"</code> in <code>state.json</code>, then fires the next queued section's build prompt. If every section is accepted or dropped, transitions to <code>"done"</code>.</p>
       <p style="font-size:13px;color:var(--ink-3);">Path param: <code>id</code> — section ID &nbsp;·&nbsp; <span class="status s-204">204 No Content</span></p>
     </div>
   </div>
@@ -595,7 +596,7 @@
     <tbody>
       <tr><td><span class="status s-400">400</span></td><td><code>invalid_stage</code></td><td>Action is not valid for the current stage (e.g. <code>/section/:id/accept</code> called during <code>planning</code>).</td></tr>
       <tr><td><span class="status s-400">400</span></td><td><code>section_not_found</code></td><td>Section ID does not exist in the current plan.</td></tr>
-      <tr><td><span class="status s-400">400</span></td><td><code>section_not_proposed</code></td><td>Accept or drop called on a section that is not in <code>proposed</code> status.</td></tr>
+      <tr><td><span class="status s-400">400</span></td><td><code>section_not_proposed</code></td><td>Accept called on a section that is not <code>proposed</code>, or drop called on a section that is neither <code>proposed</code> nor <code>failed</code>.</td></tr>
       <tr><td><span class="status s-400">400</span></td><td><code>turn_busy</code></td><td>A <code>/turn</code> request arrived while another agent turn is in flight. SPA should disable the bottom bar while <code>session.idle</code> is pending.</td></tr>
       <tr><td><span class="status s-400">400</span></td><td><code>missing_file</code></td><td>File requested via <code>GET /file</code> does not exist in the workspace.</td></tr>
       <tr><td><span class="status s-400">400</span></td><td><code>path_traversal</code></td><td>File path in <code>GET /file</code> contains <code>..</code> or escapes the workspace root.</td></tr>

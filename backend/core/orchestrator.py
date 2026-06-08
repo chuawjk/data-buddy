@@ -560,6 +560,71 @@ class Orchestrator:
         finally:
             self._retry_in_progress = False
 
+    async def retry_failed_section(self, section_id: str) -> None:
+        """Rebuild a failed section against a fresh OpenCode session."""
+        state = self._state_manager.get_state()
+        if state.get("stage") != "building":
+            logger.warning(
+                "retry_failed_section: ignoring outside building stage (stage=%r)",
+                state.get("stage"),
+            )
+            return
+
+        plan: list[dict[str, Any]] = state.get("plan") or []
+        section = next((s for s in plan if s.get("id") == section_id), None)
+        if section is None or section.get("status") != "failed":
+            logger.warning(
+                "retry_failed_section: section %r is missing or not failed",
+                section_id,
+            )
+            return
+
+        if self._client is None:
+            logger.warning("retry_failed_section: no client — cannot retry %r", section_id)
+            return
+
+        if self._retry_in_progress:
+            logger.info(
+                "retry_failed_section: retry already in progress — ignoring duplicate request"
+            )
+            return
+
+        self._retry_in_progress = True
+        try:
+            try:
+                session_id = await self._client.create_fresh_session()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "retry_failed_section: failed to create fresh session for %r: %s",
+                    section_id,
+                    exc,
+                )
+                await self._bus.publish(
+                    "turn.error",
+                    {
+                        "stage": "building",
+                        "section_id": section_id,
+                        "reason": "provider_error",
+                        "ts": int(time.time() * 1000),
+                    },
+                )
+                return
+
+            self._state_manager.update(opencode_session_id=session_id)
+            section_index = next(
+                (i + 1 for i, candidate in enumerate(plan) if candidate.get("id") == section_id),
+                1,
+            )
+            await self.start_build_section(
+                section_id=section_id,
+                section_index=section_index,
+                title=section.get("title", ""),
+                hypothesis=section.get("hypothesis", ""),
+                profile=state.get("profile") or {},
+            )
+        finally:
+            self._retry_in_progress = False
+
     # ------------------------------------------------------------------
     # Bus listener — session.idle / profile.ready → stage output handling
     # ------------------------------------------------------------------
@@ -999,7 +1064,6 @@ class Orchestrator:
                 {**s, "status": "failed"} if s.get("id") == section_id else s for s in plan
             ]
             self._state_manager.update(plan=updated_plan)
-            await self._start_next_queued_section()
             return
 
         # All three present — emit section.proposed.
@@ -1035,20 +1099,17 @@ class Orchestrator:
         self._state_manager.update(plan=updated_plan)
         self._complete_turn("building", section_id)
         logger.info("section.proposed emitted: %s (ts=%d)", section_id, ts)
-        await self._start_next_queued_section()
 
     async def _check_done_or_next(self, section_id: str) -> None:
         """Check whether all sections are terminal and transition to done if so.
 
         Called by:
-        - ``POST /section/:id/accept`` and ``POST /section/:id/drop`` after the
-          status is persisted (direct user interaction path).
         - ``_start_next_queued_section`` when it finds no more queued sections
-          (belt-and-suspenders for the auto-sequence path).
+          after direct user interaction.
 
-        Terminal statuses are ``"accepted"``, ``"dropped"``, and ``"failed"``.
-        Non-terminal statuses (``"queued"``, ``"building"``) mean the loop is
-        still running and we must not fire ``done`` yet.
+        Terminal statuses are ``"accepted"`` and ``"dropped"``. Failed
+        sections require an explicit Retry or Drop decision before the build
+        can finish.
 
         Re-entrant safety: the stage guard (``stage == "building"``) prevents
         double-emission — after the first call persists ``stage="done"``, every
@@ -1068,12 +1129,12 @@ class Orchestrator:
             return
 
         plan: list[dict[str, Any]] = state.get("plan") or []
-        _terminal = {"accepted", "dropped", "failed"}
+        _terminal = {"accepted", "dropped"}
         non_terminal = [s.get("status") for s in plan if s.get("status") not in _terminal]
         if non_terminal:
             logger.debug(
                 "_check_done_or_next: %d section(s) still in non-terminal state %r — "
-                "auto-sequence is still running, deferring done check",
+                "user review or a build is still pending, deferring done check",
                 len(non_terminal),
                 non_terminal,
             )
@@ -1094,12 +1155,10 @@ class Orchestrator:
     async def _start_next_queued_section(self) -> None:
         """Find the next queued section and start its build turn.
 
-        Called by ``_handle_section_idle`` after each section completes (success
-        or failure).  Reads the current plan, finds the first section with
-        ``status="queued"``, and delegates to ``start_build_section``.  If no
-        queued sections remain, delegates to ``_check_done_or_next`` as a
-        belt-and-suspenders check (the auto-sequence path must also reach done
-        when all sections are terminal).
+        Called after the user accepts or drops a section. Reads the current
+        plan, finds the first section with ``status="queued"``, and delegates
+        to ``start_build_section``. If no queued sections remain, delegates to
+        ``_check_done_or_next``.
         """
         state = self._state_manager.get_state()
         plan: list[dict[str, Any]] = state.get("plan") or []
