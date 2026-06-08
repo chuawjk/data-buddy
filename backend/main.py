@@ -106,7 +106,12 @@ async def lifespan(app: FastAPI):
     # When SKIP_OPENCODE=1, watchdog is omitted and the orchestrator guards internally.
     watchdog: Watchdog | None = None
     if client is not None:
-        watchdog = Watchdog(client=client, state_manager=state_manager, bus=app.state.bus)
+        watchdog = Watchdog(
+            client=client,
+            state_manager=state_manager,
+            bus=app.state.bus,
+            qa_controls=qa_controls,
+        )
         app.state.watchdog = watchdog
 
     # Wire up the stage orchestrator.

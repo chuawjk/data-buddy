@@ -148,6 +148,58 @@ async def test_profile_turn_triggered_with_session(tmp_path):
     assert isinstance(prompt_text, str) and len(prompt_text) > 0, "Prompt text must be non-empty"
 
 
+@pytest.mark.asyncio
+async def test_setup_complete_arms_watchdog(tmp_path):
+    """The initial profiling turn must arm the watchdog so a stall can be recovered."""
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    bus = EventBus()
+    client = AsyncMock()
+    client.prompt = AsyncMock(return_value=None)
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm, bus=bus, client=client, workspace_root=tmp_path, watchdog=watchdog
+    )
+
+    await orch.setup_complete(dataset="data.csv", aim="Understand churn")
+    await asyncio.sleep(0)
+
+    watchdog.start_turn.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_bus_listener_cancels_watchdog_on_session_idle(tmp_path):
+    """session.idle ends the turn — the bus listener must cancel the watchdog.
+
+    Without this, a profiling/planning turn stays watched through the user's
+    review and the watchdog could fire spuriously after the turn has finished.
+    """
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm, bus=bus, client=AsyncMock(), workspace_root=tmp_path, watchdog=watchdog
+    )
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    await bus.publish("session.idle", {"ts": 1})
+    await asyncio.sleep(0.05)
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    watchdog.cancel.assert_called()
+
+
 # ---------------------------------------------------------------------------
 # test_profile_turn_not_triggered_without_session
 # ---------------------------------------------------------------------------
@@ -364,6 +416,75 @@ async def test_start_bus_listener_routes_session_idle(tmp_path):
         f"Expected 'profile.ready' in events; got: {received_types}"
     )
     assert profile_ready_event["profile"]["shape"]["rows"] == 42  # type: ignore[possibly-undefined]
+
+
+@pytest.mark.asyncio
+async def test_bus_listener_heartbeats_on_activity_events(tmp_path):
+    """OpenCode activity events re-arm the watchdog via heartbeat()."""
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building")
+    bus = EventBus()
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm,
+        bus=bus,
+        client=AsyncMock(),
+        workspace_root=tmp_path,
+        watchdog=watchdog,
+    )
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    for event_type in ("message.part", "tool.bash_running", "tool.file_written", "file.ready"):
+        await bus.publish(event_type, {"ts": 1})
+    await asyncio.sleep(0.05)
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    assert watchdog.heartbeat.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_bus_listener_no_heartbeat_on_domain_events(tmp_path):
+    """Orchestrator-published domain events must not heartbeat the watchdog.
+
+    Heartbeating on the orchestrator's own output would mask a stalled agent.
+    """
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building")
+    bus = EventBus()
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm,
+        bus=bus,
+        client=AsyncMock(),
+        workspace_root=tmp_path,
+        watchdog=watchdog,
+    )
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    for event_type in ("stage.changed", "section.building", "turn.error", "plan.ready"):
+        await bus.publish(event_type, {"ts": 1})
+    await asyncio.sleep(0.05)
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    watchdog.heartbeat.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -930,11 +1051,9 @@ async def test_session_idle_stage_aware_dispatch_planning(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_section_build_uses_extended_watchdog_timeout(tmp_path):
-    """start_build_section() calls watchdog.start_turn(timeout=180), not the default 60s."""
+async def test_section_build_arms_watchdog_with_single_budget(tmp_path):
+    """start_build_section() arms the watchdog with the single budget (no per-call timeout)."""
     from unittest.mock import MagicMock
-
-    from backend.core.orchestrator import _SECTION_WATCHDOG_TIMEOUT
 
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="building", dataset="data.csv", aim="find patterns")
@@ -956,8 +1075,7 @@ async def test_section_build_uses_extended_watchdog_timeout(tmp_path):
     )
     await asyncio.sleep(0)
 
-    watchdog.start_turn.assert_called_once_with(timeout=_SECTION_WATCHDOG_TIMEOUT)
-    assert _SECTION_WATCHDOG_TIMEOUT == 180
+    watchdog.start_turn.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
@@ -1450,7 +1568,7 @@ async def test_retry_last_turn_replays_profile_prompt_on_fresh_session(tmp_path)
 
 @pytest.mark.asyncio
 async def test_retry_last_turn_rearms_watchdog(tmp_path):
-    """Retry re-arms the watchdog with the stage-appropriate timeout."""
+    """Retry re-arms the watchdog with the single silence budget (no per-call timeout)."""
     from unittest.mock import MagicMock
 
     orch, sm, bus, client = _make_orchestrator(tmp_path)
@@ -1463,7 +1581,7 @@ async def test_retry_last_turn_rearms_watchdog(tmp_path):
     await orch.retry_last_turn()
     await asyncio.sleep(0)
 
-    watchdog.start_turn.assert_called_once_with(timeout=None)
+    watchdog.start_turn.assert_called_once_with()
 
 
 @pytest.mark.asyncio

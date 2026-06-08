@@ -44,10 +44,21 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Section builds write three files and run arbitrary analysis code — they take
-# significantly longer than profiling or planning turns.  Give them 3× the
-# default 60 s watchdog budget.
-_SECTION_WATCHDOG_TIMEOUT: int = 180
+# Normalised OpenCode activity events that count as "the agent is making
+# progress".  Each one re-arms the watchdog so a turn that is genuinely working
+# is never aborted; silence (no such event within the budget) is what fires the
+# watchdog.  Domain events the orchestrator itself publishes are deliberately
+# excluded — they must not mask a stalled agent.  ``session.idle`` is the
+# turn-ending signal, handled separately, so it is not a heartbeat.
+_ACTIVITY_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        "message.part",
+        "tool.bash_running",
+        "tool.bash_done",
+        "tool.file_written",
+        "file.ready",
+    }
+)
 
 
 @dataclass
@@ -137,6 +148,9 @@ class Orchestrator:
             from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415
 
             prompt_text = self._build_profile_prompt(dataset, aim)
+            # Arm the watchdog so a stalled initial profiling turn is recovered.
+            if self._watchdog is not None:
+                self._watchdog.start_turn()
             asyncio.create_task(
                 self._dispatch_turn(
                     session_id,
@@ -473,9 +487,9 @@ class Orchestrator:
             workspace_root=self._workspace_root.resolve(),
         )
 
-        # Arm the watchdog with extended timeout for section builds.
+        # Arm the watchdog (single silence budget; heartbeats keep long builds alive).
         if self._watchdog is not None:
-            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
+            self._watchdog.start_turn()
 
         # Fire-and-forget.
         assert self._client is not None  # noqa: S101  # guarded by session check above
@@ -547,8 +561,7 @@ class Orchestrator:
             )
 
             if self._watchdog is not None:
-                timeout = _SECTION_WATCHDOG_TIMEOUT if turn.stage == "building" else None
-                self._watchdog.start_turn(timeout=timeout)
+                self._watchdog.start_turn()
 
             await self._dispatch_turn(
                 session_id,
@@ -706,7 +719,19 @@ class Orchestrator:
         try:
             async for envelope in subscription:
                 event_type: str = envelope.get("type", "")
+                # Keep the watchdog alive while the agent is actively working.
+                # heartbeat() is a no-op unless a turn is armed, so this is safe
+                # for activity that arrives between turns.
+                if self._watchdog is not None and event_type in _ACTIVITY_EVENT_TYPES:
+                    self._watchdog.heartbeat()
                 if event_type == "session.idle":
+                    # The agent went idle — this turn has ended.  Cancel the
+                    # watchdog so it cannot fire while the user reviews the
+                    # output; the next turn re-arms it.  (When a turn stalls, the
+                    # stall suppresses session.idle, so this cancel never runs and
+                    # the watchdog fires as intended.)
+                    if self._watchdog is not None:
+                        self._watchdog.cancel()
                     stage = self._state_manager.get_state().get("stage", "")
                     if stage == "profiling":
                         await self._handle_profile_idle()
@@ -943,9 +968,9 @@ class Orchestrator:
             workspace_root=self._workspace_root.resolve(),
         )
 
-        # 3. Arm the watchdog with extended timeout for section builds.
+        # 3. Arm the watchdog (single silence budget; heartbeats keep long builds alive).
         if self._watchdog is not None:
-            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
+            self._watchdog.start_turn()
 
         # 4. Fire-and-forget the turn.
         assert self._client is not None  # noqa: S101  # guarded by session check above

@@ -109,7 +109,7 @@ These controls can be toggled from a second terminal while Data Buddy is running
 |---|---|
 | `make qa-provider-error-on` / `make qa-provider-error-off` | Provider error before OpenCode is called |
 | `make qa-section-missing-output-on` / `make qa-section-missing-output-off` | Missing section Markdown output |
-| `make qa-turn-stall-on` / `make qa-turn-stall-off` | Turn activity stops after its first event |
+| `make qa-turn-stall-on` / `make qa-turn-stall-off` | Turn activity stops after its first event; the watchdog detects the silence and recovers (fresh session + retry banner) within ~10s |
 
 `make clean` disables every runtime QA control.
 
