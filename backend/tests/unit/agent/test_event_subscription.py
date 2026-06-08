@@ -403,6 +403,59 @@ async def test_heartbeat_not_published(tmp_path: Path) -> None:
     assert received == [], f"Expected no events from heartbeat, got: {received}"
 
 
+async def test_turn_stall_marker_can_be_disabled_during_connection(tmp_path: Path) -> None:
+    """Removing the turn-stall marker resumes events on the existing connection."""
+    client = _make_client(tmp_path)
+    bus = EventBus()
+    sub = bus.subscribe()
+    marker_dir = tmp_path / ".qa"
+    marker_dir.mkdir()
+    marker = marker_dir / "turn-stall"
+    marker.touch()
+
+    def delta(text: str) -> MagicMock:
+        return _raw_event(
+            "message.part.delta",
+            {
+                "sessionID": _OWN_SESSION,
+                "field": "text",
+                "delta": text,
+            },
+        )
+
+    class FakeSSEResponse:
+        async def aiter_sse(self):
+            yield delta("first")
+            yield delta("suppressed")
+            marker.unlink()
+            yield delta("resumed")
+
+    class FakeCtx:
+        async def __aenter__(self):
+            return FakeSSEResponse()
+
+        async def __aexit__(self, *args):
+            pass
+
+    with (
+        patch("backend.agent.opencode_client.aconnect_sse", return_value=FakeCtx()),
+        patch("backend.agent.opencode_client.httpx.AsyncClient") as mock_client_cls,
+    ):
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_http
+
+        await client._run_one_connection(bus, "http://test/event", heartbeat_timeout=30)
+
+    received = []
+    while not sub._queue.empty():
+        received.append(await sub.__anext__())
+
+    contents = [event["content"] for event in received if event["type"] == "message.part"]
+    assert contents == ["first", "resumed"]
+
+
 # ---------------------------------------------------------------------------
 # test_reconnect_on_heartbeat_timeout
 # ---------------------------------------------------------------------------

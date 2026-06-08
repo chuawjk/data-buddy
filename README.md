@@ -18,6 +18,7 @@ The rest of this README describes this implementation.
 - [Quick start](#quick-start)
 - [Workflow](#workflow)
 - [Resetting between runs](#resetting-between-runs)
+- [Runtime QA controls](#runtime-qa-controls)
 - [Development](#development)
 - [Testing and linting](#testing-and-linting)
 - [Environment variables](#environment-variables)
@@ -100,6 +101,20 @@ configuration, and uploaded CSVs.
 
 ---
 
+## Runtime QA controls
+
+These controls can be toggled from a second terminal while Data Buddy is running:
+
+| Commands | Simulated failure |
+|---|---|
+| `make qa-provider-error-on` / `make qa-provider-error-off` | Provider error before OpenCode is called |
+| `make qa-section-missing-output-on` / `make qa-section-missing-output-off` | Missing section Markdown output |
+| `make qa-turn-stall-on` / `make qa-turn-stall-off` | Turn activity stops after its first event |
+
+`make clean` disables every runtime QA control.
+
+---
+
 ## Development
 
 ```bash
@@ -131,8 +146,6 @@ make lint    # runs ruff (backend) and ESLint (frontend)
 | `OPENAI_API_KEY` | Yes | — | OpenAI API key; passed to OpenCode for provider authentication |
 | `WATCHDOG_TIMEOUT_SECONDS` | No | `60` | Seconds without an SSE event before a stuck turn is aborted and a fresh session is created |
 | `SKIP_OPENCODE` | No | unset | Set to `1` to start the backend without launching OpenCode (useful for UI development and CI) |
-| `QA_FORCE_STALL` | No | unset | Set to `1` to simulate a stuck turn after the first event, for testing watchdog recovery |
-| `QA_FORCE_SECTION_FAIL` | No | unset | Set to `1` to force a section build to fail (for testing the retry/drop flow) |
 
 ---
 

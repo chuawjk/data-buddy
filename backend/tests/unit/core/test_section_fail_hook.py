@@ -137,6 +137,24 @@ async def test_force_fail_env_set_emits_section_failed(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.asyncio
+async def test_section_missing_output_marker_is_runtime_toggleable(tmp_path: Path) -> None:
+    """The section-missing-output marker takes effect without rebuilding the orchestrator."""
+    orch, sm, bus = _make_orchestrator(tmp_path)
+    _set_building_section(sm)
+    _write_triplet(tmp_path)
+    marker_dir = tmp_path / ".qa"
+    marker_dir.mkdir()
+    marker = marker_dir / "section-missing-output"
+    marker.touch()
+
+    sub = bus.subscribe()
+    await orch._handle_section_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "section.failed"
+
+
 # ---------------------------------------------------------------------------
 # AC1 — hook set, .md removed from disk after the call
 # ---------------------------------------------------------------------------
