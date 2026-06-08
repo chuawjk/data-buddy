@@ -15,7 +15,12 @@ Usage (called by the orchestrator around every agent turn):
     watchdog.cancel()         # called when a turn completes normally
 
 WATCHDOG_TIMEOUT is read from the WATCHDOG_TIMEOUT_SECONDS environment variable so it can be
-overridden in tests and tuned in production (ADR-002).  Defaults to 60 seconds.
+overridden in tests and tuned in production (ADR-002).  Defaults to 60 seconds.  It is a
+single silence budget for every stage: because every activity event re-arms the timer via
+heartbeat(), a turn is aborted only after a full budget with no agent activity — never for
+simply running long.  The per-stage "section build needs longer" distinction is therefore
+obsolete; if a real dataset ever produces a legitimate silent step beyond the budget, raise
+WATCHDOG_TIMEOUT_SECONDS rather than reintroducing per-call timeouts.
 
 Hard boundary: this module does not import the orchestrator.
 """
@@ -75,43 +80,34 @@ class Watchdog:
         self._bus = bus
         self._qa_controls = qa_controls
         self._task: asyncio.Task[None] | None = None
-        # Stores the timeout passed to the most recent start_turn() call so that
-        # heartbeat() can re-arm the timer with the same per-turn budget rather than
-        # reverting to the global default.
-        self._current_timeout: int = WATCHDOG_TIMEOUT
         # True only between start_turn() and the turn ending (cancel, or the timer
         # firing).  heartbeat() is a no-op unless a turn is armed, so stray
         # activity events between turns can never arm the watchdog.
         self._armed: bool = False
 
-    def start_turn(self, timeout: int | None = None) -> None:
+    def start_turn(self) -> None:
         """Call when a turn begins. Cancels any existing timer and starts a fresh one.
 
-        Stores the resolved timeout so that subsequent ``heartbeat()`` calls
-        can re-arm the timer with the same per-turn budget.
-
-        Args:
-            timeout: Silence threshold in seconds before recovery fires.  Defaults
-                to ``WATCHDOG_TIMEOUT`` (60 s).  Pass a larger value (e.g. 180) for
-                long-running turns such as section builds.
+        The silence budget is the single ``WATCHDOG_TIMEOUT`` (env-overridable),
+        or the short stall-demo window when the ``turn-stall`` QA control is
+        active.  There is no per-stage budget: heartbeats keep long-but-active
+        turns alive on their own.
         """
         self.cancel()
-        self._current_timeout = self._stall_demo_timeout() or timeout or WATCHDOG_TIMEOUT
+        timeout = self._stall_demo_timeout() or WATCHDOG_TIMEOUT
         self._armed = True
-        self._task = asyncio.create_task(self._watch(self._current_timeout))
+        self._task = asyncio.create_task(self._watch(timeout))
 
     def heartbeat(self) -> None:
         """Call on every activity event to reset the silence timer.
 
         No-op unless a turn is currently armed: activity that arrives between
-        turns must never start the watchdog by itself.  While armed, re-arms the
-        timer using the same timeout the active turn was started with (e.g. 180 s
-        for section builds, or the short stall-demo window) rather than reverting
-        to the global ``WATCHDOG_TIMEOUT`` default.
+        turns must never start the watchdog by itself.  While armed, it simply
+        re-starts the same budget (re-reading the stall-demo override each time).
         """
         if not self._armed:
             return
-        self.start_turn(self._current_timeout)
+        self.start_turn()
 
     def cancel(self) -> None:
         """Cancel the current watch task. Safe to call when no task is running."""

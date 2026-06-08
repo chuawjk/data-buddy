@@ -44,11 +44,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Section builds write three files and run arbitrary analysis code — they take
-# significantly longer than profiling or planning turns.  Give them 3× the
-# default 60 s watchdog budget.
-_SECTION_WATCHDOG_TIMEOUT: int = 180
-
 # Normalised OpenCode activity events that count as "the agent is making
 # progress".  Each one re-arms the watchdog so a turn that is genuinely working
 # is never aborted; silence (no such event within the budget) is what fires the
@@ -492,9 +487,9 @@ class Orchestrator:
             workspace_root=self._workspace_root.resolve(),
         )
 
-        # Arm the watchdog with extended timeout for section builds.
+        # Arm the watchdog (single silence budget; heartbeats keep long builds alive).
         if self._watchdog is not None:
-            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
+            self._watchdog.start_turn()
 
         # Fire-and-forget.
         assert self._client is not None  # noqa: S101  # guarded by session check above
@@ -566,8 +561,7 @@ class Orchestrator:
             )
 
             if self._watchdog is not None:
-                timeout = _SECTION_WATCHDOG_TIMEOUT if turn.stage == "building" else None
-                self._watchdog.start_turn(timeout=timeout)
+                self._watchdog.start_turn()
 
             await self._dispatch_turn(
                 session_id,
@@ -974,9 +968,9 @@ class Orchestrator:
             workspace_root=self._workspace_root.resolve(),
         )
 
-        # 3. Arm the watchdog with extended timeout for section builds.
+        # 3. Arm the watchdog (single silence budget; heartbeats keep long builds alive).
         if self._watchdog is not None:
-            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
+            self._watchdog.start_turn()
 
         # 4. Fire-and-forget the turn.
         assert self._client is not None  # noqa: S101  # guarded by session check above

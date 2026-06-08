@@ -1051,11 +1051,9 @@ async def test_session_idle_stage_aware_dispatch_planning(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_section_build_uses_extended_watchdog_timeout(tmp_path):
-    """start_build_section() calls watchdog.start_turn(timeout=180), not the default 60s."""
+async def test_section_build_arms_watchdog_with_single_budget(tmp_path):
+    """start_build_section() arms the watchdog with the single budget (no per-call timeout)."""
     from unittest.mock import MagicMock
-
-    from backend.core.orchestrator import _SECTION_WATCHDOG_TIMEOUT
 
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="building", dataset="data.csv", aim="find patterns")
@@ -1077,8 +1075,7 @@ async def test_section_build_uses_extended_watchdog_timeout(tmp_path):
     )
     await asyncio.sleep(0)
 
-    watchdog.start_turn.assert_called_once_with(timeout=_SECTION_WATCHDOG_TIMEOUT)
-    assert _SECTION_WATCHDOG_TIMEOUT == 180
+    watchdog.start_turn.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
@@ -1571,7 +1568,7 @@ async def test_retry_last_turn_replays_profile_prompt_on_fresh_session(tmp_path)
 
 @pytest.mark.asyncio
 async def test_retry_last_turn_rearms_watchdog(tmp_path):
-    """Retry re-arms the watchdog with the stage-appropriate timeout."""
+    """Retry re-arms the watchdog with the single silence budget (no per-call timeout)."""
     from unittest.mock import MagicMock
 
     orch, sm, bus, client = _make_orchestrator(tmp_path)
@@ -1584,7 +1581,7 @@ async def test_retry_last_turn_rearms_watchdog(tmp_path):
     await orch.retry_last_turn()
     await asyncio.sleep(0)
 
-    watchdog.start_turn.assert_called_once_with(timeout=None)
+    watchdog.start_turn.assert_called_once_with()
 
 
 @pytest.mark.asyncio

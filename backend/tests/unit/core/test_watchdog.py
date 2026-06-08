@@ -258,33 +258,8 @@ async def test_no_session_id_skips_abort() -> None:
 
 
 # ---------------------------------------------------------------------------
-# test_start_turn_custom_timeout
+# test_start_turn_default_timeout
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_start_turn_custom_timeout_fires_after_given_seconds() -> None:
-    """start_turn(timeout=N) uses N seconds, not WATCHDOG_TIMEOUT."""
-    wmod = _load_watchdog()
-    client = _make_client()
-    sm = _make_state_manager()
-    bus = _make_bus()
-    watchdog = wmod.Watchdog(client=client, state_manager=sm, bus=bus)
-
-    seen_timeouts: list[float] = []
-    original_sleep = asyncio.sleep
-
-    async def recording_sleep(seconds: float) -> None:
-        seen_timeouts.append(seconds)
-        await original_sleep(0)
-
-    with unittest.mock.patch("backend.core.watchdog.asyncio.sleep", side_effect=recording_sleep):
-        watchdog.start_turn(timeout=180)
-        await original_sleep(0.1)
-
-    # The first sleep call is the _watch timeout; it must be 180, not WATCHDOG_TIMEOUT.
-    assert seen_timeouts[0] == 180, f"Expected 180s timeout, got {seen_timeouts[0]}"
-    client.abort.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -311,19 +286,16 @@ async def test_start_turn_default_timeout_uses_watchdog_timeout() -> None:
 
 
 # ---------------------------------------------------------------------------
-# heartbeat preserves the per-turn timeout
+# heartbeat re-arms the single silence budget
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_preserves_timeout() -> None:
-    """heartbeat() resets the timer using the same timeout that start_turn() was called with.
+async def test_heartbeat_rearms_single_budget() -> None:
+    """heartbeat() re-arms the timer with the single WATCHDOG_TIMEOUT budget.
 
-    A Watchdog started with timeout=180 stays at 180 after heartbeat,
-    not reset to the default 60 (or 1 in test env).
-
-    This verifies the fix for the bug where heartbeat() called start_turn() with no argument,
-    silently reverting to WATCHDOG_TIMEOUT even during a 180s section build.
+    There is no per-stage budget any more: every arm — initial or heartbeat —
+    resolves to WATCHDOG_TIMEOUT (or the stall-demo override).
     """
     wmod = _load_watchdog()
     client = _make_client()
@@ -333,31 +305,21 @@ async def test_heartbeat_preserves_timeout() -> None:
 
     seen_timeouts: list[float] = []
     original_sleep = asyncio.sleep
-    call_count = 0
 
     async def recording_sleep(seconds: float) -> None:
-        nonlocal call_count
         seen_timeouts.append(seconds)
-        call_count += 1
-        # Only yield for the first sleep so we can observe the timeout passed.
         await original_sleep(0)
 
     with unittest.mock.patch("backend.core.watchdog.asyncio.sleep", side_effect=recording_sleep):
-        # Start with a 180s section-build timeout.
-        watchdog.start_turn(timeout=180)
+        watchdog.start_turn()
         await original_sleep(0)
-        # heartbeat should re-arm using 180, not WATCHDOG_TIMEOUT (1 in test env).
         watchdog.heartbeat()
         await original_sleep(0.1)
 
-    # The first timeout recorded for the heartbeat's _watch call must be 180.
-    # seen_timeouts[0] = first start_turn(180) call
-    # seen_timeouts[1] = heartbeat's restart — must also be 180, not WATCHDOG_TIMEOUT
+    # Both the initial arm and the heartbeat re-arm use WATCHDOG_TIMEOUT.
     assert len(seen_timeouts) >= 2, f"Expected at least 2 sleep calls; got {seen_timeouts}"
-    assert seen_timeouts[1] == 180, (
-        f"heartbeat() must preserve the 180s timeout, not reset to {wmod.WATCHDOG_TIMEOUT}. "
-        f"Got: {seen_timeouts[1]}"
-    )
+    assert seen_timeouts[0] == wmod.WATCHDOG_TIMEOUT
+    assert seen_timeouts[1] == wmod.WATCHDOG_TIMEOUT
 
 
 @pytest.mark.asyncio
@@ -429,8 +391,8 @@ async def test_stall_control_shortens_timeout() -> None:
         await original_sleep(0)
 
     with unittest.mock.patch("backend.core.watchdog.asyncio.sleep", side_effect=recording_sleep):
-        # Even a long section-build budget collapses to the stall-demo timeout.
-        watchdog.start_turn(timeout=180)
+        # The stall control overrides the WATCHDOG_TIMEOUT budget with the demo window.
+        watchdog.start_turn()
         await original_sleep(0.1)
 
     assert seen_timeouts[0] == wmod._STALL_DEMO_TIMEOUT_S, (
