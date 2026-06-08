@@ -1100,7 +1100,7 @@ async def test_handle_section_idle_persists_failed_status(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Watchdog cancel + auto-sequencing tests
+# Watchdog cancel + review-gate tests
 # ---------------------------------------------------------------------------
 
 
@@ -1163,8 +1163,8 @@ async def test_section_idle_cancels_watchdog_on_completion(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_section_idle_auto_starts_next_queued_section(tmp_path):
-    """_handle_section_idle() starts the next queued section after section.proposed."""
+async def test_section_idle_waits_for_review_before_starting_next_section(tmp_path):
+    """_handle_section_idle() leaves the next section queued after section.proposed."""
     slug = "first"
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="building", dataset="d.csv", aim="a", plan=_make_two_section_plan(slug))
@@ -1185,9 +1185,29 @@ async def test_section_idle_auto_starts_next_queued_section(tmp_path):
 
     state = sm.get_state()
     sec2 = next(s for s in state["plan"] if s["id"] == "sec_02")
-    assert sec2["status"] == "building"
-    # client.prompt must have been called for the new section turn.
-    mock_client.prompt.assert_awaited_once()
+    assert sec2["status"] == "queued"
+    mock_client.prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_section_waits_for_user_action_before_starting_next_section(tmp_path):
+    """_handle_section_idle() leaves the next section queued after section.failed."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building", dataset="d.csv", aim="a", plan=_make_two_section_plan("first"))
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    await orch._handle_section_idle()
+    await asyncio.sleep(0)
+
+    state = sm.get_state()
+    sec1 = next(s for s in state["plan"] if s["id"] == "sec_01")
+    sec2 = next(s for s in state["plan"] if s["id"] == "sec_02")
+    assert sec1["status"] == "failed"
+    assert sec2["status"] == "queued"
+    mock_client.prompt.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1455,6 +1475,62 @@ async def test_retry_without_prior_turn(tmp_path):
     assert sub._queue.empty(), "No events should be emitted when there is no last turn"
 
 
+@pytest.mark.asyncio
+async def test_retry_failed_section_rebuilds_same_section_on_fresh_session(tmp_path):
+    """Failed-section Retry restores building state and uses a fresh session."""
+    plan = [
+        {
+            "id": "sec_01",
+            "title": "First",
+            "hypothesis": "H1",
+            "status": "failed",
+        },
+        {
+            "id": "sec_02",
+            "title": "Second",
+            "hypothesis": "H2",
+            "status": "queued",
+        },
+    ]
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=plan)
+    client.create_fresh_session = AsyncMock(return_value="sess-retry")
+    sub = bus.subscribe()
+
+    await orch.retry_failed_section("sec_01")
+    await asyncio.sleep(0)
+
+    state = sm.get_state()
+    assert state["opencode_session_id"] == "sess-retry"
+    assert state["plan"][0]["status"] == "building"
+    assert state["plan"][1]["status"] == "queued"
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "section.building"
+    assert event["section_id"] == "sec_01"
+    client.prompt.assert_awaited_once()
+    assert client.prompt.call_args.args[0] == "sess-retry"
+
+
+@pytest.mark.asyncio
+async def test_retry_failed_section_ignores_non_failed_section(tmp_path):
+    """Failed-section Retry cannot restart a queued or proposed section."""
+    plan = [
+        {
+            "id": "sec_01",
+            "title": "First",
+            "hypothesis": "H1",
+            "status": "queued",
+        },
+    ]
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=plan)
+    client.create_fresh_session = AsyncMock(return_value="sess-retry")
+
+    await orch.retry_failed_section("sec_01")
+
+    client.create_fresh_session.assert_not_awaited()
+    client.prompt.assert_not_awaited()
+    assert sm.get_state()["plan"][0]["status"] == "queued"
+
+
 # ---------------------------------------------------------------------------
 # turn.error payload includes stage and reason
 # ---------------------------------------------------------------------------
@@ -1664,12 +1740,8 @@ async def test_done_transition_when_all_accepted(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_done_transition_when_mixed_accepted_dropped(tmp_path):
-    """_check_done_or_next: mix of accepted and dropped (no queued/building) → done.
-
-    Given dropped sections, when sequencing, then they are skipped (already handled
-    by queued status) and done is emitted when all are terminal.
-    """
+async def test_failed_section_prevents_done_transition(tmp_path):
+    """_check_done_or_next waits for a failed section to be retried or dropped."""
     plan = [
         {
             "id": "sec_01",
@@ -1704,10 +1776,8 @@ async def test_done_transition_when_mixed_accepted_dropped(tmp_path):
 
     await orch._check_done_or_next("sec_03")
 
-    assert sm.get_state()["stage"] == "done"
-    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
-    assert event["type"] == "stage.changed"
-    assert event.get("stage") == "done"
+    assert sm.get_state()["stage"] == "building"
+    assert sub._queue.empty()
 
 
 @pytest.mark.asyncio
@@ -1834,8 +1904,8 @@ async def test_check_done_noop_when_not_building(tmp_path):
 async def test_start_next_queued_calls_check_done_when_no_queued(tmp_path):
     """_start_next_queued_section calls _check_done_or_next when no queued sections remain.
 
-    Belt-and-suspenders fallback for the auto-sequence path: when all sections have been
-    processed (proposed/failed/accepted) via session.idle, the loop still reaches done.
+    After the final user decision, the build reaches done when every section is
+    accepted or dropped.
     """
     plan = [
         {

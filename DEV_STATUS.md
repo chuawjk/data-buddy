@@ -125,10 +125,11 @@ Backend:
   - Build events include `section.building`, `section.proposed`, and `section.failed`.
   - Artefact paths (`py_path`, `png_path`, `md_path`) are persisted to `state.json`, not just emitted in SSE payloads.
   - Section build watchdog timeout is 180s; profiling/planning remain at 60s.
-  - Section builds now auto-sequence through queued sections; the watchdog is reset/cancelled per section.
+  - Each completed or failed section pauses for user review; Accept/Drop advances the queue, while Retry rebuilds a failed section on a fresh session.
+  - The watchdog is reset/cancelled per section.
 - Section controls:
   - `POST /section/:id/accept` changes `proposed` -> `accepted`.
-  - `POST /section/:id/drop` changes `proposed` -> `dropped` and excludes dropped sections from export.
+  - `POST /section/:id/drop` changes `proposed` or `failed` -> `dropped`, advances the queue, and excludes dropped sections from export.
   - `POST /turn` dispatches by stage:
     - `profiling` -> `re_profile(text)`
     - `planning` -> `re_plan(text)`
@@ -249,9 +250,9 @@ Post-Night-2 fixes merged to `develop`:
 
 ### N3-S01/S04 — What landed
 
-- `orchestrator._check_done_or_next(section_id)`: checks all sections for terminal status (accepted/dropped/failed); if all terminal and stage is still `building`, persists `stage="done"` and emits `stage.changed(done)`
-- Called from `POST /section/:id/accept` and `POST /section/:id/drop` via `asyncio.create_task` after persisting status (fire-and-forget, 204 not delayed)
-- Also called from `_start_next_queued_section` as a belt-and-suspenders fallback on the auto-sequence path
+- `orchestrator._check_done_or_next(section_id)`: checks all sections for terminal status (accepted/dropped); failed sections require Retry or Drop before the build can finish.
+- `POST /section/:id/accept` and `POST /section/:id/drop` call `_start_next_queued_section` via `asyncio.create_task` after persisting status (fire-and-forget, 204 not delayed).
+- `_start_next_queued_section` calls `_check_done_or_next` when no queued sections remain.
 - Re-entrant safe: stage guard (`stage != "building"` → return early) prevents double-emit after first done transition
 - `watchdog._current_timeout`: stored on every `start_turn()` call; `heartbeat()` re-arms with the stored value rather than the global 60s default — preserves 180s section-build budget across heartbeats
 - 9 new tests covering happy path, mixed terminal statuses, premature-done guards, rapid-accept re-entrancy, wrong-stage no-op, belt-and-suspenders, heartbeat timeout preservation, heartbeat edge case

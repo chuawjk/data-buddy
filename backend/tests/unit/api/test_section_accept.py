@@ -158,6 +158,22 @@ def test_section_accept_second_section(tmp_path):
     assert sec_02["status"] == "accepted"
 
 
+def test_section_accept_advances_build_queue(tmp_path):
+    """Accepting a proposed section releases the next queued section."""
+    state_path = tmp_path / "state.json"
+    sm = StateManager(path=state_path)
+    sm.load()
+    sm.update(stage="building", plan=list(_PLAN_WITH_PROPOSED))
+
+    with patch("backend.main.StateManager", lambda: sm):
+        with TestClient(app) as c:
+            c.app.state.state_manager = sm
+            c.app.state.orchestrator._start_next_queued_section = AsyncMock(return_value=None)
+            c.post("/api/section/sec_01/accept")
+
+    c.app.state.orchestrator._start_next_queued_section.assert_awaited_once()
+
+
 # ---------------------------------------------------------------------------
 # Error path — unknown section ID
 # ---------------------------------------------------------------------------

@@ -48,9 +48,9 @@ const STATUS_CLASS: Record<Section["status"], string> = {
   failed: "bg-[#f8d7da] text-[#721c24]",
 };
 
-/** Sections that deserve a detail pane: anything that has started building or finished. */
+/** Sections that deserve a detail pane: anything active or retained for export. */
 function getSectionPanes(sections: Section[]): Section[] {
-  return sections.filter((s) => s.status !== "queued");
+  return sections.filter((s) => s.status !== "queued" && s.status !== "dropped");
 }
 
 export default function BuildView({

@@ -209,8 +209,10 @@ async def post_turn(request: Request, body: dict = Body(default=None)) -> Respon
     - ``building``: calls ``orchestrator.redirect_section(text)``
 
     Empty body path (retry):
-    - If the body is absent or ``text`` is missing/empty, calls
-      ``orchestrator.retry_last_turn()`` to re-fire the last prompt.
+    - If ``section_id`` is present, calls
+      ``orchestrator.retry_failed_section(section_id)``.
+    - Otherwise, calls ``orchestrator.retry_last_turn()`` to re-fire the last
+      prompt.
 
     Error envelopes (API contract S4):
     - 422 invalid_text -- text field missing or empty/whitespace-only (only
@@ -224,7 +226,14 @@ async def post_turn(request: Request, body: dict = Body(default=None)) -> Respon
 
     text: str = (body.get("text") or "").strip()
     if not text:
-        asyncio.create_task(request.app.state.orchestrator.retry_last_turn())
+        section_id = body.get("section_id")
+        if section_id is not None:
+            section_id = str(section_id).strip() or None
+        orchestrator = request.app.state.orchestrator
+        if section_id:
+            asyncio.create_task(orchestrator.retry_failed_section(section_id))
+        else:
+            asyncio.create_task(orchestrator.retry_last_turn())
         return Response(status_code=204)
 
     stage: str = request.app.state.state_manager.get_state().get("stage", "")
@@ -452,10 +461,10 @@ async def post_section_accept(request: Request, section_id: str) -> Response:
     updated_plan[section_index]["status"] = "accepted"
     state_manager.update(plan=updated_plan)
 
-    # Check whether all sections are now terminal and transition to done if so.
+    # Start the next queued section, or transition to done if none remain.
     # Fire-and-forget so the 204 response is not delayed.
     orchestrator = request.app.state.orchestrator
-    asyncio.create_task(orchestrator._check_done_or_next(section_id))
+    asyncio.create_task(orchestrator._start_next_queued_section())
 
     return Response(status_code=204)
 
@@ -467,9 +476,9 @@ async def post_section_accept(request: Request, section_id: str) -> Response:
 
 @router.post("/section/{section_id}/drop", status_code=204)
 async def post_section_drop(request: Request, section_id: str) -> Response:
-    """Drop a proposed section.
+    """Drop a proposed or failed section.
 
-    Marks the section's status from ``"proposed"`` to ``"dropped"`` in
+    Marks the section's status from ``"proposed"`` or ``"failed"`` to ``"dropped"`` in
     ``state.json``.  Returns 204 No Content.  No OpenCode call is made.
     Dropped sections are excluded from ``GET /export`` because that endpoint
     only includes sections with status ``"accepted"``.
@@ -497,7 +506,7 @@ async def post_section_drop(request: Request, section_id: str) -> Response:
         )
 
     section = plan[section_index]
-    if section.get("status") != "proposed":
+    if section.get("status") not in {"proposed", "failed"}:
         return JSONResponse(
             status_code=400,
             content={
@@ -514,10 +523,10 @@ async def post_section_drop(request: Request, section_id: str) -> Response:
     updated_plan[section_index]["status"] = "dropped"
     state_manager.update(plan=updated_plan)
 
-    # Check whether all sections are now terminal and transition to done if so.
+    # Start the next queued section, or transition to done if none remain.
     # Fire-and-forget so the 204 response is not delayed.
     orchestrator = request.app.state.orchestrator
-    asyncio.create_task(orchestrator._check_done_or_next(section_id))
+    asyncio.create_task(orchestrator._start_next_queued_section())
 
     return Response(status_code=204)
 

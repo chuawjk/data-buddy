@@ -43,7 +43,7 @@ Roughly half of all UI actions involve no agent call at all.
 **Backend-only operations** (synchronous HTTP, no OpenCode call):
 - Edit / reorder / drop / add plan sections (`POST /plan/update`)
 - Accept the plan (`POST /plan/accept`)
-- Accept or drop a proposed section (`POST /section/:id/accept`, `POST /section/:id/drop`)
+- Accept a proposed section, or drop a proposed/failed section (`POST /section/:id/accept`, `POST /section/:id/drop`)
 - Export the brief (`GET /export`)
 
 This split keeps the backend testable, recovery paths simple, and the demo reliable: the interactive loop never stalls on agent latency for operations that are purely structural.
