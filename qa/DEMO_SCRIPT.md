@@ -26,7 +26,7 @@ manage; no dev tooling required at demo time.
 ## Step 1 — Clean start
 
 ```bash
-make clean && make run
+make very-clean && make run
 ```
 
 Expected output:
@@ -43,6 +43,11 @@ server, no hot-reload, no two-terminal setup.
 `workspace/state.json`, `workspace/plan.json`, `workspace/profile.json`,
 `workspace/sections/`, `workspace/charts/`, `workspace/analyses/`, and
 `frontend/dist/` — but does NOT remove `workspace/data/` (the churn CSV).
+
+`make very-clean` additionally removes only OpenCode's SQLite session database
+(`~/.local/share/opencode/opencode.db` and its `-shm` / `-wal` sidecars), preventing
+stale schema state from surviving an OpenCode upgrade. It preserves
+`~/.local/share/opencode/auth.json`. Stop Data Buddy/OpenCode before running it.
 
 ---
 
@@ -232,4 +237,3 @@ never hardcodes dataset assumptions.
   the `include_router` call in `backend/main.py`.
   **Impact on demo**: use `make dev` (not `make run`) to serve the app during the demo
   until this defect is fixed and QA re-gates.
-

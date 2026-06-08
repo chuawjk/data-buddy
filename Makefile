@@ -1,4 +1,4 @@
-.PHONY: install dev test lint format clean run
+.PHONY: install dev test lint format clean very-clean run
 
 # ── install ────────────────────────────────────────────────────────────────────
 install:
@@ -62,3 +62,15 @@ clean:
 	       workspace/sections workspace/analyses workspace/charts \
 	       frontend/dist frontend/.vite
 	@echo "Workspace and build artefacts removed."
+
+# ── very-clean ────────────────────────────────────────────────────────────────
+very-clean:
+	@if pgrep -f '[o]pencode serve' >/dev/null 2>&1; then \
+		echo "ERROR: OpenCode is running. Stop Data Buddy/OpenCode before make very-clean."; \
+		exit 1; \
+	fi
+	@$(MAKE) clean
+	rm -f "$${XDG_DATA_HOME:-$$HOME/.local/share}/opencode/opencode.db" \
+	      "$${XDG_DATA_HOME:-$$HOME/.local/share}/opencode/opencode.db-shm" \
+	      "$${XDG_DATA_HOME:-$$HOME/.local/share}/opencode/opencode.db-wal"
+	@echo "OpenCode session database removed. Authentication and configuration preserved."

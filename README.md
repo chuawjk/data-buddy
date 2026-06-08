@@ -87,6 +87,17 @@ make clean
 
 Removes `workspace/state.json`, `workspace/plan.json`, `workspace/profile.json`, `workspace/sections/`, `workspace/analyses/`, `workspace/charts/`, and `frontend/dist/`. Does NOT remove uploaded CSVs in `workspace/data/`. Run `make clean` before a fresh demo run.
 
+After upgrading OpenCode, or if profiling immediately fails with an OpenCode schema-validation
+error, stop Data Buddy/OpenCode and run:
+
+```bash
+make very-clean
+```
+
+This performs `make clean` and removes only OpenCode's SQLite session database
+(`opencode.db` plus its `-shm` and `-wal` sidecars). It preserves OpenCode authentication,
+configuration, and uploaded CSVs.
+
 ---
 
 ## Development
