@@ -43,7 +43,7 @@ Roughly half of all UI actions involve no agent call at all.
 **Backend-only operations** (synchronous HTTP, no OpenCode call):
 - Edit / reorder / drop / add plan sections (`POST /plan/update`)
 - Accept the plan (`POST /plan/accept`)
-- Accept or drop a proposed section (`POST /section/:id/accept`, `POST /section/:id/drop`)
+- Accept a proposed section, or drop a proposed/failed section (`POST /section/:id/accept`, `POST /section/:id/drop`)
 - Export the brief (`GET /export`)
 
 This split keeps the backend testable, recovery paths simple, and the demo reliable: the interactive loop never stalls on agent latency for operations that are purely structural.
@@ -62,9 +62,9 @@ This asymmetry is deliberate. Structured output is the right tool when the outpu
 
 ## 5. Session model and recovery (ADR-002)
 
-One OpenCode session is created at setup time. Its ID is stored in `state.json`. All turns within a brief target the same session — OpenCode's SQLite-backed session carries the conversation history, which provides useful context even though every prompt re-supplies the structural context from files.
+One OpenCode session is created at setup time and its ID is stored in `state.json`. Normal turns within a brief target the current session. A user-triggered retry always creates and persists a fresh session before replaying the failed turn, avoiding stale or incompatible session state. Manual retries have no fixed limit, while duplicate retry requests during fresh-session creation and prompt dispatch are ignored. This is safe because every prompt re-supplies the structural context from workspace files.
 
-A watchdog (`watchdog.py`) monitors the SSE stream. If 60 seconds pass with no events during an active turn, it fires an abort against the current session. If abort does not resolve within ~10 seconds, it creates a fresh OpenCode session and stores the new ID in `state.json`. The next prompt targets the new session and re-supplies full context from workspace files, so the recovery is transparent.
+A watchdog (`watchdog.py`) monitors the SSE stream. If 60 seconds pass with no events during an active turn, it fires an abort against the current session. If abort does not resolve within ~10 seconds, it creates a fresh OpenCode session and stores the new ID in `state.json`. Retries and subsequent prompts target the replacement session and re-supply full context from workspace files, so the recovery is transparent.
 
 The spike confirmed this is necessary: a second prompt to the same session can hang indefinitely (~7+ minutes). A fresh session completes the same task in ~15 seconds. The watchdog timeout is tunable via `WATCHDOG_TIMEOUT_SECONDS` for testing and environments where the model is slower.
 

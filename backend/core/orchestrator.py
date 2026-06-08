@@ -16,11 +16,11 @@ State transitions implemented here:
   planning → building  (via ``accept_plan``)
   building → done     (via ``_check_done_or_next``)
 
-QA env-var seams (off by default, zero production-path impact):
-  ``QA_FORCE_SECTION_FAIL=1`` -- removes the .md artefact before the triplet
+Runtime QA controls (off by default, zero production-path impact):
+  ``section-missing-output`` -- removes the .md artefact before the triplet
     check so ``section.failed`` fires deterministically.
-  ``QA_FORCE_TURN_ERROR=1`` -- raises before ``client.prompt`` in each
-    ``_run_*_turn`` method, driving ``turn.error`` for QA.
+  ``provider-error`` -- raises before ``client.prompt``, driving
+    ``turn.error`` for QA.
 """
 
 from __future__ import annotations
@@ -30,8 +30,11 @@ import json
 import logging
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from backend.core.qa_controls import PROVIDER_ERROR, SECTION_MISSING_OUTPUT, QAControls
 
 if TYPE_CHECKING:
     from backend.agent.opencode_client import OpenCodeClient
@@ -41,10 +44,31 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Section builds write three files and run arbitrary analysis code — they take
-# significantly longer than profiling or planning turns.  Give them 3× the
-# default 60 s watchdog budget.
-_SECTION_WATCHDOG_TIMEOUT: int = 180
+# Normalised OpenCode activity events that count as "the agent is making
+# progress".  Each one re-arms the watchdog so a turn that is genuinely working
+# is never aborted; silence (no such event within the budget) is what fires the
+# watchdog.  Domain events the orchestrator itself publishes are deliberately
+# excluded — they must not mask a stalled agent.  ``session.idle`` is the
+# turn-ending signal, handled separately, so it is not a heartbeat.
+_ACTIVITY_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        "message.part",
+        "tool.bash_running",
+        "tool.bash_done",
+        "tool.file_written",
+        "file.ready",
+    }
+)
+
+
+@dataclass
+class TurnRecord:
+    """Replay contract for the current agent turn."""
+
+    stage: str
+    prompt: str
+    schema: Any = None
+    section_id: str | None = None
 
 
 class Orchestrator:
@@ -76,15 +100,18 @@ class Orchestrator:
         client: "OpenCodeClient | None" = None,
         workspace_root: Path = Path("workspace"),
         watchdog: "Watchdog | None" = None,
+        qa_controls: QAControls | None = None,
     ) -> None:
         self._state_manager = state_manager
         self._bus = bus
         self._client = client
         self._workspace_root = Path(workspace_root)
         self._watchdog = watchdog
-        # Last dispatched turn — used by retry_last_turn() to replay.
-        # Shape: {"stage": str, "prompt": str, "section_id": str|None, "retries": int}
-        self._last_turn: dict | None = None
+        self._qa_controls = qa_controls or QAControls(self._workspace_root)
+        # Current turn replay contract. Cleared only after valid stage output is
+        # processed, not merely when OpenCode accepts the prompt request.
+        self._last_turn: TurnRecord | None = None
+        self._retry_in_progress = False
 
     # ------------------------------------------------------------------
     # Stage transitions
@@ -121,9 +148,14 @@ class Orchestrator:
             from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415
 
             prompt_text = self._build_profile_prompt(dataset, aim)
+            # Arm the watchdog so a stalled initial profiling turn is recovered.
+            if self._watchdog is not None:
+                self._watchdog.start_turn()
             asyncio.create_task(
                 self._dispatch_turn(
-                    session_id, prompt_text, "profiling",
+                    session_id,
+                    prompt_text,
+                    "profiling",
                     schema=PROFILE_SCHEMA,
                 ),
                 name="profile-turn",
@@ -260,7 +292,9 @@ class Orchestrator:
 
         asyncio.create_task(
             self._dispatch_turn(
-                session_id, prompt, "profiling",
+                session_id,
+                prompt,
+                "profiling",
                 schema=PROFILE_SCHEMA,
             ),
             name="re-profile-turn",
@@ -315,7 +349,9 @@ class Orchestrator:
 
         asyncio.create_task(
             self._dispatch_turn(
-                session_id, prompt, "planning",
+                session_id,
+                prompt,
+                "planning",
                 schema=PLAN_SCHEMA,
             ),
             name="re-plan-turn",
@@ -418,6 +454,7 @@ class Orchestrator:
                 "status": "building",
                 "index": section_index,
                 "slug": slug,
+                "failure_reason": None,
                 "py_path": None,
                 "png_path": None,
                 "md_path": None,
@@ -450,9 +487,9 @@ class Orchestrator:
             workspace_root=self._workspace_root.resolve(),
         )
 
-        # Arm the watchdog with extended timeout for section builds.
+        # Arm the watchdog (single silence budget; heartbeats keep long builds alive).
         if self._watchdog is not None:
-            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
+            self._watchdog.start_turn()
 
         # Fire-and-forget.
         assert self._client is not None  # noqa: S101  # guarded by session check above
@@ -462,89 +499,145 @@ class Orchestrator:
         )
 
     async def retry_last_turn(self) -> None:
-        """Re-dispatch the last recorded turn prompt against the current session.
+        """Re-dispatch the last recorded turn prompt against a fresh session.
 
         Called by ``POST /turn`` when the request body is absent or empty (the
-        retry-banner path).  Reads ``_last_turn`` recorded by the most recent
-        ``_run_*_turn`` call and replays the same prompt to the same stage,
-        using the session ID fresh from ``state_manager`` so a watchdog session
-        swap is automatically picked up.
+        retry-banner path). Creates and persists a fresh OpenCode session before
+        replaying the complete turn contract, including its original schema.
 
         Behaviour:
         - ``_last_turn is None`` → log a warning and return (no turn to retry).
-        - ``retries >= 3`` → emit ``turn.error`` with ``reason="provider_error"``
-          (max retries exceeded) and return without firing a new prompt.
-        - Otherwise: increment ``retries``, dispatch the prompt to the
-          appropriate ``_run_*_turn`` as a fire-and-forget task.
+        - A duplicate request while retry setup/dispatch is in progress is ignored.
+        - Otherwise: create and persist a fresh session, re-arm the watchdog,
+          and replay the recorded turn contract.
 
-        Returns immediately; the replayed turn runs asynchronously.
+        There is no fixed manual retry limit. Each deliberate retry creates a
+        fresh session; successful validated output clears the replay contract.
         """
         if self._last_turn is None:
             logger.warning("retry_last_turn: no prior turn recorded — nothing to retry")
             return
 
-        if self._last_turn.get("retries", 0) >= 3:
+        if self._retry_in_progress:
+            logger.info("retry_last_turn: retry already in progress — ignoring duplicate request")
+            return
+
+        turn = self._last_turn
+        if turn.stage not in ("profiling", "planning", "building"):
+            logger.warning("retry_last_turn: unknown stage %r — cannot retry", turn.stage)
+            return
+
+        if self._client is None:
             logger.warning(
-                "retry_last_turn: max retries (3) exceeded for stage=%r",
-                self._last_turn.get("stage"),
-            )
-            await self._bus.publish(
-                "turn.error",
-                {
-                    "stage": self._last_turn.get("stage", ""),
-                    "section_id": self._last_turn.get("section_id"),
-                    "reason": "provider_error",
-                    "ts": int(time.time() * 1000),
-                },
+                "retry_last_turn: no client — cannot retry (stage=%r)",
+                turn.stage,
             )
             return
 
-        # Increment the retry counter before re-dispatching so that the next
-        # _run_*_turn call does NOT reset it back to 0 (it only resets on success).
-        # We do it here rather than inside _run_*_turn so that the counter
-        # survives regardless of which path succeeds or fails.
-        self._last_turn["retries"] = self._last_turn.get("retries", 0) + 1
+        self._retry_in_progress = True
+        try:
+            try:
+                session_id = await self._client.create_fresh_session()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("retry_last_turn: failed to create fresh session: %s", exc)
+                await self._bus.publish(
+                    "turn.error",
+                    {
+                        "stage": turn.stage,
+                        "section_id": turn.section_id,
+                        "reason": "provider_error",
+                        "ts": int(time.time() * 1000),
+                    },
+                )
+                return
 
-        stage: str = self._last_turn.get("stage", "")
-        prompt: str = self._last_turn.get("prompt", "")
-        section_id: str | None = self._last_turn.get("section_id")
+            self._state_manager.update(opencode_session_id=session_id)
 
-        # Read the session ID fresh from state — the watchdog may have swapped it.
-        session_id: str | None = self._state_manager.get_state().get("opencode_session_id")
-        if not session_id or self._client is None:
+            logger.info(
+                "retry_last_turn: replaying %r turn (session=%s, section_id=%r)",
+                turn.stage,
+                session_id,
+                turn.section_id,
+            )
+
+            if self._watchdog is not None:
+                self._watchdog.start_turn()
+
+            await self._dispatch_turn(
+                session_id,
+                turn.prompt,
+                turn.stage,
+                schema=turn.schema,
+                section_id=turn.section_id,
+                is_retry=True,
+            )
+        finally:
+            self._retry_in_progress = False
+
+    async def retry_failed_section(self, section_id: str) -> None:
+        """Rebuild a failed section against a fresh OpenCode session."""
+        state = self._state_manager.get_state()
+        if state.get("stage") != "building":
             logger.warning(
-                "retry_last_turn: no active session or client — cannot retry (stage=%r)",
-                stage,
+                "retry_failed_section: ignoring outside building stage (stage=%r)",
+                state.get("stage"),
             )
             return
 
-        logger.info(
-            "retry_last_turn: replaying %r turn (retry #%d, session=%s, section_id=%r)",
-            stage,
-            self._last_turn["retries"],
-            session_id,
-            section_id,
-        )
-
-        if stage not in ("profiling", "planning", "building"):
-            logger.warning("retry_last_turn: unknown stage %r — cannot retry", stage)
+        plan: list[dict[str, Any]] = state.get("plan") or []
+        section = next((s for s in plan if s.get("id") == section_id), None)
+        if section is None or section.get("status") != "failed":
+            logger.warning(
+                "retry_failed_section: section %r is missing or not failed",
+                section_id,
+            )
             return
 
-        from backend.agent.prompts.plan import PLAN_SCHEMA  # noqa: PLC0415
-        from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415
+        if self._client is None:
+            logger.warning("retry_failed_section: no client — cannot retry %r", section_id)
+            return
 
-        _schemas: dict[str, Any] = {
-            "profiling": PROFILE_SCHEMA,
-            "planning": PLAN_SCHEMA,
-        }
-        asyncio.create_task(
-            self._dispatch_turn(
-                session_id, prompt, stage,
-                schema=_schemas.get(stage),
+        if self._retry_in_progress:
+            logger.info(
+                "retry_failed_section: retry already in progress — ignoring duplicate request"
+            )
+            return
+
+        self._retry_in_progress = True
+        try:
+            try:
+                session_id = await self._client.create_fresh_session()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "retry_failed_section: failed to create fresh session for %r: %s",
+                    section_id,
+                    exc,
+                )
+                await self._bus.publish(
+                    "turn.error",
+                    {
+                        "stage": "building",
+                        "section_id": section_id,
+                        "reason": "provider_error",
+                        "ts": int(time.time() * 1000),
+                    },
+                )
+                return
+
+            self._state_manager.update(opencode_session_id=session_id)
+            section_index = next(
+                (i + 1 for i, candidate in enumerate(plan) if candidate.get("id") == section_id),
+                1,
+            )
+            await self.start_build_section(
                 section_id=section_id,
-            ),
-            name=f"retry-{stage}-turn",
-        )
+                section_index=section_index,
+                title=section.get("title", ""),
+                hypothesis=section.get("hypothesis", ""),
+                profile=state.get("profile") or {},
+            )
+        finally:
+            self._retry_in_progress = False
 
     # ------------------------------------------------------------------
     # Bus listener — session.idle / profile.ready → stage output handling
@@ -593,7 +686,9 @@ class Orchestrator:
 
             asyncio.create_task(
                 self._dispatch_turn(
-                    session_id, prompt_text, "planning",
+                    session_id,
+                    prompt_text,
+                    "planning",
                     schema=PLAN_SCHEMA,
                 ),
                 name="plan-turn",
@@ -624,7 +719,19 @@ class Orchestrator:
         try:
             async for envelope in subscription:
                 event_type: str = envelope.get("type", "")
+                # Keep the watchdog alive while the agent is actively working.
+                # heartbeat() is a no-op unless a turn is armed, so this is safe
+                # for activity that arrives between turns.
+                if self._watchdog is not None and event_type in _ACTIVITY_EVENT_TYPES:
+                    self._watchdog.heartbeat()
                 if event_type == "session.idle":
+                    # The agent went idle — this turn has ended.  Cancel the
+                    # watchdog so it cannot fire while the user reviews the
+                    # output; the next turn re-arms it.  (When a turn stalls, the
+                    # stall suppresses session.idle, so this cancel never runs and
+                    # the watchdog fires as intended.)
+                    if self._watchdog is not None:
+                        self._watchdog.cancel()
                     stage = self._state_manager.get_state().get("stage", "")
                     if stage == "profiling":
                         await self._handle_profile_idle()
@@ -643,8 +750,8 @@ class Orchestrator:
 
         Reads ``workspace/profile.json``, validates it against ``PROFILE_SCHEMA``,
         updates ``state.json`` with the parsed profile, and emits ``profile.ready``
-        on the bus.  If the file is absent or invalid, logs a warning and returns
-        without emitting (the watchdog will handle timeout recovery if needed).
+        on the bus. If the file is absent or invalid, emits ``turn.error`` with
+        ``reason="structured_output_failed"``.
         """
         state = self._state_manager.get_state()
         current_stage: str = state.get("stage", "")
@@ -654,11 +761,23 @@ class Orchestrator:
             return
 
         profile_path = self._workspace_root / "profile.json"
+
+        async def _emit_error() -> None:
+            await self._bus.publish(
+                "turn.error",
+                {
+                    "stage": "profiling",
+                    "reason": "structured_output_failed",
+                    "ts": int(time.time() * 1000),
+                },
+            )
+
         if not profile_path.exists():
             logger.warning(
                 "_handle_profile_idle: %s not found; profiling output may be missing.",
                 profile_path,
             )
+            await _emit_error()
             return
 
         try:
@@ -666,6 +785,7 @@ class Orchestrator:
             profile: dict[str, Any] = json.loads(raw)
         except (OSError, json.JSONDecodeError) as exc:
             logger.error("_handle_profile_idle: failed to read/parse profile.json: %s", exc)
+            await _emit_error()
             return
 
         # Validate required top-level fields (soft validation — emit even if extra
@@ -677,6 +797,7 @@ class Orchestrator:
                 "_handle_profile_idle: profile.json missing required fields: %s",
                 missing,
             )
+            await _emit_error()
             return
 
         # Persist the profile into state.json so GET /state returns it.
@@ -684,6 +805,7 @@ class Orchestrator:
 
         ts = int(time.time() * 1000)
         await self._bus.publish("profile.ready", {"profile": profile, "ts": ts})
+        self._complete_turn("profiling")
         logger.info("profile.ready emitted (ts=%d)", ts)
 
     async def _handle_plan_idle(self) -> None:
@@ -768,6 +890,7 @@ class Orchestrator:
             "plan.ready",
             {"sections": sections_with_status, "ts": ts},
         )
+        self._complete_turn("planning")
         logger.info("plan.ready emitted (%d sections, ts=%d)", len(sections_with_status), ts)
 
     async def start_build_section(
@@ -821,8 +944,11 @@ class Orchestrator:
 
         # Persist status=building (and index) so GET /state reflects live build state
         # and _handle_section_idle can derive the artefact filename reliably.
+        # Clear any prior failure_reason — a fresh build attempt is underway.
         updated_plan = [
-            {**s, "status": "building", "index": section_index} if s.get("id") == section_id else s
+            {**s, "status": "building", "index": section_index, "failure_reason": None}
+            if s.get("id") == section_id
+            else s
             for s in plan
         ]
         self._state_manager.update(plan=updated_plan)
@@ -842,9 +968,9 @@ class Orchestrator:
             workspace_root=self._workspace_root.resolve(),
         )
 
-        # 3. Arm the watchdog with extended timeout for section builds.
+        # 3. Arm the watchdog (single silence budget; heartbeats keep long builds alive).
         if self._watchdog is not None:
-            self._watchdog.start_turn(timeout=_SECTION_WATCHDOG_TIMEOUT)
+            self._watchdog.start_turn()
 
         # 4. Fire-and-forget the turn.
         assert self._client is not None  # noqa: S101  # guarded by session check above
@@ -873,7 +999,7 @@ class Orchestrator:
         without emitting.  If the current stage is not ``building``: returns
         immediately (idempotent guard).
 
-        When ``QA_FORCE_SECTION_FAIL=1`` is set, the ``.md`` file is removed
+        When the ``section-missing-output`` QA control is enabled, the ``.md`` file is removed
         before the check so that the normal missing-artefact path fires and
         ``section.failed`` is emitted deterministically.
         """
@@ -908,21 +1034,21 @@ class Orchestrator:
         nn = str(section_index).zfill(2)
         base_name = f"sec_{nn}_{slug}"
 
-        # QA_FORCE_SECTION_FAIL -- delete the .md before the triplet check so the
+        # section-missing-output -- delete the .md before the triplet check so the
         # normal missing-artefact path fires and section.failed is emitted
         # deterministically.  Off by default; zero production-path impact.
-        if os.environ.get("QA_FORCE_SECTION_FAIL") == "1":
+        if self._qa_controls.enabled(SECTION_MISSING_OUTPUT):
             md_to_remove = self._workspace_root / "sections" / f"{base_name}.md"
             if md_to_remove.exists():
                 try:
                     md_to_remove.unlink()
                     logger.info(
-                        "QA_FORCE_SECTION_FAIL: removed %s to force section.failed",
+                        "section-missing-output QA control: removed %s to force section.failed",
                         md_to_remove,
                     )
                 except OSError as exc:
                     logger.warning(
-                        "QA_FORCE_SECTION_FAIL: could not remove %s: %s",
+                        "section-missing-output QA control: could not remove %s: %s",
                         md_to_remove,
                         exc,
                     )
@@ -954,20 +1080,24 @@ class Orchestrator:
                 section_id,
                 missing,
             )
+            reason = "missing_files"
             await self._bus.publish(
                 "section.failed",
                 {
                     "section_id": section_id,
-                    "reason": "missing_files",
+                    "reason": reason,
                     "ts": ts,
                 },
             )
-            # Persist status=failed so GET /state reflects the failure.
+            # Persist status=failed and the reason so GET /state is the source of
+            # truth for the failed-section UI across page refreshes.
             updated_plan = [
-                {**s, "status": "failed"} if s.get("id") == section_id else s for s in plan
+                {**s, "status": "failed", "failure_reason": reason}
+                if s.get("id") == section_id
+                else s
+                for s in plan
             ]
             self._state_manager.update(plan=updated_plan)
-            await self._start_next_queued_section()
             return
 
         # All three present — emit section.proposed.
@@ -992,6 +1122,7 @@ class Orchestrator:
             {
                 **s,
                 "status": "proposed",
+                "failure_reason": None,
                 "py_path": py_path_rel,
                 "png_path": png_path_rel,
                 "md_path": md_path_rel,
@@ -1001,21 +1132,19 @@ class Orchestrator:
             for s in plan
         ]
         self._state_manager.update(plan=updated_plan)
+        self._complete_turn("building", section_id)
         logger.info("section.proposed emitted: %s (ts=%d)", section_id, ts)
-        await self._start_next_queued_section()
 
     async def _check_done_or_next(self, section_id: str) -> None:
         """Check whether all sections are terminal and transition to done if so.
 
         Called by:
-        - ``POST /section/:id/accept`` and ``POST /section/:id/drop`` after the
-          status is persisted (direct user interaction path).
         - ``_start_next_queued_section`` when it finds no more queued sections
-          (belt-and-suspenders for the auto-sequence path).
+          after direct user interaction.
 
-        Terminal statuses are ``"accepted"``, ``"dropped"``, and ``"failed"``.
-        Non-terminal statuses (``"queued"``, ``"building"``) mean the loop is
-        still running and we must not fire ``done`` yet.
+        Terminal statuses are ``"accepted"`` and ``"dropped"``. Failed
+        sections require an explicit Retry or Drop decision before the build
+        can finish.
 
         Re-entrant safety: the stage guard (``stage == "building"``) prevents
         double-emission — after the first call persists ``stage="done"``, every
@@ -1035,12 +1164,12 @@ class Orchestrator:
             return
 
         plan: list[dict[str, Any]] = state.get("plan") or []
-        _terminal = {"accepted", "dropped", "failed"}
+        _terminal = {"accepted", "dropped"}
         non_terminal = [s.get("status") for s in plan if s.get("status") not in _terminal]
         if non_terminal:
             logger.debug(
                 "_check_done_or_next: %d section(s) still in non-terminal state %r — "
-                "auto-sequence is still running, deferring done check",
+                "user review or a build is still pending, deferring done check",
                 len(non_terminal),
                 non_terminal,
             )
@@ -1061,12 +1190,10 @@ class Orchestrator:
     async def _start_next_queued_section(self) -> None:
         """Find the next queued section and start its build turn.
 
-        Called by ``_handle_section_idle`` after each section completes (success
-        or failure).  Reads the current plan, finds the first section with
-        ``status="queued"``, and delegates to ``start_build_section``.  If no
-        queued sections remain, delegates to ``_check_done_or_next`` as a
-        belt-and-suspenders check (the auto-sequence path must also reach done
-        when all sections are terminal).
+        Called after the user accepts or drops a section. Reads the current
+        plan, finds the first section with ``status="queued"``, and delegates
+        to ``start_build_section``. If no queued sections remain, delegates to
+        ``_check_done_or_next``.
         """
         state = self._state_manager.get_state()
         plan: list[dict[str, Any]] = state.get("plan") or []
@@ -1209,6 +1336,7 @@ class Orchestrator:
         *,
         schema: Any = None,
         section_id: str | None = None,
+        is_retry: bool = False,
     ) -> None:
         """Send a prompt to OpenCode and convert any error into a turn.error event.
 
@@ -1223,21 +1351,21 @@ class Orchestrator:
                 Pass ``None`` for section builds (file-triplet output, ADR-005).
             section_id: Section identifier; included in ``turn.error`` only for
                 building-stage errors so the SPA can locate the affected section.
+            is_retry: Preserve the existing turn record when replaying it.
         """
-        self._last_turn = {
-            "stage": stage,
-            "prompt": prompt,
-            "section_id": section_id,
-            "retries": self._last_turn.get("retries", 0) if self._last_turn else 0,
-        }
+        if not is_retry:
+            self._last_turn = TurnRecord(
+                stage=stage,
+                prompt=prompt,
+                schema=schema,
+                section_id=section_id,
+            )
 
         assert self._client is not None  # noqa: S101  # guarded by all callers
         try:
-            if os.environ.get("QA_FORCE_TURN_ERROR") == "1":
-                raise RuntimeError("QA_FORCE_TURN_ERROR: simulated turn error")
+            if self._qa_controls.enabled(PROVIDER_ERROR):
+                raise RuntimeError("provider-error QA control: simulated provider error")
             await self._client.prompt(session_id, prompt, schema=schema)
-            if self._last_turn is not None:
-                self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("%s turn failed: %s", stage.capitalize(), exc)
             error_payload: dict[str, Any] = {
@@ -1249,3 +1377,11 @@ class Orchestrator:
                 error_payload["section_id"] = section_id
             await self._bus.publish("turn.error", error_payload)
 
+    def _complete_turn(self, stage: str, section_id: str | None = None) -> None:
+        """Clear the replay contract after valid output is processed."""
+        turn = self._last_turn
+        if turn is None or turn.stage != stage:
+            return
+        if section_id is not None and turn.section_id != section_id:
+            return
+        self._last_turn = None

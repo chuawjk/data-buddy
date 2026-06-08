@@ -18,6 +18,7 @@ The rest of this README describes this implementation.
 - [Quick start](#quick-start)
 - [Workflow](#workflow)
 - [Resetting between runs](#resetting-between-runs)
+- [Runtime QA controls](#runtime-qa-controls)
 - [Development](#development)
 - [Testing and linting](#testing-and-linting)
 - [Environment variables](#environment-variables)
@@ -87,6 +88,31 @@ make clean
 
 Removes `workspace/state.json`, `workspace/plan.json`, `workspace/profile.json`, `workspace/sections/`, `workspace/analyses/`, `workspace/charts/`, and `frontend/dist/`. Does NOT remove uploaded CSVs in `workspace/data/`. Run `make clean` before a fresh demo run.
 
+After upgrading OpenCode, or if profiling immediately fails with an OpenCode schema-validation
+error, stop Data Buddy/OpenCode and run:
+
+```bash
+make very-clean
+```
+
+This performs `make clean` and removes only OpenCode's SQLite session database
+(`opencode.db` plus its `-shm` and `-wal` sidecars). It preserves OpenCode authentication,
+configuration, and uploaded CSVs.
+
+---
+
+## Runtime QA controls
+
+These controls can be toggled from a second terminal while Data Buddy is running:
+
+| Commands | Simulated failure |
+|---|---|
+| `make qa-provider-error-on` / `make qa-provider-error-off` | Provider error before OpenCode is called |
+| `make qa-section-missing-output-on` / `make qa-section-missing-output-off` | Missing section Markdown output |
+| `make qa-turn-stall-on` / `make qa-turn-stall-off` | Turn activity stops after its first event; the watchdog detects the silence and recovers (fresh session + retry banner) within ~10s |
+
+`make clean` disables every runtime QA control.
+
 ---
 
 ## Development
@@ -120,8 +146,6 @@ make lint    # runs ruff (backend) and ESLint (frontend)
 | `OPENAI_API_KEY` | Yes | — | OpenAI API key; passed to OpenCode for provider authentication |
 | `WATCHDOG_TIMEOUT_SECONDS` | No | `60` | Seconds without an SSE event before a stuck turn is aborted and a fresh session is created |
 | `SKIP_OPENCODE` | No | unset | Set to `1` to start the backend without launching OpenCode (useful for UI development and CI) |
-| `QA_FORCE_STALL` | No | unset | Set to `1` to simulate a stuck turn after the first event, for testing watchdog recovery |
-| `QA_FORCE_SECTION_FAIL` | No | unset | Set to `1` to force a section build to fail (for testing the retry/drop flow) |
 
 ---
 

@@ -23,11 +23,6 @@ interface BuildViewProps {
   sections?: Section[];
   /** Called whenever sections change locally (accept/drop) so App can update its plan state. */
   onSectionsChange?: (sections: Section[]) => void;
-  /**
-   * Map of section id → section.failed reason for sections that failed.
-   * Each failed section shows Retry/Drop controls in its SectionPane.
-   */
-  failedSections?: Map<string, string>;
 }
 
 const STATUS_LABEL: Record<Section["status"], string> = {
@@ -48,15 +43,14 @@ const STATUS_CLASS: Record<Section["status"], string> = {
   failed: "bg-[#f8d7da] text-[#721c24]",
 };
 
-/** Sections that deserve a detail pane: anything that has started building or finished. */
+/** Sections that deserve a detail pane: anything active or retained for export. */
 function getSectionPanes(sections: Section[]): Section[] {
-  return sections.filter((s) => s.status !== "queued");
+  return sections.filter((s) => s.status !== "queued" && s.status !== "dropped");
 }
 
 export default function BuildView({
   sections: initialSections = [],
   onSectionsChange,
-  failedSections = new Map<string, string>(),
 }: BuildViewProps) {
   const [sections, setSections] = useState<Section[]>(initialSections);
   const [fileReadyPath, setFileReadyPath] = useState<string | null>(null);
@@ -87,10 +81,12 @@ export default function BuildView({
         break;
 
       case "section.building":
-        // Mark the building section; leave others unchanged
+        // Mark the building section and clear any prior failure; leave others unchanged.
         setSections((prev) =>
           prev.map((s) =>
-            s.id === event.section_id ? { ...s, status: "building", title: event.title } : s
+            s.id === event.section_id
+              ? { ...s, status: "building", title: event.title, failure_reason: null }
+              : s
           )
         );
         break;
@@ -119,8 +115,15 @@ export default function BuildView({
         break;
 
       case "section.failed":
+        // Persist the reason locally so the failed-section UI (and its watchdog
+        // variant) survives until the next build attempt; state.json carries the
+        // same reason across a refresh.
         setSections((prev) =>
-          prev.map((s) => (s.id === event.section_id ? { ...s, status: "failed" } : s))
+          prev.map((s) =>
+            s.id === event.section_id
+              ? { ...s, status: "failed", failure_reason: event.reason }
+              : s
+          )
         );
         break;
 
@@ -186,7 +189,14 @@ export default function BuildView({
     setSections((prev) => {
       const next = prev.map((s) =>
         s.id === id
-          ? { ...s, status: "building" as const, py_path: null, png_path: null, md_path: null }
+          ? {
+              ...s,
+              status: "building" as const,
+              failure_reason: null,
+              py_path: null,
+              png_path: null,
+              md_path: null,
+            }
           : s
       );
       onSectionsChange?.(next);
@@ -244,8 +254,8 @@ export default function BuildView({
           onDrop={(id) => void handleDrop(id)}
           onRevise={(id, text) => handleRevise(id, text)}
           fileReadyPath={fileReadyPath}
-          isFailed={failedSections.has(section.id)}
-          failedReason={failedSections.get(section.id)}
+          isFailed={section.status === "failed"}
+          failedReason={section.failure_reason ?? undefined}
           onRetry={(id) => void handleSectionRetry(id)}
         />
       ))}

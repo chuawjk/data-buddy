@@ -130,6 +130,22 @@ def test_turn_missing_text_calls_retry(tmp_path):
     orchestrator.retry_last_turn.assert_awaited_once()
 
 
+def test_turn_with_section_id_retries_failed_section(tmp_path):
+    """POST /turn with section_id and no text routes to failed-section retry."""
+    app = _make_app(tmp_path, stage="building")
+
+    with TestClient(app) as client:
+        orchestrator = app.state.orchestrator
+        orchestrator.retry_failed_section = AsyncMock(return_value=None)
+        orchestrator.retry_last_turn = AsyncMock(return_value=None)
+
+        r = client.post("/turn", json={"section_id": "sec_02"})
+
+    assert r.status_code == 204
+    orchestrator.retry_failed_section.assert_awaited_once_with("sec_02")
+    orchestrator.retry_last_turn.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
 # test_turn_rejected_wrong_stage
 # ---------------------------------------------------------------------------

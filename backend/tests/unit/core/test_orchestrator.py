@@ -30,7 +30,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.core.event_bus import EventBus
-from backend.core.orchestrator import Orchestrator
+from backend.core.orchestrator import Orchestrator, TurnRecord
 from backend.core.state_manager import StateManager
 
 # ---------------------------------------------------------------------------
@@ -57,6 +57,7 @@ def _make_orchestrator(
     bus = EventBus()
     mock_client = AsyncMock()
     mock_client.prompt = AsyncMock(return_value=None)
+    mock_client.create_fresh_session = AsyncMock(return_value="sess-fresh")
     orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client)
     return orch, sm, bus, mock_client
 
@@ -145,6 +146,58 @@ async def test_profile_turn_triggered_with_session(tmp_path):
     # Second positional arg is the prompt text (must be a non-empty string).
     prompt_text = args[1]
     assert isinstance(prompt_text, str) and len(prompt_text) > 0, "Prompt text must be non-empty"
+
+
+@pytest.mark.asyncio
+async def test_setup_complete_arms_watchdog(tmp_path):
+    """The initial profiling turn must arm the watchdog so a stall can be recovered."""
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    bus = EventBus()
+    client = AsyncMock()
+    client.prompt = AsyncMock(return_value=None)
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm, bus=bus, client=client, workspace_root=tmp_path, watchdog=watchdog
+    )
+
+    await orch.setup_complete(dataset="data.csv", aim="Understand churn")
+    await asyncio.sleep(0)
+
+    watchdog.start_turn.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_bus_listener_cancels_watchdog_on_session_idle(tmp_path):
+    """session.idle ends the turn — the bus listener must cancel the watchdog.
+
+    Without this, a profiling/planning turn stays watched through the user's
+    review and the watchdog could fire spuriously after the turn has finished.
+    """
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm, bus=bus, client=AsyncMock(), workspace_root=tmp_path, watchdog=watchdog
+    )
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    await bus.publish("session.idle", {"ts": 1})
+    await asyncio.sleep(0.05)
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    watchdog.cancel.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -269,20 +322,41 @@ async def test_handle_profile_idle_wrong_stage_no_emit(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_handle_profile_idle_missing_file_no_emit(tmp_path):
-    """When profile.json is absent, profile.ready must not be emitted (graceful)."""
+async def test_handle_profile_idle_missing_file_emits_turn_error(tmp_path):
+    """When profile.json is absent, a structured-output turn.error is emitted."""
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="profiling")
     bus = EventBus()
     mock_client = AsyncMock()
     orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
 
     # Do NOT write profile.json.
     sub = bus.subscribe()
 
     await orch._handle_profile_idle()
 
-    assert sub._queue.empty(), "profile.ready must NOT be emitted when profile.json is missing"
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    assert event["stage"] == "profiling"
+    assert event["reason"] == "structured_output_failed"
+    assert orch._last_turn is not None
+
+
+@pytest.mark.asyncio
+async def test_handle_profile_idle_invalid_json_emits_turn_error(tmp_path):
+    """Malformed profile.json surfaces the same retryable structured-output error."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._workspace_root = tmp_path
+    (tmp_path / "profile.json").write_text("{not-json", encoding="utf-8")
+    sub = bus.subscribe()
+
+    await orch._handle_profile_idle()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    assert event["reason"] == "structured_output_failed"
 
 
 @pytest.mark.asyncio
@@ -342,6 +416,75 @@ async def test_start_bus_listener_routes_session_idle(tmp_path):
         f"Expected 'profile.ready' in events; got: {received_types}"
     )
     assert profile_ready_event["profile"]["shape"]["rows"] == 42  # type: ignore[possibly-undefined]
+
+
+@pytest.mark.asyncio
+async def test_bus_listener_heartbeats_on_activity_events(tmp_path):
+    """OpenCode activity events re-arm the watchdog via heartbeat()."""
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building")
+    bus = EventBus()
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm,
+        bus=bus,
+        client=AsyncMock(),
+        workspace_root=tmp_path,
+        watchdog=watchdog,
+    )
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    for event_type in ("message.part", "tool.bash_running", "tool.file_written", "file.ready"):
+        await bus.publish(event_type, {"ts": 1})
+    await asyncio.sleep(0.05)
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    assert watchdog.heartbeat.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_bus_listener_no_heartbeat_on_domain_events(tmp_path):
+    """Orchestrator-published domain events must not heartbeat the watchdog.
+
+    Heartbeating on the orchestrator's own output would mask a stalled agent.
+    """
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building")
+    bus = EventBus()
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm,
+        bus=bus,
+        client=AsyncMock(),
+        workspace_root=tmp_path,
+        watchdog=watchdog,
+    )
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    for event_type in ("stage.changed", "section.building", "turn.error", "plan.ready"):
+        await bus.publish(event_type, {"ts": 1})
+    await asyncio.sleep(0.05)
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    watchdog.heartbeat.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -908,11 +1051,9 @@ async def test_session_idle_stage_aware_dispatch_planning(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_section_build_uses_extended_watchdog_timeout(tmp_path):
-    """start_build_section() calls watchdog.start_turn(timeout=180), not the default 60s."""
+async def test_section_build_arms_watchdog_with_single_budget(tmp_path):
+    """start_build_section() arms the watchdog with the single budget (no per-call timeout)."""
     from unittest.mock import MagicMock
-
-    from backend.core.orchestrator import _SECTION_WATCHDOG_TIMEOUT
 
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="building", dataset="data.csv", aim="find patterns")
@@ -934,8 +1075,7 @@ async def test_section_build_uses_extended_watchdog_timeout(tmp_path):
     )
     await asyncio.sleep(0)
 
-    watchdog.start_turn.assert_called_once_with(timeout=_SECTION_WATCHDOG_TIMEOUT)
-    assert _SECTION_WATCHDOG_TIMEOUT == 180
+    watchdog.start_turn.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
@@ -1077,8 +1217,125 @@ async def test_handle_section_idle_persists_failed_status(tmp_path):
     assert section["status"] == "failed"
 
 
+@pytest.mark.asyncio
+async def test_handle_section_idle_persists_failure_reason(tmp_path):
+    """_handle_section_idle() stores failure_reason alongside status=failed."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(
+        stage="building",
+        dataset="data.csv",
+        aim="find churn",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Churn Drivers",
+                "hypothesis": "H",
+                "status": "building",
+                "slug": "churn_drivers",
+                "index": 1,
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            }
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    # Do NOT create artefact files — forces section.failed path.
+
+    await orch._handle_section_idle()
+
+    section = next(s for s in sm.get_state()["plan"] if s["id"] == "sec_01")
+    assert section["status"] == "failed"
+    assert section["failure_reason"] == "missing_files"
+
+
+@pytest.mark.asyncio
+async def test_handle_section_idle_clears_failure_reason_on_proposed(tmp_path):
+    """A successful rebuild clears any persisted failure_reason on section.proposed."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    slug = "churn_drivers"
+    sm.update(
+        stage="building",
+        dataset="data.csv",
+        aim="find churn",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Churn Drivers",
+                "hypothesis": "H",
+                "status": "building",
+                "failure_reason": "missing_files",
+                "slug": slug,
+                "index": 1,
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            }
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    base = f"sec_01_{slug}"
+    (tmp_path / "analyses").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "charts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "sections").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "analyses" / f"{base}.py").write_text("print('hi')", encoding="utf-8")
+    (tmp_path / "charts" / f"{base}.png").write_bytes(b"\x89PNG")
+    (tmp_path / "sections" / f"{base}.md").write_text("# Result", encoding="utf-8")
+
+    await orch._handle_section_idle()
+
+    section = next(s for s in sm.get_state()["plan"] if s["id"] == "sec_01")
+    assert section["status"] == "proposed"
+    assert section["failure_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_start_build_section_clears_failure_reason(tmp_path):
+    """start_build_section() clears failure_reason when a (re)build starts."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(
+        stage="building",
+        dataset="data.csv",
+        aim="find patterns",
+        plan=[
+            {
+                "id": "sec_01",
+                "title": "Churn",
+                "hypothesis": "Age predicts",
+                "status": "failed",
+                "failure_reason": "missing_files",
+                "py_path": None,
+                "png_path": None,
+                "md_path": None,
+            },
+        ],
+    )
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    await orch.start_build_section(
+        section_id="sec_01",
+        section_index=1,
+        title="Churn",
+        hypothesis="Age predicts",
+        profile={},
+    )
+    await asyncio.sleep(0)
+
+    section = next(s for s in sm.get_state()["plan"] if s["id"] == "sec_01")
+    assert section["status"] == "building"
+    assert section["failure_reason"] is None
+
+
 # ---------------------------------------------------------------------------
-# Watchdog cancel + auto-sequencing tests
+# Watchdog cancel + review-gate tests
 # ---------------------------------------------------------------------------
 
 
@@ -1141,8 +1398,8 @@ async def test_section_idle_cancels_watchdog_on_completion(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_section_idle_auto_starts_next_queued_section(tmp_path):
-    """_handle_section_idle() starts the next queued section after section.proposed."""
+async def test_section_idle_waits_for_review_before_starting_next_section(tmp_path):
+    """_handle_section_idle() leaves the next section queued after section.proposed."""
     slug = "first"
     sm = _make_state_manager(tmp_path, session_id="sess-abc")
     sm.update(stage="building", dataset="d.csv", aim="a", plan=_make_two_section_plan(slug))
@@ -1163,9 +1420,29 @@ async def test_section_idle_auto_starts_next_queued_section(tmp_path):
 
     state = sm.get_state()
     sec2 = next(s for s in state["plan"] if s["id"] == "sec_02")
-    assert sec2["status"] == "building"
-    # client.prompt must have been called for the new section turn.
-    mock_client.prompt.assert_awaited_once()
+    assert sec2["status"] == "queued"
+    mock_client.prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_section_waits_for_user_action_before_starting_next_section(tmp_path):
+    """_handle_section_idle() leaves the next section queued after section.failed."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="building", dataset="d.csv", aim="a", plan=_make_two_section_plan("first"))
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+
+    await orch._handle_section_idle()
+    await asyncio.sleep(0)
+
+    state = sm.get_state()
+    sec1 = next(s for s in state["plan"] if s["id"] == "sec_01")
+    sec2 = next(s for s in state["plan"] if s["id"] == "sec_02")
+    assert sec1["status"] == "failed"
+    assert sec2["status"] == "queued"
+    mock_client.prompt.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1261,94 +1538,154 @@ async def test_accept_plan_transitions_sections_to_queued(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_retry_last_turn_replays_profile_prompt(tmp_path):
-    """retry_last_turn() replays the last profiling prompt to the same session.
+async def test_retry_last_turn_replays_profile_prompt_on_fresh_session(tmp_path):
+    """retry_last_turn() replays the full profiling turn on a fresh session.
 
-    After _run_profile_turn records _last_turn, retry_last_turn() must call
-    client.prompt with the same prompt text.
+    The fresh session is persisted before the prompt is replayed.
     """
     orch, sm, bus, client = _make_orchestrator(tmp_path)
     sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
 
-    # Simulate a prior profile turn by directly setting _last_turn.
-    orch._last_turn = {
-        "stage": "profiling",
-        "prompt": "Profile the dataset",
-        "section_id": None,
-        "retries": 0,
-    }
-
-    client.prompt.reset_mock()
-    await orch.retry_last_turn()
-    await asyncio.sleep(0)
-
-    client.prompt.assert_awaited_once()
-    args, _ = client.prompt.call_args
-    assert args[0] == "sess-abc", f"Expected session_id 'sess-abc', got {args[0]!r}"
-    assert args[1] == "Profile the dataset"
-
-
-@pytest.mark.asyncio
-async def test_retry_last_turn_uses_fresh_session(tmp_path):
-    """retry_last_turn() reads the session ID fresh from state after a watchdog swap.
-
-    After a watchdog session swap, the session ID in state.json changes.
-    retry_last_turn() must target the new session, not a stale reference.
-    """
-    orch, sm, bus, client = _make_orchestrator(tmp_path)
-    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
-
-    orch._last_turn = {
-        "stage": "profiling",
-        "prompt": "Profile the dataset",
-        "section_id": None,
-        "retries": 0,
-    }
-
-    # Simulate watchdog session swap: new session ID persisted to state.
-    sm.update(opencode_session_id="sess-new-456")
-    client.prompt.reset_mock()
-
-    await orch.retry_last_turn()
-    await asyncio.sleep(0)
-
-    client.prompt.assert_awaited_once()
-    args, _ = client.prompt.call_args
-    assert args[0] == "sess-new-456", f"Expected fresh session_id 'sess-new-456', got {args[0]!r}"
-
-
-@pytest.mark.asyncio
-async def test_retry_bounded_at_three(tmp_path):
-    """retry_last_turn() emits turn.error with reason='provider_error' after 3 retries.
-
-    On the 4th retry attempt (retries >= 3), no further client.prompt is called;
-    turn.error is emitted with reason='provider_error'.
-    """
-    orch, sm, bus, client = _make_orchestrator(tmp_path)
-    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
-
-    orch._last_turn = {
-        "stage": "profiling",
-        "prompt": "Profile the dataset",
-        "section_id": None,
-        "retries": 3,  # Already at the limit.
-    }
-
-    sub = bus.subscribe()
-    client.prompt.reset_mock()
-
-    await orch.retry_last_turn()
-    await asyncio.sleep(0)
-
-    # No further prompt call.
-    client.prompt.assert_not_awaited()
-
-    # turn.error must be emitted with reason='provider_error'.
-    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
-    assert event["type"] == "turn.error", f"Expected turn.error; got {event['type']!r}"
-    assert event.get("reason") == "provider_error", (
-        f"Expected reason='provider_error'; got {event.get('reason')!r}"
+    schema = {"type": "object"}
+    orch._last_turn = TurnRecord(
+        stage="profiling",
+        prompt="Profile the dataset",
+        schema=schema,
     )
+
+    client.prompt.reset_mock()
+    await orch.retry_last_turn()
+    await asyncio.sleep(0)
+
+    client.create_fresh_session.assert_awaited_once()
+    client.prompt.assert_awaited_once()
+    args, kwargs = client.prompt.call_args
+    assert args[0] == "sess-fresh"
+    assert args[1] == "Profile the dataset"
+    assert kwargs["schema"] is schema
+    assert sm.get_state()["opencode_session_id"] == "sess-fresh"
+
+
+@pytest.mark.asyncio
+async def test_retry_last_turn_rearms_watchdog(tmp_path):
+    """Retry re-arms the watchdog with the single silence budget (no per-call timeout)."""
+    from unittest.mock import MagicMock
+
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+    watchdog = MagicMock()
+    watchdog.start_turn = MagicMock()
+    orch._watchdog = watchdog
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+
+    await orch.retry_last_turn()
+    await asyncio.sleep(0)
+
+    watchdog.start_turn.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_retry_contract_survives_prompt_acceptance(tmp_path):
+    """A 204 prompt acceptance does not clear the replay contract before output validation."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._workspace_root = tmp_path
+    turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    orch._last_turn = turn
+
+    await orch.retry_last_turn()
+
+    assert orch._last_turn is turn
+
+
+@pytest.mark.asyncio
+async def test_new_turn_records_schema_for_future_retry(tmp_path):
+    """A failed initial turn retains its exact schema in the replay contract."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    schema = {"type": "object", "required": ["shape"]}
+    client.prompt.side_effect = RuntimeError("provider error")
+
+    await orch._dispatch_turn("sess-abc", "Profile the dataset", "profiling", schema=schema)
+
+    assert orch._last_turn is not None
+    assert orch._last_turn.schema is schema
+
+
+@pytest.mark.asyncio
+async def test_retry_fresh_session_failure_emits_turn_error(tmp_path):
+    """Failure to create the replacement session remains visible and retryable."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    client.create_fresh_session.side_effect = RuntimeError("session database error")
+    sub = bus.subscribe()
+
+    await orch.retry_last_turn()
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    assert event["stage"] == "profiling"
+    assert event["reason"] == "provider_error"
+    client.prompt.assert_not_awaited()
+    assert orch._last_turn is not None
+    assert not orch._retry_in_progress
+
+
+@pytest.mark.asyncio
+async def test_valid_profile_output_clears_last_turn(tmp_path):
+    """A valid profile.ready completion clears the replay contract."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._workspace_root = tmp_path
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    profile = {"shape": {"rows": 1, "columns": 1}, "columns": [], "flags": []}
+    (tmp_path / "profile.json").write_text(__import__("json").dumps(profile), encoding="utf-8")
+
+    await orch._handle_profile_idle()
+
+    assert orch._last_turn is None
+
+
+@pytest.mark.asyncio
+async def test_retry_has_no_fixed_manual_limit(tmp_path):
+    """Every deliberate retry creates a fresh session and replays the turn."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling", dataset="data.csv", aim="find patterns")
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    client.create_fresh_session.side_effect = ["sess-1", "sess-2", "sess-3", "sess-4"]
+
+    for _ in range(4):
+        await orch.retry_last_turn()
+
+    assert client.create_fresh_session.await_count == 4
+    assert client.prompt.await_count == 4
+    assert sm.get_state()["opencode_session_id"] == "sess-4"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_retry_request_is_ignored_while_retry_in_progress(tmp_path):
+    """Concurrent Retry clicks collapse into one fresh-session replay."""
+    orch, sm, bus, client = _make_orchestrator(tmp_path)
+    sm.update(stage="profiling")
+    orch._last_turn = TurnRecord(stage="profiling", prompt="Profile the dataset")
+    creation_started = asyncio.Event()
+    release_creation = asyncio.Event()
+
+    async def delayed_session_creation():
+        creation_started.set()
+        await release_creation.wait()
+        return "sess-fresh"
+
+    client.create_fresh_session.side_effect = delayed_session_creation
+
+    first_retry = asyncio.create_task(orch.retry_last_turn())
+    await creation_started.wait()
+    await orch.retry_last_turn()
+    release_creation.set()
+    await first_retry
+
+    client.create_fresh_session.assert_awaited_once()
+    client.prompt.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -1371,6 +1708,62 @@ async def test_retry_without_prior_turn(tmp_path):
 
     client.prompt.assert_not_awaited()
     assert sub._queue.empty(), "No events should be emitted when there is no last turn"
+
+
+@pytest.mark.asyncio
+async def test_retry_failed_section_rebuilds_same_section_on_fresh_session(tmp_path):
+    """Failed-section Retry restores building state and uses a fresh session."""
+    plan = [
+        {
+            "id": "sec_01",
+            "title": "First",
+            "hypothesis": "H1",
+            "status": "failed",
+        },
+        {
+            "id": "sec_02",
+            "title": "Second",
+            "hypothesis": "H2",
+            "status": "queued",
+        },
+    ]
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=plan)
+    client.create_fresh_session = AsyncMock(return_value="sess-retry")
+    sub = bus.subscribe()
+
+    await orch.retry_failed_section("sec_01")
+    await asyncio.sleep(0)
+
+    state = sm.get_state()
+    assert state["opencode_session_id"] == "sess-retry"
+    assert state["plan"][0]["status"] == "building"
+    assert state["plan"][1]["status"] == "queued"
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "section.building"
+    assert event["section_id"] == "sec_01"
+    client.prompt.assert_awaited_once()
+    assert client.prompt.call_args.args[0] == "sess-retry"
+
+
+@pytest.mark.asyncio
+async def test_retry_failed_section_ignores_non_failed_section(tmp_path):
+    """Failed-section Retry cannot restart a queued or proposed section."""
+    plan = [
+        {
+            "id": "sec_01",
+            "title": "First",
+            "hypothesis": "H1",
+            "status": "queued",
+        },
+    ]
+    orch, sm, bus, client = _make_building_orchestrator(tmp_path, plan=plan)
+    client.create_fresh_session = AsyncMock(return_value="sess-retry")
+
+    await orch.retry_failed_section("sec_01")
+
+    client.create_fresh_session.assert_not_awaited()
+    client.prompt.assert_not_awaited()
+    assert sm.get_state()["plan"][0]["status"] == "queued"
 
 
 # ---------------------------------------------------------------------------
@@ -1490,6 +1883,32 @@ async def test_qa_force_turn_error(tmp_path, monkeypatch):
     mock_client.prompt.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_qa_provider_error_marker_is_runtime_toggleable(tmp_path):
+    """The provider-error marker takes effect without rebuilding the orchestrator."""
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    mock_client = AsyncMock()
+    mock_client.prompt = AsyncMock(return_value=None)
+    orch = Orchestrator(state_manager=sm, bus=bus, client=mock_client, workspace_root=tmp_path)
+    sub = bus.subscribe()
+
+    marker_dir = tmp_path / ".qa"
+    marker_dir.mkdir()
+    marker = marker_dir / "provider-error"
+    marker.touch()
+    await orch._dispatch_turn("sess-abc", "Profile the data", "profiling")
+
+    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
+    assert event["type"] == "turn.error"
+    mock_client.prompt.assert_not_awaited()
+
+    marker.unlink()
+    await orch._dispatch_turn("sess-abc", "Profile the data", "profiling")
+    mock_client.prompt.assert_awaited_once()
+
+
 # ---------------------------------------------------------------------------
 # _check_done_or_next — done transition and sequencing
 # ---------------------------------------------------------------------------
@@ -1556,12 +1975,8 @@ async def test_done_transition_when_all_accepted(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_done_transition_when_mixed_accepted_dropped(tmp_path):
-    """_check_done_or_next: mix of accepted and dropped (no queued/building) → done.
-
-    Given dropped sections, when sequencing, then they are skipped (already handled
-    by queued status) and done is emitted when all are terminal.
-    """
+async def test_failed_section_prevents_done_transition(tmp_path):
+    """_check_done_or_next waits for a failed section to be retried or dropped."""
     plan = [
         {
             "id": "sec_01",
@@ -1596,10 +2011,8 @@ async def test_done_transition_when_mixed_accepted_dropped(tmp_path):
 
     await orch._check_done_or_next("sec_03")
 
-    assert sm.get_state()["stage"] == "done"
-    event = await asyncio.wait_for(sub.__anext__(), timeout=1.0)
-    assert event["type"] == "stage.changed"
-    assert event.get("stage") == "done"
+    assert sm.get_state()["stage"] == "building"
+    assert sub._queue.empty()
 
 
 @pytest.mark.asyncio
@@ -1726,8 +2139,8 @@ async def test_check_done_noop_when_not_building(tmp_path):
 async def test_start_next_queued_calls_check_done_when_no_queued(tmp_path):
     """_start_next_queued_section calls _check_done_or_next when no queued sections remain.
 
-    Belt-and-suspenders fallback for the auto-sequence path: when all sections have been
-    processed (proposed/failed/accepted) via session.idle, the loop still reaches done.
+    After the final user decision, the build reaches done when every section is
+    accepted or dropped.
     """
     plan = [
         {

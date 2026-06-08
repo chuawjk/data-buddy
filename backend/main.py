@@ -26,6 +26,7 @@ from backend.agent.opencode_client import OpenCodeClient
 from backend.api.router import router
 from backend.core.event_bus import EventBus
 from backend.core.orchestrator import Orchestrator
+from backend.core.qa_controls import QAControls
 from backend.core.state_manager import StateManager
 from backend.core.watchdog import Watchdog
 
@@ -65,6 +66,8 @@ async def lifespan(app: FastAPI):
     # without touching the real workspace/ directory. StateManager reads it
     # internally; Orchestrator receives it explicitly for file I/O paths.
     workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "workspace"))
+    qa_controls = QAControls(workspace_root)
+    app.state.qa_controls = qa_controls
     state_manager = StateManager()
     # Load persisted state from disk (no-op if workspace/state.json does not
     # exist yet -- returns the default shape and leaves _state at defaults).
@@ -75,7 +78,7 @@ async def lifespan(app: FastAPI):
 
     client: OpenCodeClient | None = None
     if not skip_opencode:
-        client = OpenCodeClient(state_manager=state_manager)
+        client = OpenCodeClient(state_manager=state_manager, qa_controls=qa_controls)
         try:
             await client.start()
         except RuntimeError as exc:
@@ -103,7 +106,12 @@ async def lifespan(app: FastAPI):
     # When SKIP_OPENCODE=1, watchdog is omitted and the orchestrator guards internally.
     watchdog: Watchdog | None = None
     if client is not None:
-        watchdog = Watchdog(client=client, state_manager=state_manager, bus=app.state.bus)
+        watchdog = Watchdog(
+            client=client,
+            state_manager=state_manager,
+            bus=app.state.bus,
+            qa_controls=qa_controls,
+        )
         app.state.watchdog = watchdog
 
     # Wire up the stage orchestrator.
@@ -113,6 +121,7 @@ async def lifespan(app: FastAPI):
         client=client,  # None when SKIP_OPENCODE=1; orchestrator guards internally.
         watchdog=watchdog,  # None when SKIP_OPENCODE=1; orchestrator guards internally.
         workspace_root=workspace_root,
+        qa_controls=qa_controls,
     )
     app.state.orchestrator = orchestrator
 

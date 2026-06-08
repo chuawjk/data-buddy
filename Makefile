@@ -1,4 +1,7 @@
-.PHONY: install dev test lint format clean run
+.PHONY: install dev test lint format clean very-clean run \
+	qa-provider-error-on qa-provider-error-off \
+	qa-section-missing-output-on qa-section-missing-output-off \
+	qa-turn-stall-on qa-turn-stall-off
 
 # ── install ────────────────────────────────────────────────────────────────────
 install:
@@ -59,6 +62,46 @@ format:
 # ── clean ─────────────────────────────────────────────────────────────────────
 clean:
 	rm -rf workspace/state.json workspace/plan.json workspace/profile.json \
-	       workspace/sections workspace/analyses workspace/charts \
+	       workspace/sections workspace/analyses workspace/charts workspace/.qa \
 	       frontend/dist frontend/.vite
 	@echo "Workspace and build artefacts removed."
+
+# ── very-clean ────────────────────────────────────────────────────────────────
+very-clean:
+	@if pgrep -f '[o]pencode serve' >/dev/null 2>&1; then \
+		echo "ERROR: OpenCode is running. Stop Data Buddy/OpenCode before make very-clean."; \
+		exit 1; \
+	fi
+	@$(MAKE) clean
+	rm -f "$${XDG_DATA_HOME:-$$HOME/.local/share}/opencode/opencode.db" \
+	      "$${XDG_DATA_HOME:-$$HOME/.local/share}/opencode/opencode.db-shm" \
+	      "$${XDG_DATA_HOME:-$$HOME/.local/share}/opencode/opencode.db-wal"
+	@echo "OpenCode session database removed. Authentication and configuration preserved."
+
+# ── runtime QA controls ───────────────────────────────────────────────────────
+qa-provider-error-on:
+	@mkdir -p workspace/.qa
+	@touch workspace/.qa/provider-error
+	@echo "QA provider-error enabled."
+
+qa-provider-error-off:
+	@rm -f workspace/.qa/provider-error
+	@echo "QA provider-error disabled."
+
+qa-section-missing-output-on:
+	@mkdir -p workspace/.qa
+	@touch workspace/.qa/section-missing-output
+	@echo "QA section-missing-output enabled."
+
+qa-section-missing-output-off:
+	@rm -f workspace/.qa/section-missing-output
+	@echo "QA section-missing-output disabled."
+
+qa-turn-stall-on:
+	@mkdir -p workspace/.qa
+	@touch workspace/.qa/turn-stall
+	@echo "QA turn-stall enabled."
+
+qa-turn-stall-off:
+	@rm -f workspace/.qa/turn-stall
+	@echo "QA turn-stall disabled."

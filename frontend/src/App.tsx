@@ -30,7 +30,6 @@ export default function App() {
     error: null,
   });
   const [turnError, setTurnError] = useState<TurnErrorEvent | null>(null);
-  const [failedSections, setFailedSections] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     fetch("/api/state")
@@ -57,9 +56,9 @@ export default function App() {
 
   useSSE((event: SSEEvent) => {
     if (event.type === "stage.changed" || event.type === "profile.ready") {
-      // Clear turn error and failed sections on stage transition
+      // Clear the turn error banner on stage transition. Section failure state
+      // lives in state.json (and BuildView's section state), not here.
       setTurnError(null);
-      setFailedSections(new Map());
       api
         .getState()
         .then((data) => {
@@ -81,13 +80,6 @@ export default function App() {
     }
     if (event.type === "turn.error") {
       setTurnError(event);
-    }
-    if (event.type === "section.failed") {
-      setFailedSections((prev) => {
-        const next = new Map(prev);
-        next.set(event.section_id, event.reason);
-        return next;
-      });
     }
   });
 
@@ -153,7 +145,6 @@ export default function App() {
           <BuildView
             sections={state.plan}
             onSectionsChange={handleSectionsChange}
-            failedSections={failedSections}
           />
         );
       case "done":

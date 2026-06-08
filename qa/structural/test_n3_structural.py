@@ -14,7 +14,6 @@ Covers:
 from __future__ import annotations
 
 import json
-import os
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -328,13 +327,13 @@ class TestTurnErrorPayloadShape:
 
 
 # ---------------------------------------------------------------------------
-# REG-N3-04: QA_FORCE_TURN_ERROR seam fires turn.error deterministically
+# REG-N3-04: provider-error QA control fires turn.error deterministically
 # ---------------------------------------------------------------------------
 
 
 class TestForcedTurnErrorHook:
     def test_qa_force_turn_error_triggers_turn_error(self, workspace: Path) -> None:
-        """QA_FORCE_TURN_ERROR=1 causes a turn to emit turn.error.
+        """The provider-error runtime control causes a turn to emit turn.error.
 
         REG-N3-04: the QA seam must cause turn.error without requiring a
         real OpenCode session. The orchestrator raises before client.prompt().
@@ -366,17 +365,19 @@ class TestForcedTurnErrorHook:
 
         async def _run() -> None:
             sub = bus.subscribe()
-            # Must set the env var before running the turn
-            os.environ["QA_FORCE_TURN_ERROR"] = "1"
+            marker_dir = workspace / ".qa"
+            marker_dir.mkdir()
+            marker = marker_dir / "provider-error"
+            marker.touch()
             try:
-                await orch._run_profile_turn("ses_test", "profile the data")
+                await orch._dispatch_turn("ses_test", "profile the data", "profiling")
                 # Allow event to propagate
                 await asyncio.sleep(0)
                 async for evt in sub:
                     collected.append(evt)
                     break
             finally:
-                del os.environ["QA_FORCE_TURN_ERROR"]
+                marker.unlink()
 
         asyncio.run(_run())
 
@@ -390,15 +391,14 @@ class TestForcedTurnErrorHook:
         mock_client.prompt.assert_not_called()
 
     def test_qa_force_turn_error_off_by_default(self, workspace: Path) -> None:
-        """QA_FORCE_TURN_ERROR is absent from the environment by default.
+        """The provider-error runtime marker is absent by default.
 
         REG-N3-04: production path must not be affected by the seam.
         """
-        # Ensure the env var is not set
-        env_val = os.environ.get("QA_FORCE_TURN_ERROR")
-        assert env_val != "1", (
-            "QA_FORCE_TURN_ERROR is unexpectedly set in the environment — "
-            "this would cause all production turns to fail."
+        marker = workspace / ".qa" / "provider-error"
+        assert not marker.exists(), (
+            "provider-error marker is unexpectedly present; "
+            "this would cause all turns to fail."
         )
 
 

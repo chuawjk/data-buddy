@@ -348,6 +348,52 @@ describe("App stage routing", () => {
     expect(screen.queryByTestId("export-btn")).not.toBeInTheDocument();
   });
 
+  it("clears a section failure notice when a new build attempt starts", async () => {
+    const section: Section = {
+      id: "sec_01",
+      title: "Overview",
+      hypothesis: "Revenue correlates with age",
+      status: "building",
+      py_path: null,
+      png_path: null,
+      md_path: null,
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ stage: "building", profile: null, plan: [section] }),
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("build-view")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      capturedOnEvent({
+        type: "section.failed",
+        section_id: section.id,
+        reason: "missing_files",
+        ts: Date.now(),
+      });
+    });
+    expect(screen.getByTestId("section-failed-notice")).toBeInTheDocument();
+
+    await act(async () => {
+      capturedOnEvent({
+        type: "section.building",
+        section_id: section.id,
+        title: section.title,
+        ts: Date.now(),
+      });
+    });
+    expect(screen.queryByTestId("section-failed-notice")).not.toBeInTheDocument();
+  });
+
   it("reacts to plan.ready — updates plan state without error", async () => {
     const acceptedSection: Section = {
       id: "sec_01",
