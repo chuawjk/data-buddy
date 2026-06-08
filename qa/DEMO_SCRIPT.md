@@ -105,9 +105,6 @@ Click **Export brief as Markdown**.
   - Dropped and queued sections are excluded
   - Each section has its title, code, chart path reference, and interpretation
 
-**ADR-003 framing:** `GET /export` is backend-only — zero OpenCode calls. The export
-assembles Markdown from the files OpenCode wrote during building.
-
 ---
 
 ## Step 7 — Error recovery demo path (QA seam)
