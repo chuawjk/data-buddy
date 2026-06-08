@@ -148,6 +148,58 @@ async def test_profile_turn_triggered_with_session(tmp_path):
     assert isinstance(prompt_text, str) and len(prompt_text) > 0, "Prompt text must be non-empty"
 
 
+@pytest.mark.asyncio
+async def test_setup_complete_arms_watchdog(tmp_path):
+    """The initial profiling turn must arm the watchdog so a stall can be recovered."""
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    bus = EventBus()
+    client = AsyncMock()
+    client.prompt = AsyncMock(return_value=None)
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm, bus=bus, client=client, workspace_root=tmp_path, watchdog=watchdog
+    )
+
+    await orch.setup_complete(dataset="data.csv", aim="Understand churn")
+    await asyncio.sleep(0)
+
+    watchdog.start_turn.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_bus_listener_cancels_watchdog_on_session_idle(tmp_path):
+    """session.idle ends the turn — the bus listener must cancel the watchdog.
+
+    Without this, a profiling/planning turn stays watched through the user's
+    review and the watchdog could fire spuriously after the turn has finished.
+    """
+    from unittest.mock import MagicMock
+
+    sm = _make_state_manager(tmp_path, session_id="sess-abc")
+    sm.update(stage="profiling")
+    bus = EventBus()
+    watchdog = MagicMock()
+    orch = Orchestrator(
+        state_manager=sm, bus=bus, client=AsyncMock(), workspace_root=tmp_path, watchdog=watchdog
+    )
+
+    listener_task = asyncio.create_task(orch.start_bus_listener())
+    await asyncio.sleep(0)
+
+    await bus.publish("session.idle", {"ts": 1})
+    await asyncio.sleep(0.05)
+
+    listener_task.cancel()
+    try:
+        await listener_task
+    except asyncio.CancelledError:
+        pass
+
+    watchdog.cancel.assert_called()
+
+
 # ---------------------------------------------------------------------------
 # test_profile_turn_not_triggered_without_session
 # ---------------------------------------------------------------------------

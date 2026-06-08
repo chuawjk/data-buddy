@@ -153,6 +153,9 @@ class Orchestrator:
             from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415
 
             prompt_text = self._build_profile_prompt(dataset, aim)
+            # Arm the watchdog so a stalled initial profiling turn is recovered.
+            if self._watchdog is not None:
+                self._watchdog.start_turn()
             asyncio.create_task(
                 self._dispatch_turn(
                     session_id,
@@ -728,6 +731,13 @@ class Orchestrator:
                 if self._watchdog is not None and event_type in _ACTIVITY_EVENT_TYPES:
                     self._watchdog.heartbeat()
                 if event_type == "session.idle":
+                    # The agent went idle — this turn has ended.  Cancel the
+                    # watchdog so it cannot fire while the user reviews the
+                    # output; the next turn re-arms it.  (When a turn stalls, the
+                    # stall suppresses session.idle, so this cancel never runs and
+                    # the watchdog fires as intended.)
+                    if self._watchdog is not None:
+                        self._watchdog.cancel()
                     stage = self._state_manager.get_state().get("stage", "")
                     if stage == "profiling":
                         await self._handle_profile_idle()
