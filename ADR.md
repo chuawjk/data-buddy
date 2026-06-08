@@ -514,7 +514,7 @@ The `turn.error` SSE event payload must carry a `reason` field (enum string) —
 `section_id` is present only for building-stage errors. `retryable` is not a field in this contract.
 
 Enum values:
-- `"provider_error"` — general exception from `_run_*_turn` or max retries exceeded in `retry_last_turn`
+- `"provider_error"` — general exception from turn dispatch or fresh-session retry setup
 - `"timeout"` — watchdog timer fired and session was replaced
 - `"structured_output_failed"` — reserved for use when `_handle_plan_idle` or `_handle_profile_idle` detect malformed output after a successful turn (already used in `_handle_plan_idle`)
 
@@ -526,7 +526,7 @@ The contract is the interface. The FE lane (N3-S05/S07 in development) must read
 
 ### Consequences
 - `orchestrator._run_profile_turn` / `_run_plan_turn` / `_run_section_turn`: emit `{ reason: "provider_error", ts: ... }`.
-- `orchestrator.retry_last_turn` (max retries): emit `{ reason: "provider_error", ts: ... }`.
+- `orchestrator.retry_last_turn` fresh-session or dispatch failure: emit `{ reason: "provider_error", ts: ... }`.
 - `watchdog._handle_timeout`: emit `{ stage: ..., reason: "timeout", ts: ... }`.
 - `_handle_plan_idle` already used `reason` for structured-output failures — no change needed there.
 - All tests updated to assert `reason` and assert `retryable` is NOT present.
@@ -560,4 +560,3 @@ Removing the Vite dev `rewrite` ensures dev and prod both use the `/api/*` path,
 - REG-N3-07 (`test_api_state_route_is_registered`) updated: the bare-path assertion is removed since bare `/state` is no longer registered. Only `/api/state` is asserted.
 - Smoke test: `GET /` returns HTML; `GET /api/state` returns 200 `application/json`. 563 tests green.
 - Commit `388b1d8` on develop; applied by TL inline as a cross-lane wiring fix (TL remit per CONTRIBUTING §2).
-

@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -47,6 +48,16 @@ logger = logging.getLogger(__name__)
 # significantly longer than profiling or planning turns.  Give them 3× the
 # default 60 s watchdog budget.
 _SECTION_WATCHDOG_TIMEOUT: int = 180
+
+
+@dataclass
+class TurnRecord:
+    """Replay contract for the current agent turn."""
+
+    stage: str
+    prompt: str
+    schema: Any = None
+    section_id: str | None = None
 
 
 class Orchestrator:
@@ -86,9 +97,10 @@ class Orchestrator:
         self._workspace_root = Path(workspace_root)
         self._watchdog = watchdog
         self._qa_controls = qa_controls or QAControls(self._workspace_root)
-        # Last dispatched turn — used by retry_last_turn() to replay.
-        # Shape: {"stage": str, "prompt": str, "section_id": str|None, "retries": int}
-        self._last_turn: dict | None = None
+        # Current turn replay contract. Cleared only after valid stage output is
+        # processed, not merely when OpenCode accepts the prompt request.
+        self._last_turn: TurnRecord | None = None
+        self._retry_in_progress = False
 
     # ------------------------------------------------------------------
     # Stage transitions
@@ -472,91 +484,81 @@ class Orchestrator:
         )
 
     async def retry_last_turn(self) -> None:
-        """Re-dispatch the last recorded turn prompt against the current session.
+        """Re-dispatch the last recorded turn prompt against a fresh session.
 
         Called by ``POST /turn`` when the request body is absent or empty (the
-        retry-banner path).  Reads ``_last_turn`` recorded by the most recent
-        ``_run_*_turn`` call and replays the same prompt to the same stage,
-        using the session ID fresh from ``state_manager`` so a watchdog session
-        swap is automatically picked up.
+        retry-banner path). Creates and persists a fresh OpenCode session before
+        replaying the complete turn contract, including its original schema.
 
         Behaviour:
         - ``_last_turn is None`` → log a warning and return (no turn to retry).
-        - ``retries >= 3`` → emit ``turn.error`` with ``reason="provider_error"``
-          (max retries exceeded) and return without firing a new prompt.
-        - Otherwise: increment ``retries``, dispatch the prompt to the
-          appropriate ``_run_*_turn`` as a fire-and-forget task.
+        - A duplicate request while retry setup/dispatch is in progress is ignored.
+        - Otherwise: create and persist a fresh session, re-arm the watchdog,
+          and replay the recorded turn contract.
 
-        Returns immediately; the replayed turn runs asynchronously.
+        There is no fixed manual retry limit. Each deliberate retry creates a
+        fresh session; successful validated output clears the replay contract.
         """
         if self._last_turn is None:
             logger.warning("retry_last_turn: no prior turn recorded — nothing to retry")
             return
 
-        if self._last_turn.get("retries", 0) >= 3:
+        if self._retry_in_progress:
+            logger.info("retry_last_turn: retry already in progress — ignoring duplicate request")
+            return
+
+        turn = self._last_turn
+        if turn.stage not in ("profiling", "planning", "building"):
+            logger.warning("retry_last_turn: unknown stage %r — cannot retry", turn.stage)
+            return
+
+        if self._client is None:
             logger.warning(
-                "retry_last_turn: max retries (3) exceeded for stage=%r",
-                self._last_turn.get("stage"),
-            )
-            await self._bus.publish(
-                "turn.error",
-                {
-                    "stage": self._last_turn.get("stage", ""),
-                    "section_id": self._last_turn.get("section_id"),
-                    "reason": "provider_error",
-                    "ts": int(time.time() * 1000),
-                },
+                "retry_last_turn: no client — cannot retry (stage=%r)",
+                turn.stage,
             )
             return
 
-        # Increment the retry counter before re-dispatching so that the next
-        # _run_*_turn call does NOT reset it back to 0 (it only resets on success).
-        # We do it here rather than inside _run_*_turn so that the counter
-        # survives regardless of which path succeeds or fails.
-        self._last_turn["retries"] = self._last_turn.get("retries", 0) + 1
+        self._retry_in_progress = True
+        try:
+            try:
+                session_id = await self._client.create_fresh_session()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("retry_last_turn: failed to create fresh session: %s", exc)
+                await self._bus.publish(
+                    "turn.error",
+                    {
+                        "stage": turn.stage,
+                        "section_id": turn.section_id,
+                        "reason": "provider_error",
+                        "ts": int(time.time() * 1000),
+                    },
+                )
+                return
 
-        stage: str = self._last_turn.get("stage", "")
-        prompt: str = self._last_turn.get("prompt", "")
-        section_id: str | None = self._last_turn.get("section_id")
+            self._state_manager.update(opencode_session_id=session_id)
 
-        # Read the session ID fresh from state — the watchdog may have swapped it.
-        session_id: str | None = self._state_manager.get_state().get("opencode_session_id")
-        if not session_id or self._client is None:
-            logger.warning(
-                "retry_last_turn: no active session or client — cannot retry (stage=%r)",
-                stage,
-            )
-            return
-
-        logger.info(
-            "retry_last_turn: replaying %r turn (retry #%d, session=%s, section_id=%r)",
-            stage,
-            self._last_turn["retries"],
-            session_id,
-            section_id,
-        )
-
-        if stage not in ("profiling", "planning", "building"):
-            logger.warning("retry_last_turn: unknown stage %r — cannot retry", stage)
-            return
-
-        from backend.agent.prompts.plan import PLAN_SCHEMA  # noqa: PLC0415
-        from backend.agent.prompts.profile import PROFILE_SCHEMA  # noqa: PLC0415
-
-        _schemas: dict[str, Any] = {
-            "profiling": PROFILE_SCHEMA,
-            "planning": PLAN_SCHEMA,
-        }
-        asyncio.create_task(
-            self._dispatch_turn(
+            logger.info(
+                "retry_last_turn: replaying %r turn (session=%s, section_id=%r)",
+                turn.stage,
                 session_id,
-                prompt,
-                stage,
-                schema=_schemas.get(stage),
-                section_id=section_id,
-            ),
-            name=f"retry-{stage}-turn",
-        )
+                turn.section_id,
+            )
+
+            if self._watchdog is not None:
+                timeout = _SECTION_WATCHDOG_TIMEOUT if turn.stage == "building" else None
+                self._watchdog.start_turn(timeout=timeout)
+
+            await self._dispatch_turn(
+                session_id,
+                turn.prompt,
+                turn.stage,
+                schema=turn.schema,
+                section_id=turn.section_id,
+                is_retry=True,
+            )
+        finally:
+            self._retry_in_progress = False
 
     # ------------------------------------------------------------------
     # Bus listener — session.idle / profile.ready → stage output handling
@@ -657,8 +659,8 @@ class Orchestrator:
 
         Reads ``workspace/profile.json``, validates it against ``PROFILE_SCHEMA``,
         updates ``state.json`` with the parsed profile, and emits ``profile.ready``
-        on the bus.  If the file is absent or invalid, logs a warning and returns
-        without emitting (the watchdog will handle timeout recovery if needed).
+        on the bus. If the file is absent or invalid, emits ``turn.error`` with
+        ``reason="structured_output_failed"``.
         """
         state = self._state_manager.get_state()
         current_stage: str = state.get("stage", "")
@@ -668,11 +670,23 @@ class Orchestrator:
             return
 
         profile_path = self._workspace_root / "profile.json"
+
+        async def _emit_error() -> None:
+            await self._bus.publish(
+                "turn.error",
+                {
+                    "stage": "profiling",
+                    "reason": "structured_output_failed",
+                    "ts": int(time.time() * 1000),
+                },
+            )
+
         if not profile_path.exists():
             logger.warning(
                 "_handle_profile_idle: %s not found; profiling output may be missing.",
                 profile_path,
             )
+            await _emit_error()
             return
 
         try:
@@ -680,6 +694,7 @@ class Orchestrator:
             profile: dict[str, Any] = json.loads(raw)
         except (OSError, json.JSONDecodeError) as exc:
             logger.error("_handle_profile_idle: failed to read/parse profile.json: %s", exc)
+            await _emit_error()
             return
 
         # Validate required top-level fields (soft validation — emit even if extra
@@ -691,6 +706,7 @@ class Orchestrator:
                 "_handle_profile_idle: profile.json missing required fields: %s",
                 missing,
             )
+            await _emit_error()
             return
 
         # Persist the profile into state.json so GET /state returns it.
@@ -698,6 +714,7 @@ class Orchestrator:
 
         ts = int(time.time() * 1000)
         await self._bus.publish("profile.ready", {"profile": profile, "ts": ts})
+        self._complete_turn("profiling")
         logger.info("profile.ready emitted (ts=%d)", ts)
 
     async def _handle_plan_idle(self) -> None:
@@ -782,6 +799,7 @@ class Orchestrator:
             "plan.ready",
             {"sections": sections_with_status, "ts": ts},
         )
+        self._complete_turn("planning")
         logger.info("plan.ready emitted (%d sections, ts=%d)", len(sections_with_status), ts)
 
     async def start_build_section(
@@ -1015,6 +1033,7 @@ class Orchestrator:
             for s in plan
         ]
         self._state_manager.update(plan=updated_plan)
+        self._complete_turn("building", section_id)
         logger.info("section.proposed emitted: %s (ts=%d)", section_id, ts)
         await self._start_next_queued_section()
 
@@ -1223,6 +1242,7 @@ class Orchestrator:
         *,
         schema: Any = None,
         section_id: str | None = None,
+        is_retry: bool = False,
     ) -> None:
         """Send a prompt to OpenCode and convert any error into a turn.error event.
 
@@ -1237,21 +1257,21 @@ class Orchestrator:
                 Pass ``None`` for section builds (file-triplet output, ADR-005).
             section_id: Section identifier; included in ``turn.error`` only for
                 building-stage errors so the SPA can locate the affected section.
+            is_retry: Preserve the existing turn record when replaying it.
         """
-        self._last_turn = {
-            "stage": stage,
-            "prompt": prompt,
-            "section_id": section_id,
-            "retries": self._last_turn.get("retries", 0) if self._last_turn else 0,
-        }
+        if not is_retry:
+            self._last_turn = TurnRecord(
+                stage=stage,
+                prompt=prompt,
+                schema=schema,
+                section_id=section_id,
+            )
 
         assert self._client is not None  # noqa: S101  # guarded by all callers
         try:
             if self._qa_controls.enabled(PROVIDER_ERROR):
                 raise RuntimeError("provider-error QA control: simulated provider error")
             await self._client.prompt(session_id, prompt, schema=schema)
-            if self._last_turn is not None:
-                self._last_turn["retries"] = 0
         except Exception as exc:  # noqa: BLE001
             logger.exception("%s turn failed: %s", stage.capitalize(), exc)
             error_payload: dict[str, Any] = {
@@ -1262,3 +1282,12 @@ class Orchestrator:
             if section_id is not None:
                 error_payload["section_id"] = section_id
             await self._bus.publish("turn.error", error_payload)
+
+    def _complete_turn(self, stage: str, section_id: str | None = None) -> None:
+        """Clear the replay contract after valid output is processed."""
+        turn = self._last_turn
+        if turn is None or turn.stage != stage:
+            return
+        if section_id is not None and turn.section_id != section_id:
+            return
+        self._last_turn = None

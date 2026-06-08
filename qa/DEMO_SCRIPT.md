@@ -166,13 +166,12 @@ make qa-provider-error-on
    step — retry."
 4. Run `make qa-provider-error-off`, then click Retry. The turn now reaches OpenCode
    without restarting the server or losing Data Buddy state.
-5. To demonstrate bounded retries, leave `qa-provider-error` enabled and click Retry
-   up to 3 times. On the 4th attempt, `turn.error` with `reason="provider_error"` fires
-   (max retries exceeded).
+5. Re-enable `qa-provider-error` and retry again if desired. Manual retries have no
+   fixed limit; duplicate clicks during an active retry are ignored.
 
 **ADR-002 framing:** session recovery is deterministic. `qa-provider-error` exercises
-the retry banner path without model misbehaviour or token spend. The session ID is
-refreshed from state on each retry so a watchdog swap is picked up automatically.
+the retry banner path without model misbehaviour or token spend. Each retry creates
+and persists a fresh OpenCode session before replaying the failed turn.
 
 **Section failure variant (optional):**
 ```bash
